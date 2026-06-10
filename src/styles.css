@@ -71,6 +71,9 @@ tr.clickable:hover { background: var(--panel2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.today { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
 
+a.team-link { color: inherit; cursor: pointer; }
+a.team-link:hover { color: var(--accent); text-decoration: underline; }
+
 button.btn {
   background: var(--accent);
   color: #000;

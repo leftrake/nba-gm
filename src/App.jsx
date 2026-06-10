@@ -24,6 +24,12 @@ export default function App() {
   const [league, setLeagueState] = useState(loadSave);
   const [screen, setScreen] = useState('dashboard');
   const [lastResults, setLastResults] = useState([]);
+  const [rosterTeamId, setRosterTeamId] = useState(null);
+
+  const openTeam = useCallback((teamId) => {
+    setRosterTeamId(teamId);
+    setScreen('roster');
+  }, []);
 
   // The engine mutates the league object; this forces a re-render + saves.
   const commit = useCallback(() => {
@@ -49,6 +55,7 @@ export default function App() {
       localStorage.removeItem(SAVE_KEY);
       setLeagueState(null);
       setLastResults([]);
+      setRosterTeamId(null);
     }
   };
 
@@ -153,13 +160,13 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} />}
-        {screen === 'roster' && <Roster league={league} commit={commit} />}
-        {screen === 'standings' && <Standings league={league} />}
-        {screen === 'schedule' && <Schedule league={league} />}
+        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} openTeam={openTeam} />}
+        {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} />}
+        {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
+        {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} />}
-        {screen === 'playoffs' && <Playoffs league={league} />}
+        {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} />}
       </main>
     </div>
   );

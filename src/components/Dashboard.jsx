@@ -2,9 +2,9 @@ import React from 'react';
 import { getTeam, standings, payroll } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { Ovr, money, perGame } from './shared.jsx';
+import { Ovr, money, perGame, TeamLink, NewsText } from './shared.jsx';
 
-export default function Dashboard({ league, lastResults }) {
+export default function Dashboard({ league, lastResults, openTeam }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
@@ -39,9 +39,13 @@ export default function Dashboard({ league, lastResults }) {
           {lastResults.length === 0 && <p style={{ color: 'var(--muted)' }}>Sim a day to see scores.</p>}
           {lastResults.map((r, i) => (
             <div className="result-row" key={i}>
-              <span className={r.awayPts > r.homePts ? 'winner' : ''}>{r.away} {r.awayPts}</span>
+              <span className={r.awayPts > r.homePts ? 'winner' : ''}>
+                <TeamLink team={getTeam(league, r.away)} openTeam={openTeam}>{r.away}</TeamLink> {r.awayPts}
+              </span>
               <span style={{ color: 'var(--muted)' }}>@</span>
-              <span className={r.homePts > r.awayPts ? 'winner' : ''}>{r.home} {r.homePts}</span>
+              <span className={r.homePts > r.awayPts ? 'winner' : ''}>
+                <TeamLink team={getTeam(league, r.home)} openTeam={openTeam}>{r.home}</TeamLink> {r.homePts}
+              </span>
             </div>
           ))}
         </div>
@@ -50,7 +54,7 @@ export default function Dashboard({ league, lastResults }) {
       <div className="panel">
         <h2>News</h2>
         {league.news.slice(0, 12).map((n, i) => (
-          <div className="news-item" key={i}>{n.text}</div>
+          <div className="news-item" key={i}><NewsText text={n.text} openTeam={openTeam} /></div>
         ))}
       </div>
 
@@ -63,7 +67,7 @@ export default function Dashboard({ league, lastResults }) {
               {[...league.history].reverse().map((h) => (
                 <tr key={h.season}>
                   <td>{h.season}</td>
-                  <td>{h.champion ? `${getTeam(league, h.champion).city} ${getTeam(league, h.champion).name}` : '–'}</td>
+                  <td>{h.champion ? <TeamLink team={getTeam(league, h.champion)} openTeam={openTeam} /> : '–'}</td>
                   <td>{h.userRecord}</td>
                 </tr>
               ))}
