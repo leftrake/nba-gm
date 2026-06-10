@@ -1,0 +1,109 @@
+import React, { useState } from 'react';
+import { getTeam } from '../engine/league.js';
+import { overall } from '../engine/players.js';
+import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
+import { Ovr, money } from './shared.jsx';
+
+function TradeSide({ team, selected, toggle }) {
+  const sorted = [...team.roster].sort((a, b) => overall(b) - overall(a));
+  return (
+    <table>
+      <thead>
+        <tr><th></th><th>Ovr</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Salary</th><th className="num">Value</th></tr>
+      </thead>
+      <tbody>
+        {sorted.map((p) => (
+          <tr key={p.id} className="clickable" onClick={() => toggle(p.id)}>
+            <td><input type="checkbox" readOnly checked={selected.includes(p.id)} /></td>
+            <td><Ovr p={p} /></td>
+            <td>{p.name}</td>
+            <td>{p.pos}</td>
+            <td className="num">{p.age}</td>
+            <td className="num">{money(p.contract.salary)}</td>
+            <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export default function TradeMachine({ league, commit }) {
+  const userId = league.userTeamId;
+  const others = league.teams.filter((t) => t.id !== userId);
+  const [otherId, setOtherId] = useState(others[0].id);
+  const [give, setGive] = useState([]);
+  const [get, setGet] = useState([]);
+  const [message, setMessage] = useState(null);
+
+  const userTeam = getTeam(league, userId);
+  const otherTeam = getTeam(league, otherId);
+
+  const toggle = (list, setList) => (id) => {
+    setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+    setMessage(null);
+  };
+
+  const changeOther = (id) => {
+    setOtherId(id);
+    setGet([]);
+    setMessage(null);
+  };
+
+  const propose = () => {
+    const valid = validateTrade(league, userId, give, otherId, get);
+    if (!valid.ok) {
+      setMessage({ type: 'error', text: `Invalid trade: ${valid.reason}` });
+      return;
+    }
+    const incoming = userTeam.roster.filter((p) => give.includes(p.id));
+    const outgoing = otherTeam.roster.filter((p) => get.includes(p.id));
+    const evaln = aiEvaluateTrade(league, otherId, incoming, outgoing);
+    if (evaln.accept) {
+      executeTrade(league, userId, give, otherId, get);
+      setGive([]); setGet([]);
+      setMessage({ type: 'ok', text: `Trade accepted! The ${otherTeam.name} agree to the deal.` });
+      commit();
+    } else {
+      const pct = Math.round(evaln.ratio * 100);
+      setMessage({
+        type: 'error',
+        text: `The ${otherTeam.name} reject the offer. They value your package at ~${pct}% of what they're giving up. ${pct < 70 ? 'Not even close.' : pct < 90 ? 'Add more value.' : 'You\'re close — sweeten it slightly.'}`,
+      });
+    }
+  };
+
+  const giveVal = userTeam.roster.filter((p) => give.includes(p.id)).reduce((s, p) => s + tradeValue(p), 0);
+  const getVal = otherTeam.roster.filter((p) => get.includes(p.id)).reduce((s, p) => s + tradeValue(p), 0);
+
+  return (
+    <div>
+      <div className="panel">
+        <h2>Trade Machine</h2>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>Trade partner:</span>
+          <select value={otherId} onChange={(e) => changeOther(e.target.value)}>
+            {others.map((t) => (
+              <option key={t.id} value={t.id}>{t.city} {t.name} ({t.wins}-{t.losses})</option>
+            ))}
+          </select>
+          <button className="btn" onClick={propose} disabled={!give.length && !get.length}>Propose Trade</button>
+          <span style={{ color: 'var(--muted)' }}>You send value {giveVal} · You receive value {getVal}</span>
+        </div>
+        {message && (
+          <p style={{ marginTop: 10, color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{message.text}</p>
+        )}
+      </div>
+      <div className="grid2">
+        <div className="panel">
+          <h2>You Send ({userTeam.name})</h2>
+          <TradeSide team={userTeam} selected={give} toggle={toggle(give, setGive)} />
+        </div>
+        <div className="panel">
+          <h2>You Receive ({otherTeam.name})</h2>
+          <TradeSide team={otherTeam} selected={get} toggle={toggle(get, setGet)} />
+        </div>
+      </div>
+    </div>
+  );
+}
