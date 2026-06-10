@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { getTeam } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
-import { Ovr, money } from './shared.jsx';
+import { Ovr, money, PlayerLink } from './shared.jsx';
 
-function TradeSide({ team, selected, toggle }) {
+function TradeSide({ team, selected, toggle, openPlayer }) {
   const sorted = [...team.roster].sort((a, b) => overall(b) - overall(a));
   return (
     <table>
@@ -16,7 +16,7 @@ function TradeSide({ team, selected, toggle }) {
           <tr key={p.id} className="clickable" onClick={() => toggle(p.id)}>
             <td><input type="checkbox" readOnly checked={selected.includes(p.id)} /></td>
             <td><Ovr p={p} /></td>
-            <td>{p.name}</td>
+            <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
             <td>{p.pos}</td>
             <td className="num">{p.age}</td>
             <td className="num">{money(p.contract.salary)}</td>
@@ -28,7 +28,7 @@ function TradeSide({ team, selected, toggle }) {
   );
 }
 
-export default function TradeMachine({ league, commit }) {
+export default function TradeMachine({ league, commit, openPlayer }) {
   const userId = league.userTeamId;
   const others = league.teams.filter((t) => t.id !== userId);
   const [otherId, setOtherId] = useState(others[0].id);
@@ -97,11 +97,11 @@ export default function TradeMachine({ league, commit }) {
       <div className="grid2">
         <div className="panel">
           <h2>You Send ({userTeam.name})</h2>
-          <TradeSide team={userTeam} selected={give} toggle={toggle(give, setGive)} />
+          <TradeSide team={userTeam} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
         </div>
         <div className="panel">
           <h2>You Receive ({otherTeam.name})</h2>
-          <TradeSide team={otherTeam} selected={get} toggle={toggle(get, setGet)} />
+          <TradeSide team={otherTeam} selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
         </div>
       </div>
     </div>

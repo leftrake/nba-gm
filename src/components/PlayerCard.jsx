@@ -1,0 +1,114 @@
+import React, { useEffect } from 'react';
+import { overall } from '../engine/players.js';
+import { askingPrice } from '../engine/league.js';
+import { Ovr, money, perGame, fgPct, TeamLink } from './shared.jsx';
+
+const RATINGS = [
+  ['inside', 'Inside'],
+  ['mid', 'Mid-Range'],
+  ['three', 'Three-Point'],
+  ['passing', 'Passing'],
+  ['rebounding', 'Rebounding'],
+  ['defense', 'Defense'],
+  ['athleticism', 'Athleticism'],
+];
+
+function barColor(v) {
+  if (v >= 85) return '#d2a8ff';
+  if (v >= 75) return 'var(--green)';
+  if (v >= 65) return '#58a6ff';
+  if (v >= 55) return 'var(--text)';
+  return 'var(--muted)';
+}
+
+function StatLine({ stats }) {
+  if (!stats.gp) return <p style={{ color: 'var(--muted)' }}>No games played this season.</p>;
+  const tp = stats.tpa ? ((stats.tpm / stats.tpa) * 100).toFixed(1) : '–';
+  const cells = [
+    ['GP', stats.gp], ['MPG', perGame(stats, 'min')], ['PPG', perGame(stats, 'pts')],
+    ['RPG', perGame(stats, 'reb')], ['APG', perGame(stats, 'ast')], ['SPG', perGame(stats, 'stl')],
+    ['BPG', perGame(stats, 'blk')], ['FG%', fgPct(stats)], ['3P%', tp],
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      {cells.map(([label, v]) => (
+        <span key={label}>
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>{label}</span> <b>{v}</b>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export default function PlayerCard({ league, player: p, onClose, openTeam }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const team = league.teams.find((t) => t.roster.some((x) => x.id === p.id));
+  const ovr = overall(p);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <h2 style={{ fontSize: 18, textTransform: 'none', letterSpacing: 0, marginBottom: 0 }}>{p.name}</h2>
+          <span style={{ color: 'var(--muted)' }}>
+            {p.pos} · {p.age} yrs · {team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
+          </span>
+          <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
+        </div>
+
+        <p style={{ margin: '10px 0' }}>
+          Overall: <Ovr p={p} /> · Potential: <b>{p.potential}</b> ·{' '}
+          {p.contract
+            ? <>Contract: <b>{money(p.contract.salary)}</b>/yr × <b>{p.contract.years}</b> {p.contract.years === 1 ? 'year' : 'years'}</>
+            : <>Asking: <b>{money(askingPrice(p))}</b>/yr</>}
+        </p>
+
+        <h3>Ratings</h3>
+        {RATINGS.map(([key, label]) => {
+          const v = p.ratings[key];
+          return (
+            <div className="rating-row" key={key}>
+              <span style={{ color: 'var(--muted)' }}>{label}</span>
+              <div className="rating-bar"><div style={{ width: `${v}%`, background: barColor(v) }} /></div>
+              <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+            </div>
+          );
+        })}
+
+        <h3 style={{ marginTop: 14 }}>This Season ({league.season})</h3>
+        <StatLine stats={p.stats} />
+
+        <h3 style={{ marginTop: 14 }}>Career</h3>
+        {p.careerStats.length === 0 && <p style={{ color: 'var(--muted)' }}>No previous seasons.</p>}
+        {p.careerStats.length > 0 && (
+          <table>
+            <thead>
+              <tr>
+                <th>Season</th><th className="num">GP</th><th className="num">MPG</th><th className="num">PPG</th>
+                <th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...p.careerStats].reverse().map((s) => (
+                <tr key={s.season}>
+                  <td>{s.season}</td>
+                  <td className="num">{s.gp}</td>
+                  <td className="num">{perGame(s, 'min')}</td>
+                  <td className="num">{perGame(s, 'pts')}</td>
+                  <td className="num">{perGame(s, 'reb')}</td>
+                  <td className="num">{perGame(s, 'ast')}</td>
+                  <td className="num">{fgPct(s)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}

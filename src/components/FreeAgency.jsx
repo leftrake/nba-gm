@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, signFreeAgent, askingPrice } from '../engine/league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
-import { Ovr, money } from './shared.jsx';
+import { Ovr, money, PlayerLink } from './shared.jsx';
 
-export default function FreeAgency({ league, commit }) {
+export default function FreeAgency({ league, commit, openPlayer }) {
   const team = getTeam(league, league.userTeamId);
   const pay = payroll(team);
   const room = SALARY_CAP - pay;
@@ -42,7 +42,7 @@ export default function FreeAgency({ league, commit }) {
             <tr key={p.id}>
               <td><Ovr p={p} /></td>
               <td style={{ color: 'var(--muted)' }}>{p.potential}</td>
-              <td>{p.name}</td>
+              <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
               <td>{p.pos}</td>
               <td className="num">{p.age}</td>
               <td className="num">{money(askingPrice(p))}</td>

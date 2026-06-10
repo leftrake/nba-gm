@@ -2,9 +2,9 @@ import React from 'react';
 import { getTeam, standings, payroll } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { Ovr, money, perGame, TeamLink, NewsText } from './shared.jsx';
+import { Ovr, money, perGame, TeamLink, NewsText, PlayerLink } from './shared.jsx';
 
-export default function Dashboard({ league, lastResults, openTeam }) {
+export default function Dashboard({ league, lastResults, openTeam, openPlayer }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
@@ -25,7 +25,7 @@ export default function Dashboard({ league, lastResults, openTeam }) {
               {topPlayers.map((p) => (
                 <tr key={p.id}>
                   <td><Ovr p={p} /></td>
-                  <td>{p.name}</td>
+                  <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
                   <td>{p.pos}</td>
                   <td className="num">{perGame(p.stats, 'pts')} ppg</td>
                 </tr>

@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { getTeam, payroll, releasePlayer, standings, dateForDay } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
-import { Ovr, money, perGame, fgPct, fmtDate, TeamLink } from './shared.jsx';
+import { Ovr, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink } from './shared.jsx';
 
-export default function Roster({ league, commit, teamId, openTeam }) {
+export default function Roster({ league, commit, teamId, openTeam, openPlayer }) {
   const [sortKey, setSortKey] = useState('ovr');
   const team = getTeam(league, teamId);
   const isUser = teamId === league.userTeamId;
@@ -117,7 +117,7 @@ export default function Roster({ league, commit, teamId, openTeam }) {
               <tr key={p.id}>
                 <td><Ovr p={p} /></td>
                 <td style={{ color: 'var(--muted)' }}>{p.potential}</td>
-                <td>{p.name}</td>
+                <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
                 <td>{p.pos}</td>
                 <td className="num">{p.age}</td>
                 <td className="num">{perGame(p.stats, 'pts')}</td>

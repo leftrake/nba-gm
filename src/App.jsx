@@ -8,6 +8,7 @@ import Schedule from './components/Schedule.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Playoffs from './components/Playoffs.jsx';
+import PlayerCard from './components/PlayerCard.jsx';
 
 const SAVE_KEY = 'nba-gm-save';
 
@@ -25,11 +26,16 @@ export default function App() {
   const [screen, setScreen] = useState('dashboard');
   const [lastResults, setLastResults] = useState([]);
   const [rosterTeamId, setRosterTeamId] = useState(null);
+  const [viewPlayer, setViewPlayer] = useState(null);
 
   const openTeam = useCallback((teamId) => {
+    setViewPlayer(null);
     setRosterTeamId(teamId);
     setScreen('roster');
   }, []);
+
+  const openPlayer = useCallback((p) => setViewPlayer(p), []);
+  const closePlayer = useCallback(() => setViewPlayer(null), []);
 
   // The engine mutates the league object; this forces a re-render + saves.
   const commit = useCallback(() => {
@@ -56,6 +62,7 @@ export default function App() {
       setLeagueState(null);
       setLastResults([]);
       setRosterTeamId(null);
+      setViewPlayer(null);
     }
   };
 
@@ -160,13 +167,14 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} openTeam={openTeam} />}
-        {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} />}
+        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} openTeam={openTeam} openPlayer={openPlayer} />}
+        {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} />}
-        {screen === 'trade' && <TradeMachine league={league} commit={commit} />}
-        {screen === 'freeagency' && <FreeAgency league={league} commit={commit} />}
+        {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} />}
+        {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} />}
+        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} />}
       </main>
     </div>
   );

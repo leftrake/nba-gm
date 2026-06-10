@@ -26,6 +26,15 @@ export function fmtDate(d) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+export function PlayerLink({ p, openPlayer, children }) {
+  if (!openPlayer) return <>{children ?? p.name}</>;
+  return (
+    <a className="team-link" onClick={(e) => { e.stopPropagation(); openPlayer(p); }}>
+      {children ?? p.name}
+    </a>
+  );
+}
+
 export function TeamLink({ team, openTeam, children }) {
   const label = children ?? `${team.city} ${team.name}`;
   if (!openTeam) return <>{label}</>;
