@@ -3,8 +3,6 @@ import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor } from './players.js';
 import { simGame, applyBoxToStats } from './sim.js';
 
-export const GAMES_PER_TEAM = 82;
-
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
   resetPlayerIds(1);
@@ -45,56 +43,118 @@ function makeRoster(rng) {
   return roster;
 }
 
-// Each team plays 82 games
-export function makeSchedule(teams, rng) {
-  const games = [];
-  const counts = Object.fromEntries(teams.map((t) => [t.id, 0]));
-  const ids = teams.map((t) => t.id);
+// Target season length in calendar days: Oct 21 → ~Apr 13 (see dateForDay).
+// The placer may run a few days over if constraints force it.
+export const SEASON_DAYS = 175;
 
-  // Base: everyone plays everyone twice (58 games), then fill to 82 with random matchups
-  for (let i = 0; i < ids.length; i++) {
-    for (let j = i + 1; j < ids.length; j++) {
-      games.push({ home: ids[i], away: ids[j] });
-      games.push({ home: ids[j], away: ids[i] });
-      counts[ids[i]] += 2;
-      counts[ids[j]] += 2;
+// Real NBA formula, per team: 4 division opponents x4 (16 games),
+// 6 in-conference opponents x4 + 4 in-conference opponents x3 (36),
+// all 15 other-conference opponents x2, one home one away (30) = 82.
+//
+// Which cross-division conference opponents get 3 games (instead of 4) is
+// decided by an offset rule on each team's index within its division: for
+// ordered divisions X < Y, the pair (X[i], Y[j]) plays 3 games iff
+// (j - i) mod 5 is 1 or 2. That gives every team exactly two 3-game
+// opponents in each of the other two divisions (so 6x4 + 4x3), and
+// alternating which side hosts twice balances everyone to 41 home games.
+function buildMatchups(teams) {
+  const games = [];
+  // n-game series alternating venue, `a` hosting first (and the extra game when n is odd)
+  const pushSeries = (a, b, n) => {
+    for (let k = 0; k < n; k++) {
+      games.push(k % 2 === 0 ? { home: a, away: b } : { home: b, away: a });
+    }
+  };
+
+  const confs = { East: [], West: [] };
+  for (const t of teams) confs[t.conf].push(t);
+
+  for (const e of confs.East) for (const w of confs.West) pushSeries(e.id, w.id, 2);
+
+  for (const conf of ['East', 'West']) {
+    const divNames = [...new Set(confs[conf].map((t) => t.div))].sort();
+    const byDiv = divNames.map((dn) => confs[conf].filter((t) => t.div === dn));
+
+    for (const div of byDiv) {
+      for (let i = 0; i < div.length; i++) {
+        for (let j = i + 1; j < div.length; j++) pushSeries(div[i].id, div[j].id, 4);
+      }
+    }
+
+    for (let x = 0; x < byDiv.length; x++) {
+      for (let y = x + 1; y < byDiv.length; y++) {
+        const X = byDiv[x], Y = byDiv[y];
+        for (let i = 0; i < X.length; i++) {
+          for (let j = 0; j < Y.length; j++) {
+            const off = (j - i + 5) % 5;
+            if (off === 1) pushSeries(X[i].id, Y[j].id, 3);
+            else if (off === 2) pushSeries(Y[j].id, X[i].id, 3);
+            else pushSeries(X[i].id, Y[j].id, 4);
+          }
+        }
+      }
     }
   }
-  let guard = 0;
-  while (guard++ < 20000) {
-    const need = ids.filter((id) => counts[id] < GAMES_PER_TEAM);
-    if (need.length < 2) break;
-    const a = need[randInt(0, need.length - 1, rng)];
-    let b = need[randInt(0, need.length - 1, rng)];
-    if (a === b) continue;
-    if (rng() > 0.5) games.push({ home: a, away: b });
-    else games.push({ home: b, away: a });
-    counts[a]++; counts[b]++;
+  return games;
+}
+
+export function makeSchedule(teams, rng) {
+  const pool = buildMatchups(teams);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
   }
 
-  // Shuffle, then pack into days where no team plays twice
-  for (let i = games.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [games[i], games[j]] = [games[j], games[i]];
-  }
-  const days = [];
-  let remaining = games;
-  while (remaining.length) {
+  const remainingCount = Object.fromEntries(teams.map((t) => [t.id, 0]));
+  for (const g of pool) { remainingCount[g.home]++; remainingCount[g.away]++; }
+
+  const playedDays = Object.fromEntries(teams.map((t) => [t.id, new Set()]));
+  // Back-to-backs are allowed, three games in three days are not,
+  // and no team plays more than 4 games in any 7-day span.
+  const canPlay = (id, d) => {
+    const days = playedDays[id];
+    if (days.has(d)) return false;
+    if (days.has(d - 1) && days.has(d - 2)) return false;
+    let recent = 0;
+    for (let k = d - 6; k < d; k++) if (days.has(k)) recent++;
+    return recent < 4;
+  };
+
+  const schedule = [];
+  let remaining = pool;
+  for (let d = 0; remaining.length > 0; d++) {
+    // Pace the league so games run out right around SEASON_DAYS; teams with
+    // the most games left get scheduled first so nobody falls behind.
+    const target = d < SEASON_DAYS
+      ? Math.ceil(remaining.length / (SEASON_DAYS - d)) + 1
+      : teams.length / 2;
+    // Soft penalty keeps back-to-backs occasional rather than routine
+    const scored = remaining
+      .map((g) => ({
+        g,
+        score: remainingCount[g.home] + remainingCount[g.away]
+          - (playedDays[g.home].has(d - 1) ? 4 : 0)
+          - (playedDays[g.away].has(d - 1) ? 4 : 0)
+          + rng() * 2,
+      }))
+      .sort((a, b) => b.score - a.score);
     const day = [];
-    const used = new Set();
     const leftover = [];
-    for (const g of remaining) {
-      if (day.length < 11 && !used.has(g.home) && !used.has(g.away)) {
+    for (const { g } of scored) {
+      if (day.length < target && canPlay(g.home, d) && canPlay(g.away, d)) {
         day.push(g);
-        used.add(g.home); used.add(g.away);
+        playedDays[g.home].add(d);
+        playedDays[g.away].add(d);
+        remainingCount[g.home]--;
+        remainingCount[g.away]--;
       } else {
         leftover.push(g);
       }
     }
-    days.push(day);
+    schedule.push(day);
     remaining = leftover;
   }
-  return days;
+  return schedule;
 }
 
 export function getTeam(league, id) {
