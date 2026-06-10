@@ -4,6 +4,7 @@ import { createLeague, getTeam, simDay, simPlayoffRound, advanceOffseason, simFr
 import Dashboard from './components/Dashboard.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
+import Schedule from './components/Schedule.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Playoffs from './components/Playoffs.jsx';
@@ -98,6 +99,7 @@ export default function App() {
     ['dashboard', 'Dashboard'],
     ['roster', 'Roster'],
     ['standings', 'Standings'],
+    ['schedule', 'Schedule'],
     ['trade', 'Trade'],
     ['freeagency', 'Free Agency'],
     ['playoffs', 'Playoffs'],
@@ -154,6 +156,7 @@ export default function App() {
         {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} />}
         {screen === 'roster' && <Roster league={league} commit={commit} />}
         {screen === 'standings' && <Standings league={league} />}
+        {screen === 'schedule' && <Schedule league={league} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} />}
         {screen === 'playoffs' && <Playoffs league={league} />}

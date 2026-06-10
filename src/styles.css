@@ -69,6 +69,7 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: var(--panel2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.today { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
 
 button.btn {
   background: var(--accent);

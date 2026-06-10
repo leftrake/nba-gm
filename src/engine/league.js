@@ -23,6 +23,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
     teams,
     schedule: makeSchedule(teams, rng),
     dayIndex: 0,
+    resultsByDay: [],
     phase: 'regular', // regular | playoffs | offseason | freeagency
     playoffs: null,
     freeAgents: Array.from({ length: 60 }, () => {
@@ -100,6 +101,12 @@ export function getTeam(league, id) {
   return league.teams.find((t) => t.id === id);
 }
 
+// Schedule day N falls on Oct 21 + N of the year before `season`
+// (a season labeled 2026 runs Oct 2025 – spring 2026).
+export function dateForDay(league, dayIndex) {
+  return new Date(league.season - 1, 9, 21 + dayIndex);
+}
+
 export function payroll(team) {
   return team.roster.reduce((s, p) => s + (p.contract?.salary || 0), 0);
 }
@@ -119,6 +126,8 @@ export function simDay(league) {
     else { away.wins++; home.losses++; }
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts });
   }
+  if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
+  league.resultsByDay[league.dayIndex] = results;
   league.dayIndex += 1;
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
@@ -307,6 +316,7 @@ export function startNewSeason(league) {
   }
   league.schedule = makeSchedule(league.teams, rng);
   league.dayIndex = 0;
+  league.resultsByDay = [];
   league.phase = 'regular';
   league.playoffs = null;
   league.news.unshift({ day: 0, text: `The ${league.season} season begins!` });
