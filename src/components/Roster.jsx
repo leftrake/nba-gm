@@ -3,7 +3,7 @@ import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay 
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
-import { Ovr, Pot, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink } from './shared.jsx';
+import { Ovr, Pot, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
 
 export default function Roster({ league, commit, teamId, openTeam, openPlayer }) {
   const [sortKey, setSortKey] = useState('ovr');
@@ -38,7 +38,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
     <div>
       <div className="panel" style={{ borderLeft: `4px solid ${team.color}` }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ marginBottom: 0 }}>{team.city} {team.name} {isUser && <span className="tag">YOUR TEAM</span>}</h2>
+          <h2 style={{ marginBottom: 0 }}>{team.city} {team.name} {isUser && <span className="tag">YOUR TEAM</span>} <StrategyTag team={team} /></h2>
           <select value={teamId} onChange={(e) => openTeam(e.target.value)}>
             {league.teams.map((t) => (
               <option key={t.id} value={t.id}>{t.city} {t.name}</option>

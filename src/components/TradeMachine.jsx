@@ -5,7 +5,7 @@ import { scoutedOverall } from '../engine/scouting.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
 import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
 
-function TradeSide({ league, team, fogged, selected, toggle, openPlayer }) {
+function TradeSide({ league, team, valueStrategy, fogged, selected, toggle, openPlayer }) {
   const seenOvr = (p) => (fogged ? scoutedOverall(p, league.season) : overall(p));
   const sorted = [...team.roster].sort((a, b) => seenOvr(b) - seenOvr(a));
   return (
@@ -23,7 +23,7 @@ function TradeSide({ league, team, fogged, selected, toggle, openPlayer }) {
             <td>{p.pos}</td>
             <td className="num">{p.age}</td>
             <td className="num">{money(p.contract.salary)}</td>
-            <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p)}</td>
+            <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p, valueStrategy)}</td>
           </tr>
         ))}
       </tbody>
@@ -67,6 +67,8 @@ export default function TradeMachine({ league, commit, openPlayer }) {
       setGive([]); setGet([]);
       setMessage({ type: 'ok', text: `Trade accepted! The ${otherTeam.name} agree to the deal.` });
       commit();
+    } else if (evaln.reason) {
+      setMessage({ type: 'error', text: `The ${otherTeam.name} reject the offer. ${evaln.reason}` });
     } else {
       const pct = Math.round(evaln.ratio * 100);
       setMessage({
@@ -76,8 +78,9 @@ export default function TradeMachine({ league, commit, openPlayer }) {
     }
   };
 
-  const giveVal = userTeam.roster.filter((p) => give.includes(p.id)).reduce((s, p) => s + tradeValue(p), 0);
-  const getVal = otherTeam.roster.filter((p) => get.includes(p.id)).reduce((s, p) => s + tradeValue(p), 0);
+  // values shown through the partner's strategy lens, matching how they judge the deal
+  const giveVal = userTeam.roster.filter((p) => give.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0);
+  const getVal = otherTeam.roster.filter((p) => get.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0);
 
   return (
     <div>
@@ -87,11 +90,11 @@ export default function TradeMachine({ league, commit, openPlayer }) {
           <span>Trade partner:</span>
           <select value={otherId} onChange={(e) => changeOther(e.target.value)}>
             {others.map((t) => (
-              <option key={t.id} value={t.id}>{t.city} {t.name} ({t.wins}-{t.losses})</option>
+              <option key={t.id} value={t.id}>{t.city} {t.name} ({t.wins}-{t.losses}, {t.strategy})</option>
             ))}
           </select>
           <button className="btn" onClick={propose} disabled={!give.length && !get.length}>Propose Trade</button>
-          <span style={{ color: 'var(--muted)' }}>You send value {giveVal} · You receive value {getVal}</span>
+          <span style={{ color: 'var(--muted)' }}>You send value {giveVal} · You receive value {getVal} (as the {otherTeam.name} see it)</span>
         </div>
         {message && (
           <p style={{ marginTop: 10, color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{message.text}</p>
@@ -100,11 +103,11 @@ export default function TradeMachine({ league, commit, openPlayer }) {
       <div className="grid2">
         <div className="panel">
           <h2>You Send ({userTeam.name})</h2>
-          <TradeSide league={league} team={userTeam} fogged={false} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
+          <TradeSide league={league} team={userTeam} valueStrategy={otherTeam.strategy} fogged={false} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
         </div>
         <div className="panel">
           <h2>You Receive ({otherTeam.name})</h2>
-          <TradeSide league={league} team={otherTeam} fogged selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
+          <TradeSide league={league} team={otherTeam} valueStrategy={otherTeam.strategy} fogged selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
         </div>
       </div>
     </div>

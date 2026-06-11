@@ -35,6 +35,13 @@ export function Origin({ p, full }) {
   return <>{flag} {full ? p.nationality : p.from}</>;
 }
 
+// Front-office strategy badge (see engine/strategy.js)
+const STRATEGY_COLORS = { contending: 'var(--green)', retooling: 'var(--accent)', rebuilding: 'var(--red)' };
+export function StrategyTag({ team }) {
+  if (!team.strategy) return null;
+  return <span className="tag" style={{ color: STRATEGY_COLORS[team.strategy] }}>{team.strategy}</span>;
+}
+
 export function money(n) {
   return `$${(n / 1e6).toFixed(1)}M`;
 }

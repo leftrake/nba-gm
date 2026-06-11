@@ -3,6 +3,7 @@ import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
 import { simGame, applyBoxToStats } from './sim.js';
 import { initDraft } from './draft.js';
+import { evaluateStrategies, maybeAiTrade } from './strategy.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
@@ -16,7 +17,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
     losses: 0,
   }));
 
-  return {
+  const league = {
     seed,
     season: 2026,
     userTeamId,
@@ -34,6 +35,8 @@ export function createLeague(userTeamId, seed = Date.now()) {
     news: [{ day: 0, text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
     history: [],
   };
+  evaluateStrategies(league);
+  return league;
 }
 
 function makeRoster(rng) {
@@ -175,6 +178,8 @@ export function backfillPlayers(league) {
   for (const team of league.teams) team.roster.forEach(fill);
   league.freeAgents.forEach(fill);
   league.draft?.prospects?.forEach(fill);
+  // Saves predating front-office strategies
+  if (league.teams.some((t) => !t.strategy)) evaluateStrategies(league);
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
@@ -209,6 +214,7 @@ export function simDay(league) {
   if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
   // persist scores only — box scores would bloat the localStorage save
   league.resultsByDay[league.dayIndex] = results.map(({ home, away, homePts, awayPts }) => ({ home, away, homePts, awayPts }));
+  maybeAiTrade(league, rng);
   league.dayIndex += 1;
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
@@ -354,10 +360,10 @@ export function advanceOffseason(league) {
     team.losses = 0;
   }
 
-  // Expiring contracts → free agency
+  // Expiring contracts → free agency (or quiet retirement)
   for (const { team, p } of expiring) {
-    if (p.age > 38 || overall(p) < 40) continue; // retire quietly
     team.roster = team.roster.filter((x) => x.id !== p.id);
+    if (p.age > 38 || overall(p) < 40) continue; // retire quietly
     league.freeAgents.push(p);
   }
 
@@ -372,6 +378,13 @@ export function advanceOffseason(league) {
     league.freeAgents.push(p);
   }
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
+
+  // Front offices reassess direction each summer
+  const labels = { contending: 'win-now mode', rebuilding: 'a full rebuild', retooling: 'a retool' };
+  for (const { team, to } of evaluateStrategies(league)) {
+    if (team.id === league.userTeamId) continue;
+    league.news.unshift({ day: 0, text: `The ${team.name} front office shifts to ${labels[to]}.` });
+  }
 
   league.season += 1;
   // Draft first, then free agency (finishDraft opens it)
