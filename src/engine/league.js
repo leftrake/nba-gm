@@ -6,6 +6,7 @@ import { initDraft } from './draft.js';
 import { computeAwards, honorsSummary } from './awards.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
+import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
@@ -20,6 +21,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
   }));
 
   const league = {
+    saveVersion: SAVE_VERSION,
     seed,
     season: 2026,
     userTeamId,
@@ -191,6 +193,8 @@ export function backfillPlayers(league) {
   // Saves predating lineups
   const user = getTeam(league, league.userTeamId);
   if (!user.lineup) user.lineup = autoLineup(user.roster);
+  // Saves predating the news cap
+  if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
@@ -235,7 +239,7 @@ export function simDay(league) {
     league.phase = 'playoffs';
     league.playoffs = initPlayoffs(league);
     computeAwards(league);
-    league.news.unshift({ day: league.dayIndex, text: 'The regular season is over. Playoffs begin!' });
+    pushNews(league, { day: league.dayIndex, text: 'The regular season is over. Playoffs begin!' });
   }
   return results;
 }
@@ -306,7 +310,7 @@ export function simPlayoffGame(league) {
     if (po.finals.winner) {
       po.champion = po.finals.winner;
       const champ = getTeam(league, po.champion);
-      league.news.unshift({ day: league.dayIndex, text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
+      pushNews(league, { day: league.dayIndex, text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
       league.phase = 'offseason';
     }
   }
@@ -358,7 +362,7 @@ function announceRetirement(league, p) {
     + `${avg('pts')} ppg, ${avg('reb')} rpg, ${avg('ast')} apg across ${tot.gp} games.`;
   const honors = honorsSummary(p.awards);
   if (honors) text += ` Honors: ${honors}.`;
-  league.news.unshift({ day: 0, text });
+  pushNews(league, { day: 0, text });
 }
 
 export function advanceOffseason(league) {
@@ -420,14 +424,14 @@ export function advanceOffseason(league) {
   const labels = { contending: 'win-now mode', rebuilding: 'a full rebuild', retooling: 'a retool' };
   for (const { team, to } of evaluateStrategies(league)) {
     if (team.id === league.userTeamId) continue;
-    league.news.unshift({ day: 0, text: `The ${team.name} front office shifts to ${labels[to]}.` });
+    pushNews(league, { day: 0, text: `The ${team.name} front office shifts to ${labels[to]}.` });
   }
 
   league.season += 1;
   // Draft first, then free agency (finishDraft opens it)
   initDraft(league, rng);
   league.phase = 'draft';
-  league.news.unshift({ day: 0, text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
+  pushNews(league, { day: 0, text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
 }
 
 // AI teams pursue free agents each FA round, negotiating under the same
@@ -589,10 +593,10 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   league.freeAgents.splice(idx, 1);
   team.roster.push(p);
   if (league.negotiations?.[playerId] && teamId !== league.userTeamId) {
-    league.news.unshift({ day: 0, text: `${p.name} broke off negotiations with you to sign elsewhere.` });
+    pushNews(league, { day: 0, text: `${p.name} broke off negotiations with you to sign elsewhere.` });
   }
   if (league.negotiations) delete league.negotiations[playerId];
-  league.news.unshift({ day: 0, text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
+  pushNews(league, { day: 0, text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
   return true;
 }
 
@@ -608,7 +612,7 @@ export function releasePlayer(league, teamId, playerId) {
   p.contract = null;
   league.freeAgents.push(p);
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
-  league.news.unshift({ day: 0, text: `The ${team.name} waive ${p.name}.` });
+  pushNews(league, { day: 0, text: `The ${team.name} waive ${p.name}.` });
   return true;
 }
 
@@ -628,5 +632,5 @@ export function startNewSeason(league) {
   league.resultsByDay = [];
   league.phase = 'regular';
   league.playoffs = null;
-  league.news.unshift({ day: 0, text: `The ${league.season} season begins!` });
+  pushNews(league, { day: 0, text: `The ${league.season} season begins!` });
 }

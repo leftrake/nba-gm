@@ -12,22 +12,31 @@ import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
+import Settings from './components/Settings.jsx';
+import { checkSave } from './engine/save.js';
 
 const SAVE_KEY = 'nba-gm-save';
 
+// Returns { league, warning }. An unreadable or incompatible save loads as
+// null with a warning, and stays in localStorage untouched until the user
+// starts a new game over it.
 function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    const league = raw ? JSON.parse(raw) : null;
-    if (league) backfillPlayers(league); // saves predating origins/experience
-    return league;
+    if (!raw) return { league: null, warning: null };
+    const check = checkSave(JSON.parse(raw));
+    if (check.error) return { league: null, warning: check.error };
+    backfillPlayers(check.league); // saves predating newer fields
+    return { league: check.league, warning: null };
   } catch {
-    return null;
+    return { league: null, warning: 'Your saved game could not be read.' };
   }
 }
 
+const initialSave = loadSave();
+
 export default function App() {
-  const [league, setLeagueState] = useState(loadSave);
+  const [league, setLeagueState] = useState(initialSave.league);
   const [screen, setScreen] = useState('dashboard');
   const [lastResults, setLastResults] = useState([]);
   const [featuredGame, setFeaturedGame] = useState(null);
@@ -62,6 +71,17 @@ export default function App() {
     setScreen('dashboard');
   };
 
+  // Replace the running game with an imported save (already validated by Settings)
+  const importLeague = (imported) => {
+    backfillPlayers(imported);
+    setLeagueState(imported);
+    setLastResults([]);
+    setFeaturedGame(null);
+    setRosterTeamId(null);
+    setViewPlayer(null);
+    setScreen('dashboard');
+  };
+
   const resetGame = () => {
     if (confirm('Start over? Your current save will be deleted.')) {
       localStorage.removeItem(SAVE_KEY);
@@ -82,6 +102,13 @@ export default function App() {
             <p style={{ color: 'var(--muted)', marginTop: 8 }}>
               Pick your franchise. Run the front office. Win a ring.
             </p>
+            {initialSave.warning && (
+              <p style={{ color: 'var(--red)', marginTop: 12, maxWidth: 560, marginInline: 'auto' }}>
+                ⚠️ {initialSave.warning} Picking a team below starts a new game over
+                it. If you have an exported backup, you can import it from Settings
+                after starting a new game.
+              </p>
+            )}
           </div>
           <div className="team-picker">
             {TEAMS.map((t) => (
@@ -152,6 +179,7 @@ export default function App() {
     ['draft', 'Draft'],
     ['freeagency', 'Free Agency'],
     ['playoffs', 'Playoffs'],
+    ['settings', 'Settings'],
   ];
 
   return (
@@ -239,6 +267,7 @@ export default function App() {
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} />}
+        {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} />}
       </main>
     </div>

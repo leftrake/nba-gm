@@ -1,6 +1,7 @@
 import { overall } from './players.js';
 import { getTeam, payroll } from './league.js';
 import { SALARY_CAP } from '../data/teams.js';
+import { pushNews } from './save.js';
 
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
@@ -104,7 +105,7 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds)
   a.roster = a.roster.filter((p) => !playersAIds.includes(p.id)).concat(outB);
   b.roster = b.roster.filter((p) => !playersBIds.includes(p.id)).concat(outA);
   const names = (ps) => ps.map((p) => p.name).join(', ') || 'nothing';
-  league.news.unshift({
+  pushNews(league, {
     day: league.dayIndex,
     text: `TRADE: ${a.name} send ${names(outA)} to the ${b.name} for ${names(outB)}.`,
   });

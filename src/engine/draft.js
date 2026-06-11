@@ -1,6 +1,7 @@
 import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
 import { generatePlayer, resetPlayerIds, overall } from './players.js';
+import { pushNews } from './save.js';
 
 // ---------- NBA Draft ----------
 // Runs between the playoffs and free agency. Two rounds of 30 picks: a
@@ -76,7 +77,7 @@ export function initDraft(league, rng) {
   const userPicks = league.draft.order
     .map((id, i) => (id === league.userTeamId ? i + 1 : null))
     .filter((n) => n !== null);
-  league.news.unshift({
+  pushNews(league, {
     day: 0,
     text: `Draft lottery: the ${winner.city} ${winner.name} land the #1 pick. You pick at #${userPicks.join(' and #')}.`,
   });
@@ -106,12 +107,12 @@ export function makeDraftPick(league, prospectId) {
   } else {
     // no roster spot — the pick goes unsigned and hits free agency
     league.freeAgents.push(p);
-    league.news.unshift({ day: 0, text: `The ${team.name} draft ${p.name} but have no roster spot; he heads to free agency.` });
+    pushNews(league, { day: 0, text: `The ${team.name} draft ${p.name} but have no roster spot; he heads to free agency.` });
   }
   d.results.push({ pick, round: pick <= 30 ? 1 : 2, teamId, playerId: p.id, playerName: p.name, pos: p.pos });
   d.pickIndex += 1;
   if (teamId === league.userTeamId) {
-    league.news.unshift({ day: 0, text: `With pick #${pick}, the ${team.name} select ${p.name} (${p.pos}, ${p.age}).` });
+    pushNews(league, { day: 0, text: `With pick #${pick}, the ${team.name} select ${p.name} (${p.pos}, ${p.age}).` });
   }
   return p;
 }
@@ -158,5 +159,5 @@ export function finishDraft(league) {
   league.phase = 'freeagency';
   league.faDaysLeft = 5;
   league.negotiations = {};
-  league.news.unshift({ day: 0, text: `The draft is complete. Free agency is open for 5 rounds of signings.` });
+  pushNews(league, { day: 0, text: `The draft is complete. Free agency is open for 5 rounds of signings.` });
 }

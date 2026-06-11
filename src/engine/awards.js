@@ -5,6 +5,8 @@
 // advanceOffseason — and an entry on each winner's own p.awards list so the
 // honor follows the player through trades, free agency, and retirement.
 
+import { pushNews } from './save.js';
+
 export const LEADER_MIN_GP = 20;
 const AWARD_MIN_GP = 50;
 const ROOKIE_MIN_GP = 30;
@@ -114,7 +116,7 @@ export function computeAwards(league) {
   };
 
   // unshift in reverse prestige order so the news feed reads MVP first
-  const news = (text) => league.news.unshift({ day: league.dayIndex, text });
+  const news = (text) => pushNews(league, { day: league.dayIndex, text });
   for (let i = TEAM_NAMES.length - 1; i >= 0; i--) {
     if (allNba[i].length) news(`All-NBA ${TEAM_NAMES[i]} Team: ${allNba[i].map((c) => c.p.name).join(', ')}.`);
   }
