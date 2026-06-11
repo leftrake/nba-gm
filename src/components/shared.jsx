@@ -1,5 +1,5 @@
 import React from 'react';
-import { overall } from '../engine/players.js';
+import { overall, flagFor } from '../engine/players.js';
 import { scoutedOverallRange, scoutedPotential, potentialGrade } from '../engine/scouting.js';
 import { TEAMS } from '../data/teams.js';
 
@@ -23,6 +23,16 @@ export function Ovr({ p, league, fogged }) {
 export function Pot({ p, league, fogged }) {
   const v = scoutedPotential(p, league.season, fogged);
   return <span className="ovr" style={{ color: 'var(--muted)' }}>{potentialGrade(v)}</span>;
+}
+
+// Where a player is from: "🇺🇸 Duke" / "🇷🇸 Serbia", or the longer
+// "🇺🇸 USA · Duke" with `full`. Renders nothing for players from saves
+// that predate origins.
+export function Origin({ p, full }) {
+  if (!p.nationality) return null;
+  const flag = flagFor(p.nationality);
+  if (full && p.from !== p.nationality) return <>{flag} {p.nationality} · {p.from}</>;
+  return <>{flag} {full ? p.nationality : p.from}</>;
 }
 
 export function money(n) {

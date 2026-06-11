@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor } from './players.js';
+import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
 import { simGame, applyBoxToStats } from './sim.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
@@ -160,6 +160,20 @@ export function makeSchedule(teams, rng) {
 
 export function getTeam(league, id) {
   return league.teams.find((t) => t.id === id);
+}
+
+// Saves predating player origins / experience: fill the missing fields.
+// Seeded from the league, so repeated loads of an unsaved league derive the
+// same values.
+export function backfillPlayers(league) {
+  const rng = makeRng(league.seed + 424_243);
+  const fill = (p) => {
+    if (!p.nationality) assignOrigin(p, rng);
+    if (p.exp == null) p.exp = Math.max(0, p.age - randInt(19, 22, rng));
+  };
+  for (const team of league.teams) team.roster.forEach(fill);
+  league.freeAgents.forEach(fill);
+  league.draft?.prospects?.forEach(fill);
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { TEAMS } from './data/teams.js';
-import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay } from './engine/league.js';
+import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
 import Dashboard from './components/Dashboard.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
@@ -15,7 +15,9 @@ const SAVE_KEY = 'nba-gm-save';
 function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const league = raw ? JSON.parse(raw) : null;
+    if (league) backfillPlayers(league); // saves predating origins/experience
+    return league;
   } catch {
     return null;
   }

@@ -23,10 +23,10 @@ function noise01(playerId, season, salt) {
   return h / 4294967296;
 }
 
-// Players enter the league around 19, so age stands in for pro experience:
-// rookies are the biggest unknowns, veterans are a settled book.
+// Rookies are the biggest unknowns, veterans are a settled book. Falls back
+// to age (entry around 19) for players from saves predating the exp field.
 export function scoutUncertainty(p) {
-  const exp = Math.max(0, p.age - 19);
+  const exp = p.exp ?? Math.max(0, p.age - 19);
   return Math.round(clamp(6 - exp * 0.7, 1, 6));
 }
 

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { askingPrice } from '../engine/league.js';
 import { scoutRange } from '../engine/scouting.js';
-import { Ovr, Pot, money, perGame, fgPct, TeamLink } from './shared.jsx';
+import { Ovr, Pot, money, perGame, fgPct, TeamLink, Origin } from './shared.jsx';
 
 const RATINGS = [
   ['inside', 'Inside'],
@@ -56,7 +56,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <h2 style={{ fontSize: 18, textTransform: 'none', letterSpacing: 0, marginBottom: 0 }}>{p.name}</h2>
           <span style={{ color: 'var(--muted)' }}>
-            {p.pos} · {p.age} yrs · {team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
+            {p.pos} · {p.age} yrs · {p.exp != null && <>{p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`} · </>}{p.nationality && <><Origin p={p} full /> · </>}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
           </span>
           <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
         </div>
