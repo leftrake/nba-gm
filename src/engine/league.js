@@ -2,6 +2,7 @@ import { TEAMS, SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/t
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
 import { simGame, applyBoxToStats } from './sim.js';
+import { initDraft } from './draft.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
@@ -23,7 +24,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
     schedule: makeSchedule(teams, rng),
     dayIndex: 0,
     resultsByDay: [],
-    phase: 'regular', // regular | playoffs | offseason | freeagency
+    phase: 'regular', // regular | playoffs | offseason | draft | freeagency
     playoffs: null,
     freeAgents: Array.from({ length: 60 }, () => {
       const p = generatePlayer(rng);
@@ -373,10 +374,10 @@ export function advanceOffseason(league) {
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
 
   league.season += 1;
-  league.phase = 'freeagency';
-  league.faDaysLeft = 5;
-  league.negotiations = {};
-  league.news.unshift({ day: 0, text: `Welcome to the ${league.season} offseason. Free agency is open for 5 rounds of signings.` });
+  // Draft first, then free agency (finishDraft opens it)
+  initDraft(league, rng);
+  league.phase = 'draft';
+  league.news.unshift({ day: 0, text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
 }
 
 // AI teams pursue free agents each FA round, negotiating under the same

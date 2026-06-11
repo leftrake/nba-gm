@@ -34,7 +34,7 @@ The whole league object is serialized to localStorage (`nba-gm-save` key) via `J
 
 ### Game flow
 
-`league.phase` is a state machine: `regular` → `playoffs` → `offseason` → `freeagency` → back to `regular`. Each phase has its own sim button in `App.jsx` and its own advance function in `league.js`. RNG for each sim step is derived from `league.seed` plus phase-specific offsets, so a league is reproducible from its seed.
+`league.phase` is a state machine: `regular` → `playoffs` → `offseason` → `draft` → `freeagency` → back to `regular`. Each phase has its own sim button in `App.jsx` and its own advance function in `league.js` (the draft lives in `engine/draft.js`; `advanceOffseason` calls `initDraft`, and `finishDraft` opens free agency). RNG for each sim step is derived from `league.seed` plus phase-specific offsets, so a league is reproducible from its seed.
 
 ## Notes
 

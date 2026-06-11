@@ -1,12 +1,14 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { TEAMS } from './data/teams.js';
 import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
+import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import Dashboard from './components/Dashboard.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
 import Schedule from './components/Schedule.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
+import Draft from './components/Draft.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 
@@ -145,6 +147,7 @@ export default function App() {
     ['standings', 'Standings'],
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
+    ['draft', 'Draft'],
     ['freeagency', 'Free Agency'],
     ['playoffs', 'Playoffs'],
   ];
@@ -157,6 +160,7 @@ export default function App() {
           {league.season} · {userTeam.wins}-{userTeam.losses} ·{' '}
           {league.phase === 'regular' ? `Day ${league.dayIndex + 1}/${league.schedule.length}`
             : league.phase === 'playoffs' ? 'Playoffs'
+            : league.phase === 'draft' ? (onTheClock(league) ? `Draft (Pick ${league.draft.pickIndex + 1}/${league.draft.order.length})` : 'Draft complete')
             : league.phase === 'freeagency' ? `Free Agency (${league.faDaysLeft} rounds left)`
             : 'Offseason'}
         </span>
@@ -186,9 +190,34 @@ export default function App() {
         )}
         {league.phase === 'offseason' && (
           <div className="controls">
-            <button className="btn" onClick={() => { advanceOffseason(league); commit(); setScreen('freeagency'); }}>
-              Advance to Offseason (player development + free agency)
+            <button className="btn" onClick={() => { advanceOffseason(league); commit(); setScreen('draft'); }}>
+              Advance to Offseason (player development + draft)
             </button>
+          </div>
+        )}
+        {league.phase === 'draft' && (
+          <div className="controls">
+            {!onTheClock(league) ? (
+              <button className="btn" onClick={() => { finishDraft(league); commit(); setScreen('freeagency'); }}>
+                Finish Draft & Open Free Agency
+              </button>
+            ) : onTheClock(league) === league.userTeamId ? (
+              <button className="btn" onClick={() => setScreen('draft')}>
+                You're on the clock — make your pick
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={() => { simDraftToUser(league); commit(); setScreen('draft'); }}>
+                  Sim to My Pick
+                </button>
+                <button className="btn secondary" onClick={() => { simDraftPick(league); commit(); setScreen('draft'); }}>
+                  Next Pick
+                </button>
+                <button className="btn secondary" onClick={() => { simDraftRound(league); commit(); setScreen('draft'); }}>
+                  Sim Round
+                </button>
+              </>
+            )}
           </div>
         )}
         {league.phase === 'freeagency' && (
@@ -204,6 +233,7 @@ export default function App() {
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} />}
+        {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} />}
