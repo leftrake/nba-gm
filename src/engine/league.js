@@ -10,6 +10,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
   const teams = TEAMS.map((t) => ({
     ...t,
     roster: makeRoster(rng),
+    deadMoney: [], // { playerName, salary, years } — cap hits from waived contracts
     wins: 0,
     losses: 0,
   }));
@@ -168,7 +169,11 @@ export function dateForDay(league, dayIndex) {
 }
 
 export function payroll(team) {
-  return team.roster.reduce((s, p) => s + (p.contract?.salary || 0), 0);
+  return team.roster.reduce((s, p) => s + (p.contract?.salary || 0), 0) + deadMoneyTotal(team);
+}
+
+export function deadMoneyTotal(team) {
+  return (team.deadMoney || []).reduce((s, d) => s + d.salary, 0);
 }
 
 // Simulate one day of games. Returns results.
@@ -325,6 +330,10 @@ export function advanceOffseason(league) {
         }
       }
     }
+    // Dead money burns off on the same clock as the contracts it came from
+    team.deadMoney = (team.deadMoney || [])
+      .map((d) => ({ ...d, years: d.years - 1 }))
+      .filter((d) => d.years > 0);
     team.lastWins = team.wins; // free agents judge teams by last season's record
     team.wins = 0;
     team.losses = 0;
@@ -527,6 +536,10 @@ export function releasePlayer(league, teamId, playerId) {
   const idx = team.roster.findIndex((p) => p.id === playerId);
   if (idx === -1) return false;
   const p = team.roster.splice(idx, 1)[0];
+  if (p.contract) {
+    if (!team.deadMoney) team.deadMoney = []; // saves predating this field
+    team.deadMoney.push({ playerName: p.name, salary: p.contract.salary, years: p.contract.years });
+  }
   p.contract = null;
   league.freeAgents.push(p);
   league.freeAgents.sort((a, b) => overall(b) - overall(a));

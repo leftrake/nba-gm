@@ -1,5 +1,5 @@
 import React from 'react';
-import { getTeam, standings, payroll, dateForDay } from '../engine/league.js';
+import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
@@ -46,6 +46,7 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
   const pay = payroll(team);
+  const dead = deadMoneyTotal(team);
   const topPlayers = [...team.roster].sort((a, b) => overall(b) - overall(a)).slice(0, 5);
 
   const fg = featuredGame;
@@ -79,7 +80,7 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
         <div className="panel">
           <h2>Team Overview</h2>
           <p>Record: <b>{team.wins}-{team.losses}</b> · Seed: <b>#{seed}</b> in the {team.conf}</p>
-          <p style={{ marginTop: 8 }}>Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)} {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)' }}>LUXURY TAX</span>}</p>
+          <p style={{ marginTop: 8 }}>Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)}{dead > 0 && <span style={{ color: 'var(--muted)' }}> (incl. {money(dead)} dead money)</span>} {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)' }}>LUXURY TAX</span>}</p>
           <div className="cap-bar"><div className={pay > SALARY_CAP ? 'over' : ''} style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
           <h3 style={{ marginTop: 14 }}>Top Players</h3>
           <table>

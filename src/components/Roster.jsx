@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, releasePlayer, standings, dateForDay } from '../engine/league.js';
+import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
@@ -10,6 +10,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
   const team = getTeam(league, teamId);
   const isUser = teamId === league.userTeamId;
   const pay = payroll(team);
+  const dead = deadMoneyTotal(team);
   const seed = standings(league, team.conf).findIndex((t) => t.id === team.id) + 1;
 
   const games = [];
@@ -47,6 +48,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
         <p>Record: <b>{team.wins}-{team.losses}</b> · Seed: <b>#{seed}</b> in the {team.conf}</p>
         <p style={{ marginTop: 8 }}>
           Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)}
+          {dead > 0 && <span style={{ color: 'var(--muted)' }}> (incl. {money(dead)} dead money)</span>}
           {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)', marginLeft: 8 }}>LUXURY TAX</span>}
         </p>
         <div className="cap-bar"><div className={pay > SALARY_CAP ? 'over' : ''} style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
@@ -134,7 +136,11 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                       className="btn danger small"
                       disabled={team.roster.length <= 8}
                       onClick={() => {
-                        if (confirm(`Waive ${p.name}? They become a free agent (no cap relief in this version).`)) {
+                        const c = p.contract;
+                        const deadMsg = c
+                          ? `Their ${money(c.salary)}/yr stays on your cap as dead money for ${c.years} more season${c.years === 1 ? '' : 's'} (${money(c.salary * c.years)} total).`
+                          : 'They have no contract, so no dead money is created.';
+                        if (confirm(`Waive ${p.name}? ${deadMsg}`)) {
                           releasePlayer(league, teamId, p.id);
                           commit();
                         }
@@ -149,6 +155,34 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
           </tbody>
         </table>
       </div>
+
+      {(team.deadMoney || []).length > 0 && (
+        <div className="panel">
+          <h2>Dead Money</h2>
+          <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
+            Cap hits from waived contracts. Each entry counts against the cap until the original contract would have expired.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Player</th><th className="num">Cap Hit</th><th className="num">Yrs Left</th></tr>
+            </thead>
+            <tbody>
+              {team.deadMoney.map((d, i) => (
+                <tr key={i}>
+                  <td>{d.playerName}</td>
+                  <td className="num">{money(d.salary)}</td>
+                  <td className="num">{d.years}</td>
+                </tr>
+              ))}
+              <tr>
+                <td><b>Total</b></td>
+                <td className="num"><b>{money(dead)}</b></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
