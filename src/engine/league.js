@@ -184,10 +184,11 @@ export function simDay(league) {
     applyBoxToStats(away.roster, r.awayBox);
     if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
-    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts });
+    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox });
   }
   if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
-  league.resultsByDay[league.dayIndex] = results;
+  // persist scores only — box scores would bloat the localStorage save
+  league.resultsByDay[league.dayIndex] = results.map(({ home, away, homePts, awayPts }) => ({ home, away, homePts, awayPts }));
   league.dayIndex += 1;
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
@@ -219,50 +220,85 @@ export function initPlayoffs(league) {
 function makeRoundMatchups(seeds) {
   // 1v8, 4v5, 3v6, 2v7
   const order = [[0, 7], [3, 4], [2, 5], [1, 6]];
-  return order.map(([a, b]) => ({ high: seeds[a], low: seeds[b], highWins: 0, lowWins: 0, winner: null }));
+  return order.map(([a, b]) => makeSeries(seeds[a], seeds[b]));
 }
 
-export function simPlayoffRound(league) {
+function makeSeries(high, low) {
+  return { high, low, highWins: 0, lowWins: 0, winner: null, games: [] };
+}
+
+// Best-of-7 under the 2-2-1-1-1 format: games 1, 2, 5, 7 at the higher seed
+function seriesHomeTeam(m, gameIdx) {
+  return [m.high, m.high, m.low, m.low, m.high, m.low, m.high][gameIdx];
+}
+
+// Sim one game in every unfinished series of the current round; advance the
+// round only once all its series are decided.
+export function simPlayoffGame(league) {
   const po = league.playoffs;
   if (!po || po.champion) return;
-  const rng = makeRng(league.seed + 999_983 + po.round * 31);
+  po.gamesPlayed = po.gamesPlayed || 0; // also covers saves predating this field
+  const rng = makeRng(league.seed + 999_983 + po.round * 31 + po.gamesPlayed * 101);
 
-  const playSeries = (m) => {
-    while (m.highWins < 4 && m.lowWins < 4) {
-      const home = getTeam(league, m.high);
-      const away = getTeam(league, m.low);
-      const r = simGame(home.roster, away.roster, rng);
-      if (r.homePts > r.awayPts) m.highWins++; else m.lowWins++;
+  const playGame = (m) => {
+    if (!m || m.winner) return;
+    const homeId = seriesHomeTeam(m, m.highWins + m.lowWins);
+    const awayId = homeId === m.high ? m.low : m.high;
+    const r = simGame(getTeam(league, homeId).roster, getTeam(league, awayId).roster, rng);
+    if (!m.games) m.games = [];
+    m.games.push({ home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts });
+    po.gamesPlayed += 1;
+    const highWon = (r.homePts > r.awayPts) === (homeId === m.high);
+    if (highWon) m.highWins += 1; else m.lowWins += 1;
+    if (m.highWins === 4 || m.lowWins === 4) {
+      m.winner = m.highWins === 4 ? m.high : m.low;
+      po.log.push(`${getTeam(league, m.winner).name} win series ${Math.max(m.highWins, m.lowWins)}-${Math.min(m.highWins, m.lowWins)}`);
     }
-    m.winner = m.highWins === 4 ? m.high : m.low;
-    po.log.push(`${getTeam(league, m.winner).name} win series ${Math.max(m.highWins, m.lowWins)}-${Math.min(m.highWins, m.lowWins)}`);
   };
 
   if (po.round < 3) {
-    for (const conf of ['East', 'West']) {
-      po[conf].forEach(playSeries);
-      if (po[conf].length > 1) {
-        const winners = po[conf].map((m) => m.winner);
-        const next = [];
-        for (let i = 0; i < winners.length; i += 2) {
-          next.push({ high: winners[i], low: winners[i + 1], highWins: 0, lowWins: 0, winner: null });
-        }
-        po[conf] = next;
-      }
-    }
-    if (po.East.length === 1 && po.East[0].winner && po.West.length === 1 && po.West[0].winner) {
-      po.finals = { high: po.East[0].winner, low: po.West[0].winner, highWins: 0, lowWins: 0, winner: null };
-      po.round = 3;
-    } else {
-      po.round += 1;
-    }
+    for (const conf of ['East', 'West']) po[conf].forEach(playGame);
+    if (['East', 'West'].every((c) => po[c].every((m) => m.winner))) advanceRound(po, league);
   } else if (po.finals && !po.finals.winner) {
-    playSeries(po.finals);
-    po.champion = po.finals.winner;
-    const champ = getTeam(league, po.champion);
-    league.news.unshift({ day: league.dayIndex, text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
-    league.phase = 'offseason';
+    playGame(po.finals);
+    if (po.finals.winner) {
+      po.champion = po.finals.winner;
+      const champ = getTeam(league, po.champion);
+      league.news.unshift({ day: league.dayIndex, text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
+      league.phase = 'offseason';
+    }
   }
+}
+
+function advanceRound(po, league) {
+  if (po.East.length === 1 && po.West.length === 1) {
+    // Finals home court goes to the conference champ with the better record
+    const e = getTeam(league, po.East[0].winner);
+    const w = getTeam(league, po.West[0].winner);
+    po.finals = e.wins >= w.wins ? makeSeries(e.id, w.id) : makeSeries(w.id, e.id);
+    po.round = 3;
+  } else {
+    for (const conf of ['East', 'West']) {
+      const winners = po[conf].map((m) => m.winner);
+      const next = [];
+      for (let i = 0; i < winners.length; i += 2) {
+        const a = getTeam(league, winners[i]);
+        const b = getTeam(league, winners[i + 1]);
+        next.push(a.wins >= b.wins ? makeSeries(a.id, b.id) : makeSeries(b.id, a.id));
+      }
+      po[conf] = next;
+    }
+    po.round += 1;
+  }
+}
+
+// Fast-forward: sim game-by-game until the current round is done
+export function simPlayoffRound(league) {
+  const po = league.playoffs;
+  if (!po || po.champion) return;
+  const startRound = po.round;
+  let guard = 0;
+  while (!po.champion && po.round === startRound && guard++ < 100) simPlayoffGame(league);
 }
 
 // ---------- Offseason ----------

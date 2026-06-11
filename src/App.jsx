@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { TEAMS } from './data/teams.js';
-import { createLeague, getTeam, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay } from './engine/league.js';
+import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay } from './engine/league.js';
 import Dashboard from './components/Dashboard.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
@@ -25,6 +25,7 @@ export default function App() {
   const [league, setLeagueState] = useState(loadSave);
   const [screen, setScreen] = useState('dashboard');
   const [lastResults, setLastResults] = useState([]);
+  const [featuredGame, setFeaturedGame] = useState(null);
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
 
@@ -61,6 +62,7 @@ export default function App() {
       localStorage.removeItem(SAVE_KEY);
       setLeagueState(null);
       setLastResults([]);
+      setFeaturedGame(null);
       setRosterTeamId(null);
       setViewPlayer(null);
     }
@@ -92,20 +94,46 @@ export default function App() {
 
   const userTeam = getTeam(league, league.userTeamId);
 
+  // Remember the user team's most recent game (with box scores) for the dashboard
+  const trackFeatured = (results) => {
+    const mine = results.find((r) => r.home === league.userTeamId || r.away === league.userTeamId);
+    if (mine) setFeaturedGame({ ...mine, day: league.dayIndex - 1 });
+    return mine;
+  };
+
   const handleSimDay = () => {
     const results = simDay(league);
     setLastResults(results);
+    trackFeatured(results);
     commit();
   };
   const handleSimWeek = () => {
     let results = [];
-    for (let i = 0; i < 4 && league.phase === 'regular'; i++) results = simDay(league);
+    for (let i = 0; i < 4 && league.phase === 'regular'; i++) {
+      results = simDay(league);
+      trackFeatured(results);
+    }
     setLastResults(results);
     commit();
   };
+  const handleSimToNextGame = () => {
+    let results = [];
+    let mine = null;
+    while (league.phase === 'regular' && !mine) {
+      results = simDay(league);
+      mine = trackFeatured(results);
+    }
+    setLastResults(results);
+    setScreen('dashboard');
+    commit();
+  };
   const handleSimToEnd = () => {
-    while (league.phase === 'regular') simDay(league);
-    setLastResults([]);
+    let results = [];
+    while (league.phase === 'regular') {
+      results = simDay(league);
+      trackFeatured(results);
+    }
+    setLastResults(results);
     commit();
   };
 
@@ -142,14 +170,16 @@ export default function App() {
       <main>
         {league.phase === 'regular' && (
           <div className="controls">
-            <button className="btn" onClick={handleSimDay}>Sim Day</button>
+            <button className="btn" onClick={handleSimToNextGame}>Sim to Next Game</button>
+            <button className="btn secondary" onClick={handleSimDay}>Sim Day</button>
             <button className="btn secondary" onClick={handleSimWeek}>Sim Week</button>
             <button className="btn secondary" onClick={handleSimToEnd}>Sim to Playoffs</button>
           </div>
         )}
         {league.phase === 'playoffs' && (
           <div className="controls">
-            <button className="btn" onClick={() => { simPlayoffRound(league); commit(); }}>Sim Playoff Round</button>
+            <button className="btn" onClick={() => { simPlayoffGame(league); commit(); setScreen('playoffs'); }}>Sim Next Playoff Game</button>
+            <button className="btn secondary" onClick={() => { simPlayoffRound(league); commit(); setScreen('playoffs'); }}>Sim Playoff Round</button>
           </div>
         )}
         {league.phase === 'offseason' && (
@@ -167,7 +197,7 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} openTeam={openTeam} openPlayer={openPlayer} />}
+        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} />}

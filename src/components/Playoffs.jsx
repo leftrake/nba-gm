@@ -7,14 +7,21 @@ function Series({ league, m, openTeam }) {
   const high = getTeam(league, m.high);
   const low = getTeam(league, m.low);
   return (
-    <div className="result-row">
-      <span className={m.winner === m.high ? 'winner' : ''}>
-        <TeamLink team={high} openTeam={openTeam}>{high.name}</TeamLink> {m.highWins}
-      </span>
-      <span style={{ color: 'var(--muted)' }}>vs</span>
-      <span className={m.winner === m.low ? 'winner' : ''}>
-        <TeamLink team={low} openTeam={openTeam}>{low.name}</TeamLink> {m.lowWins}
-      </span>
+    <div style={{ borderBottom: '1px solid var(--border)', padding: '5px 0' }}>
+      <div className="result-row" style={{ border: 'none', padding: 0 }}>
+        <span className={m.winner === m.high ? 'winner' : ''}>
+          <TeamLink team={high} openTeam={openTeam}>{high.name}</TeamLink> {m.highWins}
+        </span>
+        <span style={{ color: 'var(--muted)' }}>vs</span>
+        <span className={m.winner === m.low ? 'winner' : ''}>
+          <TeamLink team={low} openTeam={openTeam}>{low.name}</TeamLink> {m.lowWins}
+        </span>
+      </div>
+      {(m.games || []).length > 0 && (
+        <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>
+          {m.games.map((g, i) => `G${i + 1}: ${g.away} ${g.awayPts} @ ${g.home} ${g.homePts}`).join(' · ')}
+        </div>
+      )}
     </div>
   );
 }
@@ -40,7 +47,7 @@ export default function Playoffs({ league, openTeam }) {
       {!po.champion && (
         <div className="panel">
           <h2>Current Round: {roundName}</h2>
-          <p style={{ color: 'var(--muted)' }}>Use "Sim Playoff Round" above to play it out.</p>
+          <p style={{ color: 'var(--muted)' }}>"Sim Next Playoff Game" plays one game in every active series; "Sim Playoff Round" fast-forwards the round.</p>
         </div>
       )}
       <div className="grid2">
