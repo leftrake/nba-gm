@@ -101,6 +101,7 @@ export function makeDraftPick(league, prospectId) {
   const p = d.prospects.splice(idx, 1)[0];
   const team = league.teams.find((t) => t.id === teamId);
   const pick = d.pickIndex + 1;
+  p.draftTeam = teamId; // homegrown marker — boosts re-sign odds later
   if (team.roster.length < ROSTER_MAX) {
     p.contract = { salary: rookieSalary(pick), years: ROOKIE_YEARS };
     team.roster.push(p);

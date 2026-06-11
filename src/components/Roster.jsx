@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay } from '../engine/league.js';
+import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, extensionEligible, offerExtension } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, posFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall } from '../engine/scouting.js';
-import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
+import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { Ovr, Pot, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
 
 // Minutes box that doesn't fight the typist: focusing selects the current
@@ -31,6 +31,11 @@ function MinInput({ value, onChange, disabled }) {
 export default function Roster({ league, commit, teamId, openTeam, openPlayer }) {
   const [sortKey, setSortKey] = useState('ovr');
   const [pickSlot, setPickSlot] = useState(null); // position whose starter is being chosen
+  const [extendingId, setExtendingId] = useState(null); // player being offered an extension
+  const [extSalaryM, setExtSalaryM] = useState(5);
+  const [extYears, setExtYears] = useState(3);
+  const [extResponses, setExtResponses] = useState({}); // playerId -> last offerExtension result
+  const [extMessage, setExtMessage] = useState(null);
   const team = getTeam(league, teamId);
   const isUser = teamId === league.userTeamId;
   const pay = payroll(team);
@@ -107,6 +112,30 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
     if (j < 0 || j >= lu.bench.length) return;
     [lu.bench[i], lu.bench[j]] = [lu.bench[j], lu.bench[i]];
     saveLineup(lu);
+  };
+
+  // ---- Extension offers (user team, regular season only)
+  const extTalks = league.extensionTalks || {};
+  const canExtend = isUser && league.phase === 'regular';
+
+  const toggleExtend = (p) => {
+    if (extendingId === p.id) { setExtendingId(null); return; }
+    const counter = extTalks[p.id]?.counter;
+    setExtendingId(p.id);
+    setExtSalaryM((counter ? counter.salary : askingPrice(p)) / 1e6);
+    setExtYears(counter ? counter.years : 3);
+  };
+
+  const offerExt = (p, salM, yrs) => {
+    const res = offerExtension(league, teamId, p.id, Math.round(salM * 10) * 100_000, yrs);
+    setExtResponses((r) => ({ ...r, [p.id]: res }));
+    if (res.ok && res.decision === 'accept') {
+      setExtMessage(res.reason);
+      setExtendingId(null);
+    } else {
+      setExtMessage(null);
+    }
+    commit();
   };
 
   const seenOvr = (p) => (isUser ? overall(p) : scoutedOverall(p, league.season));
@@ -363,18 +392,20 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
           </select>
           <span className="meta" style={{ color: 'var(--muted)' }}>{team.roster.length} players</span>
         </div>
+        {extMessage && <p style={{ marginBottom: 10, color: 'var(--green)' }}>{extMessage}</p>}
         <table>
           <thead>
             <tr>
               <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th>
               <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
-              <th className="num">Salary</th><th className="num">Yrs</th>
+              <th className="num">Salary</th><th className="num">Yrs</th><th></th>
               {isUser && <th></th>}
             </tr>
           </thead>
           <tbody>
             {sorted.map((p) => (
-              <tr key={p.id}>
+              <React.Fragment key={p.id}>
+              <tr>
                 <td><Ovr p={p} league={league} fogged={!isUser} /></td>
                 <td><Pot p={p} league={league} fogged={!isUser} /></td>
                 <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
@@ -386,8 +417,25 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                 <td className="num">{fgPct(p.stats)}</td>
                 <td className="num">{p.contract ? money(p.contract.salary) : '–'}</td>
                 <td className="num">{p.contract?.years ?? '–'}</td>
+                <td>
+                  {p.extension ? (
+                    <span className="tag" style={{ color: 'var(--green)' }} title={`Extension starts when the current deal ends: ${money(p.extension.salary)}/yr × ${p.extension.years}`}>
+                      EXT ✓
+                    </span>
+                  ) : p.contract?.years === 1 ? (
+                    <span className="tag" style={{ color: 'var(--accent)' }} title="Entering the final year of his contract — extension-eligible">
+                      EXPIRING
+                    </span>
+                  ) : null}
+                </td>
                 {isUser && (
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {canExtend && extensionEligible(p) && (
+                      <button className="btn small" onClick={() => toggleExtend(p)}>
+                        {extendingId === p.id ? 'Close' : extTalks[p.id]?.counter ? 'Counter…' : 'Extend…'}
+                      </button>
+                    )}
+                    {' '}
                     <button
                       className="btn danger small"
                       disabled={team.roster.length <= 8}
@@ -407,6 +455,50 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                   </td>
                 )}
               </tr>
+              {extendingId === p.id && canExtend && (
+                <tr>
+                  <td colSpan={13} style={{ background: 'var(--bg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
+                      <span style={{ color: 'var(--muted)' }}>Market rate: {money(askingPrice(p))}/yr</span>
+                      <label>
+                        Salary ($M):{' '}
+                        <input
+                          type="number"
+                          min={MIN_SALARY / 1e6}
+                          max={MAX_SALARY / 1e6}
+                          step={0.5}
+                          value={extSalaryM}
+                          onChange={(e) => setExtSalaryM(Number(e.target.value))}
+                          style={{ width: 80 }}
+                        />
+                      </label>
+                      <label>
+                        Years:{' '}
+                        <select value={extYears} onChange={(e) => setExtYears(Number(e.target.value))}>
+                          {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </label>
+                      <button className="btn small" onClick={() => offerExt(p, extSalaryM, extYears)}>
+                        Offer Extension
+                      </button>
+                      {extTalks[p.id]?.counter && (
+                        <span style={{ color: 'var(--accent)' }}>
+                          Counter on the table: {money(extTalks[p.id].counter.salary)}/yr x {extTalks[p.id].counter.years}yr{' '}
+                          <button className="btn small" onClick={() => offerExt(p, extTalks[p.id].counter.salary / 1e6, extTalks[p.id].counter.years)}>
+                            Accept Counter
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                    {extResponses[p.id] && !(extResponses[p.id].ok && extResponses[p.id].decision === 'accept') && (
+                      <div style={{ padding: '0 4px 6px', color: !extResponses[p.id].ok || extResponses[p.id].decision === 'reject' ? 'var(--red)' : 'var(--accent)' }}>
+                        {extResponses[p.id].ok ? extResponses[p.id].reason : extResponses[p.id].error}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

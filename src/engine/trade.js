@@ -104,6 +104,9 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds)
   const outB = b.roster.filter((p) => playersBIds.includes(p.id));
   a.roster = a.roster.filter((p) => !playersAIds.includes(p.id)).concat(outB);
   b.roster = b.roster.filter((p) => !playersBIds.includes(p.id)).concat(outA);
+  // failed extension talks don't follow a player to a new front office
+  // (signed extensions do, like any contract)
+  for (const p of [...outA, ...outB]) delete p.extTalksFailed;
   const names = (ps) => ps.map((p) => p.name).join(', ') || 'nothing';
   pushNews(league, {
     day: league.dayIndex,

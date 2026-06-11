@@ -159,13 +159,37 @@ export function emptyStats() {
   return { gp: 0, min: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0 };
 }
 
+// Market salary by overall, linear between the tier breakpoints below:
+// stars (85+) $40–50M, good starters (75–84) $25–35M, solid starters
+// (65–74) $12–22M, rotation players (55–64) $5–10M, end of bench near the
+// minimum. Calibrated so a typical 14-man roster lands near the $141M cap.
+const SALARY_CURVE = [
+  [48, MIN_SALARY],
+  [55, 5_000_000],
+  [64, 10_000_000],
+  [65, 12_000_000],
+  [74, 22_000_000],
+  [75, 25_000_000],
+  [84, 35_000_000],
+  [85, 40_000_000],
+  [92, MAX_SALARY],
+];
+
 export function salaryFor(ovr, age) {
-  // Salary scales with overall; young players cheaper (rookie-scale-ish)
-  const t = clamp((ovr - 40) / 45, 0, 1);
-  let sal = MIN_SALARY + Math.pow(t, 2.2) * (MAX_SALARY - MIN_SALARY);
-  if (age <= 23) sal *= 0.45;
-  else if (age <= 25) sal *= 0.75;
-  return Math.round(sal / 100_000) * 100_000;
+  let sal = MAX_SALARY;
+  if (ovr <= SALARY_CURVE[0][0]) {
+    sal = MIN_SALARY;
+  } else {
+    for (let i = 1; i < SALARY_CURVE.length; i++) {
+      const [o1, s1] = SALARY_CURVE[i - 1];
+      const [o2, s2] = SALARY_CURVE[i];
+      if (ovr <= o2) { sal = s1 + ((ovr - o1) / (o2 - o1)) * (s2 - s1); break; }
+    }
+  }
+  // mild discount for very young players still building a market
+  if (age <= 22) sal *= 0.75;
+  else if (age <= 24) sal *= 0.9;
+  return Math.max(MIN_SALARY, Math.round(sal / 100_000) * 100_000);
 }
 
 export function generateContract(p, rng = rand) {

@@ -1,4 +1,4 @@
-import { TEAMS, SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
 import { simGame, applyBoxToStats, encodeBox } from './sim.js';
@@ -32,13 +32,15 @@ export function createLeague(userTeamId, seed = Date.now()) {
     phase: 'regular', // regular | playoffs | offseason | draft | freeagency
     playoffs: null,
     freeAgents: Array.from({ length: 60 }, () => {
-      const p = generatePlayer(rng);
+      // unsigned for a reason: the open market skews toward fringe talent
+      const p = generatePlayer(rng, { base: clamp(gauss(48, 8, rng), 35, 72) });
       p.contract = null;
       return p;
     }),
     news: [{ day: 0, text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
     history: [],
   };
+  league.freeAgents.sort((a, b) => overall(b) - overall(a));
   // Only the user's lineup persists; AI teams auto-set theirs every game
   getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
   evaluateStrategies(league);
@@ -46,11 +48,43 @@ export function createLeague(userTeamId, seed = Date.now()) {
 }
 
 function makeRoster(rng) {
-  const roster = [];
-  // ensure positional coverage: 2 of each position + 4 random
-  const positions = ['PG', 'PG', 'SG', 'SG', 'SF', 'SF', 'PF', 'PF', 'C', 'C'];
-  for (const pos of positions) roster.push(generatePlayer(rng, { pos }));
-  for (let i = 0; i < 4; i++) roster.push(generatePlayer(rng));
+  // Talent pyramid, NBA-shaped: a star, a second option, supporting
+  // starters, rotation pieces, and bench filler. (gauss() here has an
+  // effective sd of ~0.4x the nominal value, so i.i.d. rolls would produce
+  // a league with no stars at all — the pyramid is explicit instead.)
+  // Priced by salaryFor, a roster like this naturally costs near the cap.
+  const tiers = [
+    [84, 10], [76, 8], [70, 7], [64, 6], [64, 6], [59, 6], [59, 6],
+    [53, 6], [53, 6], [53, 6], [45, 6], [45, 6], [45, 6], [45, 6],
+  ];
+  // positional coverage: 2 of each position + 4 random, shuffled so the
+  // star slot isn't always a point guard
+  const positions = ['PG', 'PG', 'SG', 'SG', 'SF', 'SF', 'PF', 'PF', 'C', 'C', null, null, null, null];
+  for (let i = positions.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [positions[i], positions[j]] = [positions[j], positions[i]];
+  }
+  const roster = tiers.map(([mean, spread], i) => generatePlayer(rng, {
+    pos: positions[i] || undefined,
+    base: clamp(gauss(mean, spread, rng), 35, 90),
+  }));
+
+  // Calibrate opening-day books: scale every contract toward a target near
+  // the cap, so most franchises start within $10M of it and some slightly
+  // over. The scaling leaves individual players a little over- or
+  // underpaid relative to market, which is realistic.
+  const target = SALARY_CAP - 7_000_000 + rng() * 14_000_000; // $134M–$148M
+  for (let pass = 0; pass < 3; pass++) {
+    const total = roster.reduce((s, p) => s + p.contract.salary, 0);
+    const factor = target / total;
+    if (Math.abs(factor - 1) < 0.02) break;
+    for (const p of roster) {
+      p.contract.salary = clamp(
+        Math.round((p.contract.salary * factor) / 100_000) * 100_000,
+        MIN_SALARY, MAX_SALARY,
+      );
+    }
+  }
   return roster;
 }
 
@@ -234,6 +268,8 @@ export function simDay(league) {
     home, away, homePts, awayPts, homeBox: encodeBox(homeBox), awayBox: encodeBox(awayBox),
   }));
   maybeAiTrade(league, rng);
+  aiExtensions(league, rng);
+  maybeAiMidSeasonSigning(league, rng);
   league.dayIndex += 1;
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
@@ -367,10 +403,11 @@ function announceRetirement(league, p) {
 
 export function advanceOffseason(league) {
   const rng = makeRng(league.seed + league.season * 104729);
+  const userTeam = getTeam(league, league.userTeamId); // absent in headless all-AI sims
   league.history.push({
     season: league.season,
     champion: league.playoffs?.champion || null,
-    userRecord: `${getTeam(league, league.userTeamId).wins}-${getTeam(league, league.userTeamId).losses}`,
+    userRecord: userTeam ? `${userTeam.wins}-${userTeam.losses}` : '',
     awards: league.seasonAwards ?? null, // snapshot from computeAwards at season's end
   });
   league.seasonAwards = null;
@@ -385,8 +422,14 @@ export function advanceOffseason(league) {
       if (p.contract) {
         p.contract.years -= 1;
         if (p.contract.years <= 0) {
-          p.contract = null;
-          expiring.push({ team, p });
+          if (p.extension) {
+            // the extension signed during the season kicks in seamlessly
+            p.contract = p.extension;
+            p.extension = null;
+          } else {
+            p.contract = null;
+            expiring.push({ team, p });
+          }
         }
       }
     }
@@ -399,10 +442,38 @@ export function advanceOffseason(league) {
     team.losses = 0;
   }
 
-  // Expiring contracts → free agency (or retirement)
+  // Expiring contracts: retirement first, then the incumbent team gets a
+  // re-sign window (Bird-rights style — allowed to cross the cap, but not
+  // the luxury tax). Teams keep their best players most of the time, so
+  // only a few quality starters reach the open market each summer. The
+  // user's expiring players always hit free agency — re-signing them is
+  // the user's job.
   for (const { team, p } of expiring) {
+    if (p.age > 38 || overall(p) < 40) {
+      team.roster = team.roster.filter((x) => x.id !== p.id);
+      announceRetirement(league, p);
+      continue;
+    }
+    // If the front office already passed on extending him mid-season, that
+    // was the retention decision — he tests the market (no second roll).
+    const triedMidSeason = p.extTalksFailed;
+    delete p.extTalksFailed;
+    if (team.id !== league.userTeamId && !triedMidSeason && rng() < resignChance(team, p)) {
+      // Bird-rights premium: incumbents pay a little over market to keep
+      // their own players off the open market
+      const salary = clamp(
+        Math.round((askingPrice(p) * (1.0 + rng() * 0.25)) / 100_000) * 100_000,
+        MIN_SALARY, MAX_SALARY,
+      );
+      if (payroll(team) + salary <= LUXURY_TAX) {
+        p.contract = { salary, years: preferredYears(p) };
+        if (overall(p) >= 70) {
+          pushNews(league, { day: 0, text: `${p.name} re-signs with the ${team.city} ${team.name} (${fmtM(salary)} x ${p.contract.years}yr).` });
+        }
+        continue;
+      }
+    }
     team.roster = team.roster.filter((x) => x.id !== p.id);
-    if (p.age > 38 || overall(p) < 40) { announceRetirement(league, p); continue; }
     league.freeAgents.push(p);
   }
 
@@ -414,11 +485,15 @@ export function advanceOffseason(league) {
     return false;
   });
   while (league.freeAgents.length < 50) {
-    const p = generatePlayer(rng, { age: randInt(19, 30, rng) });
+    // pool top-ups are fringe talent — quality starters rarely go unsigned
+    const p = generatePlayer(rng, { age: randInt(19, 30, rng), base: clamp(gauss(48, 8, rng), 35, 70) });
     p.contract = null;
     league.freeAgents.push(p);
   }
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
+  // The pool would otherwise grow without bound (each draft class outnumbers
+  // retirements); the unsigned tail quietly heads overseas
+  if (league.freeAgents.length > 70) league.freeAgents.length = 70;
 
   // Front offices reassess direction each summer
   const labels = { contending: 'win-now mode', rebuilding: 'a full rebuild', retooling: 'a retool' };
@@ -434,25 +509,51 @@ export function advanceOffseason(league) {
   pushNews(league, { day: 0, text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
 }
 
-// AI teams pursue free agents each FA round, negotiating under the same
-// preference rules as the user: a player can turn a team down, so each team
-// works down a short target list.
+// How likely a team is to re-sign its own expiring player before he hits
+// the market. Better players are kept harder, winners keep their guys,
+// and homegrown draftees (p.draftTeam) get a loyalty bump.
+function resignChance(team, p) {
+  const ovr = overall(p);
+  let chance = ovr >= 80 ? 0.88 : ovr >= 70 ? 0.8 : ovr >= 60 ? 0.6 : 0.35;
+  // mid-season (extensions) this is the live record; in the offseason the
+  // games are zeroed out and it falls back to last season's
+  const winPct = currentWinPct(team);
+  chance += (winPct - 0.5) * 0.4; // stars stay with winners, drift from losers
+  if (p.draftTeam === team.id) chance += 0.1;
+  if (p.age >= 34) chance -= 0.15; // aging vets get let go
+  return clamp(chance, 0.05, 0.95);
+}
+
+// AI teams attack free agency: every round, every team with room works down
+// the board chasing the best player it can afford. Players still negotiate
+// under the same rules as the user (role fit, winners' discount, losers'
+// premium), so a star can turn a team down — but with 29 front offices
+// shopping, the top of the market is usually picked clean after round one.
 export function simFreeAgencyDay(league) {
   const rng = makeRng(league.seed + league.season * 31 + league.faDaysLeft);
-  for (const team of league.teams) {
-    if (team.id === league.userTeamId) continue;
+  // Deepest cap room shops first — those are the teams that can land stars
+  const order = league.teams
+    .filter((t) => t.id !== league.userTeamId)
+    .sort((a, b) => payroll(a) - payroll(b));
+  for (const team of order) {
     if (team.roster.length >= ROSTER_MAX) continue;
-    if (rng() > 0.6) continue;
     const room = SALARY_CAP - payroll(team);
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const affordable = league.freeAgents.filter((p) => askingPrice(p) <= Math.max(room, MIN_SALARY));
-      if (!affordable.length) break;
-      const target = affordable[Math.floor(Math.pow(rng(), 2) * Math.min(affordable.length, 10))];
+    // capped-out teams with a playable roster sit out rather than hoover
+    // up every minimum guy on the market
+    if (team.roster.length >= 13 && room < 5_000_000) continue;
+    // how far past asking price this front office will stretch this round
+    const stretch = 1.1 + rng() * 0.4;
+    let tried = 0;
+    for (let i = 0; i < league.freeAgents.length && tried < 12; i++) {
+      const target = league.freeAgents[i]; // pool is sorted best-first
+      const ask = askingPrice(target);
+      if (ask > room && ask > MIN_SALARY) continue; // out of their price range
+      tried++;
       const years = preferredYears(target);
       const demand = offerDemand(league, team.id, target, years);
-      // how far above asking price this front office will stretch
-      const maxPay = Math.max(askingPrice(target) * (1 + rng() * 0.3), MIN_SALARY);
-      if (demand === null || demand > maxPay || (demand > room && demand > MIN_SALARY)) continue;
+      if (demand === null) continue; // wants a bigger role than this roster offers
+      if (demand > ask * stretch) continue; // demanding more than this office will pay
+      if (demand > room && demand > MIN_SALARY) continue;
       signFreeAgent(league, team.id, target.id, demand, years);
       break;
     }
@@ -463,6 +564,51 @@ export function simFreeAgencyDay(league) {
 
 export function askingPrice(p) {
   return salaryFor(overall(p), p.age);
+}
+
+// ---------- Mid-season free agency ----------
+// During the regular season, teams with an open roster spot can sign
+// leftover free agents to rest-of-season minimum deals. Anyone good enough
+// to command a real contract holds out for the offseason instead.
+
+export function midSeasonSignable(p) {
+  return overall(p) < 68;
+}
+
+// Minimum salary prorated over the days left in the season; the deal runs
+// 1 year, so it comes off the books in the offseason.
+export function proratedMinSalary(league) {
+  const total = league.schedule?.length || SEASON_DAYS;
+  const remaining = clamp(total - league.dayIndex, 0, total);
+  return Math.max(100_000, Math.round(((MIN_SALARY * remaining) / total) / 100_000) * 100_000);
+}
+
+export function signMidSeasonFA(league, teamId, playerId) {
+  if (league.phase !== 'regular') return { ok: false, error: 'Mid-season signings are only possible during the regular season.' };
+  const team = getTeam(league, teamId);
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
+  const idx = league.freeAgents.findIndex((p) => p.id === playerId);
+  if (idx === -1) return { ok: false, error: 'That player is no longer a free agent.' };
+  const p = league.freeAgents[idx];
+  if (!midSeasonSignable(p)) {
+    return { ok: false, error: `${p.name} won't take a minimum deal mid-season — he's holding out for a real contract in the offseason.` };
+  }
+  p.contract = { salary: proratedMinSalary(league), years: 1 };
+  league.freeAgents.splice(idx, 1);
+  team.roster.push(p); // on the roster now — available for the next game
+  pushNews(league, { day: league.dayIndex, text: `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.` });
+  return { ok: true, player: p };
+}
+
+// AI teams with an open roster spot occasionally add a body mid-season.
+function maybeAiMidSeasonSigning(league, rng) {
+  for (const team of league.teams) {
+    if (team.id === league.userTeamId) continue;
+    if (team.roster.length >= ROSTER_MAX) continue;
+    if (rng() >= 0.01) continue;
+    const target = league.freeAgents.find((p) => midSeasonSignable(p)); // pool is sorted best-first
+    if (target) signMidSeasonFA(league, team.id, target.id);
+  }
 }
 
 // ---------- Free agency negotiation ----------
@@ -499,14 +645,11 @@ function roleBlocked(team, p) {
   return overall(p) >= 75 && betterAtPosition(team, p) >= 2;
 }
 
-// Salary at which this player accepts `years` from this team, or null if
-// no amount of money will do (role-blocked star).
-export function offerDemand(league, teamId, p, years) {
-  const team = getTeam(league, teamId);
-  if (roleBlocked(team, p)) return null;
+// Core of the demand formula, shared by free-agency offers and in-season
+// extensions; only the win percentage the player judges the team by differs.
+function demandSalary(team, p, years, winPct) {
   const o = overall(p);
   let mult = greed(p);
-  const winPct = (team.lastWins ?? 41) / 82;
   const caresAboutWinning = clamp((o - 60) / 25, 0, 1);
   mult *= clamp(1 + caresAboutWinning * (0.55 - winPct), 0.85, 1.3);
   if (o >= 65 && betterAtPosition(team, p) >= 2) mult *= 1.15;
@@ -515,6 +658,118 @@ export function offerDemand(league, teamId, p, years) {
   else if (years > pref) mult *= Math.max(0.9, 1 - 0.03 * (years - pref));
   const sal = Math.round((askingPrice(p) * mult) / 100_000) * 100_000;
   return clamp(sal, MIN_SALARY, MAX_SALARY);
+}
+
+// Salary at which this player accepts `years` from this team, or null if
+// no amount of money will do (role-blocked star).
+export function offerDemand(league, teamId, p, years) {
+  const team = getTeam(league, teamId);
+  if (roleBlocked(team, p)) return null;
+  return demandSalary(team, p, years, (team.lastWins ?? 41) / 82);
+}
+
+// Mid-season: judge the team by this season's record once it means something
+function currentWinPct(team) {
+  const gp = team.wins + team.losses;
+  return gp >= 10 ? team.wins / gp : (team.lastWins ?? 41) / 82;
+}
+
+// ---------- Contract extensions ----------
+// During the regular season, a player entering the final year of his
+// contract can sign an extension that starts when the current deal ends.
+// Extended players never reach free agency.
+
+export function extensionEligible(p) {
+  return !!(p.contract && p.contract.years === 1 && !p.extension);
+}
+
+// Salary at which this player extends for `years`, or null if he won't
+// extend at any price right now: role-blocked, or a star on a losing team
+// who'd rather see wins (or the open market) first. The conditions are
+// live — if the record improves, he can be approached again.
+export function extensionDemand(league, teamId, p, years) {
+  const team = getTeam(league, teamId);
+  if (roleBlocked(team, p)) return null;
+  const winPct = currentWinPct(team);
+  if (overall(p) >= 78 && winPct < 0.45 && faNoise(p.id, 7) < 0.6) return null;
+  return demandSalary(team, p, years, winPct);
+}
+
+// User-facing extension offer. The player evaluates it like a free-agency
+// offer (money, record, role, preferred length); a rejection sets a floor,
+// and he only re-opens talks for a strictly better salary — except a
+// standing counter, which is always honored.
+export function offerExtension(league, teamId, playerId, salary, years) {
+  if (league.phase !== 'regular') return { ok: false, error: 'Extensions can only be negotiated during the regular season.' };
+  const team = getTeam(league, teamId);
+  const p = team.roster.find((x) => x.id === playerId);
+  if (!p) return { ok: false, error: 'That player is not on your roster.' };
+  if (p.extension) return { ok: false, error: `${p.name} has already signed an extension.` };
+  if (!extensionEligible(p)) return { ok: false, error: 'Only players entering the final year of their contract can be extended.' };
+  years = clamp(Math.round(years), 1, 4);
+  salary = clamp(Math.round(salary / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
+  league.extensionTalks = league.extensionTalks || {};
+  const talks = league.extensionTalks[playerId];
+  const meetsCounter = talks?.counter && years === talks.counter.years && salary >= talks.counter.salary;
+  if (!meetsCounter && talks && salary <= talks.best) {
+    return { ok: false, error: `${p.name} already turned down ${fmtM(talks.best)}/yr — he'll only re-open talks for a better number.` };
+  }
+  const demand = meetsCounter ? salary : extensionDemand(league, teamId, p, years);
+  if (demand === null) {
+    const reason = roleBlocked(team, p)
+      ? `${p.name} wants a featured role, and you already have two better players at ${p.pos} — he won't commit long-term.`
+      : `${p.name} won't discuss an extension while the team is losing — win more games, or risk him testing the market.`;
+    return { ok: true, decision: 'reject', reason };
+  }
+  if (salary >= demand) {
+    p.extension = { salary, years };
+    delete p.extTalksFailed;
+    delete league.extensionTalks[playerId];
+    pushNews(league, { day: league.dayIndex, text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}.` });
+    return { ok: true, decision: 'accept', reason: `${p.name} signs: ${fmtM(salary)}/yr x ${years}yr, starting next season.` };
+  }
+  const entry = { best: Math.max(talks?.best ?? 0, salary) };
+  let reason;
+  if (salary >= demand * 0.85) {
+    const pref = preferredYears(p);
+    const counterSalary = extensionDemand(league, teamId, p, pref);
+    if (counterSalary !== null) {
+      entry.counter = { salary: counterSalary, years: pref };
+      reason = `${p.name} counters: ${fmtM(counterSalary)}/yr x ${pref}yr.`;
+    }
+  }
+  if (!reason) {
+    reason = years < preferredYears(p)
+      ? `${p.name} is looking for a longer commitment (${preferredYears(p)} years).`
+      : `${p.name} is holding out for more money.`;
+  }
+  league.extensionTalks[playerId] = entry;
+  return { ok: true, decision: entry.counter ? 'counter' : 'reject', reason, counter: entry.counter };
+}
+
+// Each AI front office reviews its expiring contracts once a season, on a
+// team-specific day in the middle of the schedule (so extension news
+// trickles in rather than flooding a single day). Quality players mostly
+// extend — the same retention odds as the offseason re-sign window; when
+// the office passes instead, the player is flagged to test the market.
+function aiExtensions(league, rng) {
+  for (const team of league.teams) {
+    if (team.id === league.userTeamId) continue;
+    const reviewDay = 40 + ((team.id.charCodeAt(0) * 5 + team.id.charCodeAt(1) * 11 + team.id.charCodeAt(2) * 23) % 60);
+    if (league.dayIndex !== reviewDay) continue;
+    for (const p of team.roster) {
+      if (!extensionEligible(p) || p.age >= 36) continue;
+      if (rng() >= resignChance(team, p)) { p.extTalksFailed = true; continue; }
+      const years = preferredYears(p);
+      const demand = extensionDemand(league, team.id, p, years);
+      if (demand === null) continue; // player won't extend now; the offseason window may still keep him
+      if (payroll(team) - p.contract.salary + demand > LUXURY_TAX) continue;
+      p.extension = { salary: demand, years };
+      if (overall(p) >= 70) {
+        pushNews(league, { day: league.dayIndex, text: `${p.name} agrees to a ${years}-year, ${fmtM(demand)}/yr extension with the ${team.city} ${team.name}.` });
+      }
+    }
+  }
 }
 
 const fmtM = (n) => `$${(n / 1e6).toFixed(1)}M`;
@@ -627,6 +882,7 @@ export function startNewSeason(league) {
     }
   }
   league.negotiations = {};
+  league.extensionTalks = {};
   league.schedule = makeSchedule(league.teams, rng);
   league.dayIndex = 0;
   league.resultsByDay = [];
