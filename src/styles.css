@@ -176,6 +176,25 @@ select, input {
   font-size: 14px;
 }
 
+/* starter-slot button on the Roster lineup editor: styled like a select,
+   but opens the rich picker modal */
+button.slot-pick {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+  min-width: 160px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+button.slot-pick:hover { border-color: var(--accent); }
+
 .cap-bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .cap-bar > div { height: 100%; background: var(--green); }
 .cap-bar > div.over { background: var(--red); }

@@ -4,6 +4,7 @@ import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, sal
 import { simGame, applyBoxToStats } from './sim.js';
 import { initDraft } from './draft.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
+import { autoLineup } from './lineup.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
@@ -35,6 +36,8 @@ export function createLeague(userTeamId, seed = Date.now()) {
     news: [{ day: 0, text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
     history: [],
   };
+  // Only the user's lineup persists; AI teams auto-set theirs every game
+  getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
   evaluateStrategies(league);
   return league;
 }
@@ -180,6 +183,9 @@ export function backfillPlayers(league) {
   league.draft?.prospects?.forEach(fill);
   // Saves predating front-office strategies
   if (league.teams.some((t) => !t.strategy)) evaluateStrategies(league);
+  // Saves predating lineups
+  const user = getTeam(league, league.userTeamId);
+  if (!user.lineup) user.lineup = autoLineup(user.roster);
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
@@ -204,7 +210,7 @@ export function simDay(league) {
   for (const g of league.schedule[league.dayIndex]) {
     const home = getTeam(league, g.home);
     const away = getTeam(league, g.away);
-    const r = simGame(home.roster, away.roster, rng);
+    const r = simGame(home, away, rng);
     applyBoxToStats(home.roster, r.homeBox);
     applyBoxToStats(away.roster, r.awayBox);
     if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
@@ -270,7 +276,7 @@ export function simPlayoffGame(league) {
     if (!m || m.winner) return;
     const homeId = seriesHomeTeam(m, m.highWins + m.lowWins);
     const awayId = homeId === m.high ? m.low : m.high;
-    const r = simGame(getTeam(league, homeId).roster, getTeam(league, awayId).roster, rng);
+    const r = simGame(getTeam(league, homeId), getTeam(league, awayId), rng);
     if (!m.games) m.games = [];
     m.games.push({ home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts });
     po.gamesPlayed += 1;

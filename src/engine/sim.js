@@ -1,25 +1,43 @@
 import { rand, gauss, clamp } from './rng.js';
 import { overall } from './players.js';
+import { POSITIONS, autoLineup, lineupErrors, posFit } from './lineup.js';
 
-// Rotation: top 9 by overall get minutes
-export function getRotation(roster) {
-  const sorted = [...roster].sort((a, b) => overall(b) - overall(a));
-  const rot = sorted.slice(0, 9);
-  const MINUTES = [36, 34, 33, 30, 28, 22, 18, 14, 10]; // sums to ~225 ≈ 240 with noise
-  return rot.map((p, i) => ({ p, min: MINUTES[i] || 8 }));
+// A team's game rotation: the saved lineup when it's legal, otherwise a
+// fresh auto lineup (AI teams never store one). Each entry carries the slot
+// the player occupies so out-of-position starters get a fit penalty.
+export function getRotation(team) {
+  const lineup = team.lineup && lineupErrors(team.lineup, team.roster).length === 0
+    ? team.lineup
+    : autoLineup(team.roster);
+  const rot = [];
+  for (const pos of POSITIONS) {
+    const s = lineup.starters[pos];
+    const p = s.id != null ? team.roster.find((x) => x.id === s.id) : null;
+    if (p && s.min > 0) rot.push({ p, min: s.min, slot: pos });
+  }
+  for (const b of lineup.bench) {
+    const p = team.roster.find((x) => x.id === b.id);
+    if (p && b.min > 0) rot.push({ p, min: b.min, slot: p.pos }); // bench subs at natural position
+  }
+  return rot;
 }
 
-export function teamStrength(roster) {
-  const rot = getRotation(roster);
+function rotationStrength(rot) {
   if (rot.length === 0) return 30;
   const totalMin = rot.reduce((s, r) => s + r.min, 0);
-  return rot.reduce((s, r) => s + overall(r.p) * r.min, 0) / totalMin;
+  return rot.reduce((s, r) => s + overall(r.p) * posFit(r.p.pos, r.slot) * r.min, 0) / totalMin;
 }
 
-// Simulate one game between two rosters. Returns box score + result.
-export function simGame(homeRoster, awayRoster, rng = rand) {
-  const hs = teamStrength(homeRoster) + 1.5; // home court
-  const as = teamStrength(awayRoster);
+export function teamStrength(team) {
+  return rotationStrength(getRotation(team));
+}
+
+// Simulate one game between two teams. Returns box score + result.
+export function simGame(homeTeam, awayTeam, rng = rand) {
+  const homeRot = getRotation(homeTeam);
+  const awayRot = getRotation(awayTeam);
+  const hs = rotationStrength(homeRot) + 1.5; // home court
+  const as = rotationStrength(awayRot);
 
   const diff = hs - as;
   const base = 112;
@@ -30,13 +48,12 @@ export function simGame(homeRoster, awayRoster, rng = rand) {
   return {
     homePts: Math.max(70, homePts),
     awayPts: Math.max(70, awayPts),
-    homeBox: distributeStats(homeRoster, Math.max(70, homePts), rng),
-    awayBox: distributeStats(awayRoster, Math.max(70, awayPts), rng),
+    homeBox: distributeStats(homeRot, Math.max(70, homePts), rng),
+    awayBox: distributeStats(awayRot, Math.max(70, awayPts), rng),
   };
 }
 
-function distributeStats(roster, teamPts, rng) {
-  const rot = getRotation(roster);
+function distributeStats(rot, teamPts, rng) {
   const totalMin = rot.reduce((s, r) => s + r.min, 0);
   // usage weight: scoring ability * minutes
   const weights = rot.map(({ p, min }) => {
