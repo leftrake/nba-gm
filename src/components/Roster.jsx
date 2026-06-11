@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, releasePlayer, standings, dateForDay } from '../engine/league.js';
 import { overall } from '../engine/players.js';
+import { scoutedOverall } from '../engine/scouting.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
-import { Ovr, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink } from './shared.jsx';
+import { Ovr, Pot, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink } from './shared.jsx';
 
 export default function Roster({ league, commit, teamId, openTeam, openPlayer }) {
   const [sortKey, setSortKey] = useState('ovr');
@@ -23,8 +24,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
   const upcoming = games.filter((x) => x.di >= league.dayIndex).slice(0, 5);
   const oppOf = (g) => getTeam(league, g.home === team.id ? g.away : g.home);
 
+  const seenOvr = (p) => (isUser ? overall(p) : scoutedOverall(p, league.season));
   const sorted = [...team.roster].sort((a, b) => {
-    if (sortKey === 'ovr') return overall(b) - overall(a);
+    if (sortKey === 'ovr') return seenOvr(b) - seenOvr(a);
     if (sortKey === 'age') return a.age - b.age;
     if (sortKey === 'salary') return (b.contract?.salary || 0) - (a.contract?.salary || 0);
     if (sortKey === 'pts') return (b.stats.gp ? b.stats.pts / b.stats.gp : 0) - (a.stats.gp ? a.stats.pts / a.stats.gp : 0);
@@ -115,8 +117,8 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
           <tbody>
             {sorted.map((p) => (
               <tr key={p.id}>
-                <td><Ovr p={p} /></td>
-                <td style={{ color: 'var(--muted)' }}>{p.potential}</td>
+                <td><Ovr p={p} league={league} fogged={!isUser} /></td>
+                <td><Pot p={p} league={league} fogged={!isUser} /></td>
                 <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
                 <td>{p.pos}</td>
                 <td className="num">{p.age}</td>

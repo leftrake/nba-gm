@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
-import { overall } from '../engine/players.js';
 import { askingPrice } from '../engine/league.js';
-import { Ovr, money, perGame, fgPct, TeamLink } from './shared.jsx';
+import { scoutRange } from '../engine/scouting.js';
+import { Ovr, Pot, money, perGame, fgPct, TeamLink } from './shared.jsx';
 
 const RATINGS = [
   ['inside', 'Inside'],
@@ -48,7 +48,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
   }, [onClose]);
 
   const team = league.teams.find((t) => t.roster.some((x) => x.id === p.id));
-  const ovr = overall(p);
+  const fogged = team?.id !== league.userTeamId;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -62,20 +62,22 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
         </div>
 
         <p style={{ margin: '10px 0' }}>
-          Overall: <Ovr p={p} /> · Potential: <b>{p.potential}</b> ·{' '}
+          Overall: <Ovr p={p} league={league} fogged={fogged} /> · Potential: <Pot p={p} league={league} fogged={fogged} /> ·{' '}
           {p.contract
             ? <>Contract: <b>{money(p.contract.salary)}</b>/yr × <b>{p.contract.years}</b> {p.contract.years === 1 ? 'year' : 'years'}</>
             : <>Asking: <b>{money(askingPrice(p))}</b>/yr</>}
         </p>
 
-        <h3>Ratings</h3>
+        <h3>Ratings {fogged && <span style={{ color: 'var(--muted)', textTransform: 'none', letterSpacing: 0 }}>(scouted — ranges tighten with experience)</span>}</h3>
         {RATINGS.map(([key, label]) => {
           const v = p.ratings[key];
+          const [lo, hi] = fogged ? scoutRange(p, v, league.season, key) : [v, v];
+          const mid = (lo + hi) / 2;
           return (
             <div className="rating-row" key={key}>
               <span style={{ color: 'var(--muted)' }}>{label}</span>
-              <div className="rating-bar"><div style={{ width: `${v}%`, background: barColor(v) }} /></div>
-              <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+              <div className="rating-bar"><div style={{ width: `${mid}%`, background: fogged ? 'var(--muted)' : barColor(v) }} /></div>
+              <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fogged ? `${lo}–${hi}` : v}</span>
             </div>
           );
         })}

@@ -1,21 +1,24 @@
 import React, { useState } from 'react';
 import { getTeam } from '../engine/league.js';
 import { overall } from '../engine/players.js';
+import { scoutedOverall } from '../engine/scouting.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
-import { Ovr, money, PlayerLink } from './shared.jsx';
+import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
 
-function TradeSide({ team, selected, toggle, openPlayer }) {
-  const sorted = [...team.roster].sort((a, b) => overall(b) - overall(a));
+function TradeSide({ league, team, fogged, selected, toggle, openPlayer }) {
+  const seenOvr = (p) => (fogged ? scoutedOverall(p, league.season) : overall(p));
+  const sorted = [...team.roster].sort((a, b) => seenOvr(b) - seenOvr(a));
   return (
     <table>
       <thead>
-        <tr><th></th><th>Ovr</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Salary</th><th className="num">Value</th></tr>
+        <tr><th></th><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Salary</th><th className="num">Value</th></tr>
       </thead>
       <tbody>
         {sorted.map((p) => (
           <tr key={p.id} className="clickable" onClick={() => toggle(p.id)}>
             <td><input type="checkbox" readOnly checked={selected.includes(p.id)} /></td>
-            <td><Ovr p={p} /></td>
+            <td><Ovr p={p} league={league} fogged={fogged} /></td>
+            <td><Pot p={p} league={league} fogged={fogged} /></td>
             <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
             <td>{p.pos}</td>
             <td className="num">{p.age}</td>
@@ -97,11 +100,11 @@ export default function TradeMachine({ league, commit, openPlayer }) {
       <div className="grid2">
         <div className="panel">
           <h2>You Send ({userTeam.name})</h2>
-          <TradeSide team={userTeam} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
+          <TradeSide league={league} team={userTeam} fogged={false} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
         </div>
         <div className="panel">
           <h2>You Receive ({otherTeam.name})</h2>
-          <TradeSide team={otherTeam} selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
+          <TradeSide league={league} team={otherTeam} fogged selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
         </div>
       </div>
     </div>

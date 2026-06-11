@@ -1,11 +1,28 @@
 import React from 'react';
 import { overall } from '../engine/players.js';
+import { scoutedOverallRange, scoutedPotential, potentialGrade } from '../engine/scouting.js';
 import { TEAMS } from '../data/teams.js';
 
-export function Ovr({ p }) {
+function ovrClass(o) {
+  return o >= 85 ? 'elite' : o >= 75 ? 'great' : o >= 65 ? 'good' : o >= 55 ? 'ok' : 'bad';
+}
+
+// Exact overall for the user's own players; a scouted range for everyone
+// else, uncolored so the tier color doesn't give anything away.
+export function Ovr({ p, league, fogged }) {
+  if (fogged) {
+    const [lo, hi] = scoutedOverallRange(p, league.season);
+    return <span className="ovr">{lo}–{hi}</span>;
+  }
   const o = overall(p);
-  const cls = o >= 85 ? 'elite' : o >= 75 ? 'great' : o >= 65 ? 'good' : o >= 55 ? 'ok' : 'bad';
-  return <span className={`ovr ${cls}`}>{o}</span>;
+  return <span className={`ovr ${ovrClass(o)}`}>{o}</span>;
+}
+
+// Potential is never shown as a number — letter grade only, fuzzed for
+// players the GM can't scout exactly. The grade is all you get: no color.
+export function Pot({ p, league, fogged }) {
+  const v = scoutedPotential(p, league.season, fogged);
+  return <span className="ovr" style={{ color: 'var(--muted)' }}>{potentialGrade(v)}</span>;
 }
 
 export function money(n) {
