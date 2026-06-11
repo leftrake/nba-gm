@@ -3,43 +3,7 @@ import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engi
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
-
-function BoxTable({ league, teamId, box, openTeam, openPlayer }) {
-  const team = getTeam(league, teamId);
-  const byId = new Map(team.roster.map((p) => [p.id, p]));
-  return (
-    <div>
-      <h3><TeamLink team={team} openTeam={openTeam} /></h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th><th className="num">MIN</th><th className="num">PTS</th><th className="num">REB</th>
-            <th className="num">AST</th><th className="num">STL</th><th className="num">BLK</th>
-            <th className="num">FG</th><th className="num">3P</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[...box].sort((a, b) => b.pts - a.pts).map((line) => {
-            const p = byId.get(line.playerId);
-            return (
-              <tr key={line.playerId}>
-                <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}</td>
-                <td className="num">{line.min}</td>
-                <td className="num"><b>{line.pts}</b></td>
-                <td className="num">{line.reb}</td>
-                <td className="num">{line.ast}</td>
-                <td className="num">{line.stl}</td>
-                <td className="num">{line.blk}</td>
-                <td className="num">{line.fgm}-{line.fga}</td>
-                <td className="num">{line.tpm}-{line.tpa}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+import { BoxTable } from './BoxScore.jsx';
 
 export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer }) {
   const team = getTeam(league, league.userTeamId);

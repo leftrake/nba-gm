@@ -24,10 +24,13 @@ function barColor(v) {
 function StatLine({ stats }) {
   if (!stats.gp) return <p style={{ color: 'var(--muted)' }}>No games played this season.</p>;
   const tp = stats.tpa ? ((stats.tpm / stats.tpa) * 100).toFixed(1) : '–';
+  const ft = stats.fta ? ((stats.ftm / stats.fta) * 100).toFixed(1) : '–';
   const cells = [
     ['GP', stats.gp], ['MPG', perGame(stats, 'min')], ['PPG', perGame(stats, 'pts')],
     ['RPG', perGame(stats, 'reb')], ['APG', perGame(stats, 'ast')], ['SPG', perGame(stats, 'stl')],
-    ['BPG', perGame(stats, 'blk')], ['FG%', fgPct(stats)], ['3P%', tp],
+    ['BPG', perGame(stats, 'blk')], ['TOPG', stats.tov != null ? perGame(stats, 'tov') : '–'],
+    ['PFPG', stats.pf != null ? perGame(stats, 'pf') : '–'],
+    ['FG%', fgPct(stats)], ['3P%', tp], ['FT%', ft],
   ];
   return (
     <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>

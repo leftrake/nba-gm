@@ -94,6 +94,7 @@ a.team-link:hover { color: var(--accent); text-decoration: underline; }
   max-height: 90vh;
   overflow-y: auto;
 }
+.modal-card.wide { max-width: 1040px; }
 
 .rating-row {
   display: grid;

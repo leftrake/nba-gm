@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { getTeam, dateForDay } from '../engine/league.js';
 import { fmtDate, TeamLink } from './shared.jsx';
+import BoxScoreModal from './BoxScore.jsx';
 
-export default function Schedule({ league, openTeam }) {
+export default function Schedule({ league, openTeam, openPlayer }) {
   const me = league.userTeamId;
   const lastDay = league.schedule.length - 1;
   const [selDay, setSelDay] = useState(() => Math.min(league.dayIndex, lastDay));
+  const [boxGame, setBoxGame] = useState(null); // { r, di } — stored result + day
   const day = Math.min(selDay, lastDay);
 
   const resultFor = (di, g) =>
@@ -21,16 +23,22 @@ export default function Schedule({ league, openTeam }) {
 
   const oppOf = (g) => getTeam(league, g.home === me ? g.away : g.home);
 
-  const ScoreCells = ({ g, r }) => {
+  // results from saves predating the possession sim have no stored box score
+  const ScoreCells = ({ g, r, di }) => {
     if (!r) return <td className="num" colSpan={2}>–</td>;
     const myPts = g.home === me ? r.homePts : r.awayPts;
     const oppPts = g.home === me ? r.awayPts : r.homePts;
+    const score = `${myPts}-${oppPts}`;
     return (
       <>
         <td style={{ color: myPts > oppPts ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
           {myPts > oppPts ? 'W' : 'L'}
         </td>
-        <td className="num">{myPts}-{oppPts}</td>
+        <td className="num">
+          {r.homeBox
+            ? <a className="team-link" title="View box score" onClick={() => setBoxGame({ r, di })}>{score}</a>
+            : score}
+        </td>
       </>
     );
   };
@@ -76,7 +84,7 @@ export default function Schedule({ league, openTeam }) {
                       <tr key={di}>
                         <td>{fmtDate(dateForDay(league, di))}</td>
                         <td>{g.home === me ? 'vs' : '@'} <TeamLink team={opp} openTeam={openTeam} /></td>
-                        <ScoreCells g={g} r={r} />
+                        <ScoreCells g={g} r={r} di={di} />
                       </tr>
                     );
                   })}
@@ -112,6 +120,12 @@ export default function Schedule({ league, openTeam }) {
                   <span className={r.homePts > r.awayPts ? 'winner' : ''}>
                     <TeamLink team={getTeam(league, g.home)} openTeam={openTeam}>{g.home}</TeamLink> {r.homePts}
                   </span>
+                  {r.homeBox && (
+                    <a className="team-link" style={{ color: 'var(--muted)', fontSize: 12 }}
+                       onClick={() => setBoxGame({ r, di: day })}>
+                      box
+                    </a>
+                  )}
                 </>
               ) : (
                 <>
@@ -124,6 +138,17 @@ export default function Schedule({ league, openTeam }) {
           );
         })}
       </div>
+
+      {boxGame && (
+        <BoxScoreModal
+          league={league}
+          game={boxGame.r}
+          title={fmtDate(dateForDay(league, boxGame.di))}
+          onClose={() => setBoxGame(null)}
+          openTeam={openTeam}
+          openPlayer={openPlayer}
+        />
+      )}
     </div>
   );
 }

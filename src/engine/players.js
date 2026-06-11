@@ -104,6 +104,13 @@ export function ageModifier(age) {
   return -3.0;
 }
 
+// Free-throw shooting, derived from shooting touch rather than stored as a
+// rating, so it exists for every player including those in old saves.
+export function ftRating(p) {
+  const r = p.ratings;
+  return Math.round(clamp(r.mid * 0.5 + r.three * 0.3 + r.passing * 0.2, 25, 99));
+}
+
 export function overall(p) {
   const r = p.ratings;
   return Math.round(
@@ -148,7 +155,7 @@ export function generatePlayer(rng = rand, opts = {}) {
 }
 
 export function emptyStats() {
-  return { gp: 0, min: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0 };
+  return { gp: 0, min: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0 };
 }
 
 export function salaryFor(ovr, age) {

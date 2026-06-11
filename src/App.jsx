@@ -231,7 +231,7 @@ export default function App() {
         {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
-        {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} />}
+        {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}

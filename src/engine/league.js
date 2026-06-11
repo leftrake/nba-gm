@@ -1,7 +1,7 @@
 import { TEAMS, SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
-import { simGame, applyBoxToStats } from './sim.js';
+import { simGame, applyBoxToStats, encodeBox } from './sim.js';
 import { initDraft } from './draft.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
@@ -177,6 +177,9 @@ export function backfillPlayers(league) {
   const fill = (p) => {
     if (!p.nationality) assignOrigin(p, rng);
     if (p.exp == null) p.exp = Math.max(0, p.age - randInt(19, 22, rng));
+    // stats fields added with the possession sim
+    if (p.stats && p.stats.ftm == null) { p.stats.ftm = 0; p.stats.fta = 0; p.stats.tov = 0; }
+    if (p.stats && p.stats.pf == null) p.stats.pf = 0;
   };
   for (const team of league.teams) team.roster.forEach(fill);
   league.freeAgents.forEach(fill);
@@ -218,8 +221,12 @@ export function simDay(league) {
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox });
   }
   if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
-  // persist scores only — box scores would bloat the localStorage save
-  league.resultsByDay[league.dayIndex] = results.map(({ home, away, homePts, awayPts }) => ({ home, away, homePts, awayPts }));
+  // box scores persist in compact array form (see BOX_COLS in sim.js) so a
+  // full season of them stays around ~1MB of localStorage; resultsByDay
+  // resets every season, so they don't pile up across years
+  league.resultsByDay[league.dayIndex] = results.map(({ home, away, homePts, awayPts, homeBox, awayBox }) => ({
+    home, away, homePts, awayPts, homeBox: encodeBox(homeBox), awayBox: encodeBox(awayBox),
+  }));
   maybeAiTrade(league, rng);
   league.dayIndex += 1;
   if (league.dayIndex >= league.schedule.length) {
