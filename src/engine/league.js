@@ -3,6 +3,7 @@ import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
 import { simGame, applyBoxToStats, encodeBox } from './sim.js';
 import { initDraft } from './draft.js';
+import { computeAwards, honorsSummary } from './awards.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
 
@@ -180,6 +181,7 @@ export function backfillPlayers(league) {
     // stats fields added with the possession sim
     if (p.stats && p.stats.ftm == null) { p.stats.ftm = 0; p.stats.fta = 0; p.stats.tov = 0; }
     if (p.stats && p.stats.pf == null) p.stats.pf = 0;
+    if (!p.awards) p.awards = []; // saves predating awards
   };
   for (const team of league.teams) team.roster.forEach(fill);
   league.freeAgents.forEach(fill);
@@ -232,6 +234,7 @@ export function simDay(league) {
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
     league.playoffs = initPlayoffs(league);
+    computeAwards(league);
     league.news.unshift({ day: league.dayIndex, text: 'The regular season is over. Playoffs begin!' });
   }
   return results;
@@ -341,13 +344,32 @@ export function simPlayoffRound(league) {
 }
 
 // ---------- Offseason ----------
+// A retirement write-up with career averages and honors. Pool players who
+// never appeared in an NBA game leave silently.
+function announceRetirement(league, p) {
+  const tot = (p.careerStats || []).reduce(
+    (a, s) => ({ gp: a.gp + s.gp, pts: a.pts + s.pts, reb: a.reb + s.reb, ast: a.ast + s.ast }),
+    { gp: 0, pts: 0, reb: 0, ast: 0 }
+  );
+  if (!tot.gp) return;
+  const seasons = p.careerStats.length;
+  const avg = (k) => (tot[k] / tot.gp).toFixed(1);
+  let text = `${p.name} retires at age ${p.age} after ${seasons} season${seasons === 1 ? '' : 's'}: `
+    + `${avg('pts')} ppg, ${avg('reb')} rpg, ${avg('ast')} apg across ${tot.gp} games.`;
+  const honors = honorsSummary(p.awards);
+  if (honors) text += ` Honors: ${honors}.`;
+  league.news.unshift({ day: 0, text });
+}
+
 export function advanceOffseason(league) {
   const rng = makeRng(league.seed + league.season * 104729);
   league.history.push({
     season: league.season,
     champion: league.playoffs?.champion || null,
     userRecord: `${getTeam(league, league.userTeamId).wins}-${getTeam(league, league.userTeamId).losses}`,
+    awards: league.seasonAwards ?? null, // snapshot from computeAwards at season's end
   });
+  league.seasonAwards = null;
 
   const expiring = [];
   for (const team of league.teams) {
@@ -373,17 +395,19 @@ export function advanceOffseason(league) {
     team.losses = 0;
   }
 
-  // Expiring contracts → free agency (or quiet retirement)
+  // Expiring contracts → free agency (or retirement)
   for (const { team, p } of expiring) {
     team.roster = team.roster.filter((x) => x.id !== p.id);
-    if (p.age > 38 || overall(p) < 40) continue; // retire quietly
+    if (p.age > 38 || overall(p) < 40) { announceRetirement(league, p); continue; }
     league.freeAgents.push(p);
   }
 
   // Age free agents, drop retirees, top up the pool
   league.freeAgents = league.freeAgents.filter((p) => {
     developPlayer(p, rng);
-    return p.age <= 38 && overall(p) >= 38;
+    if (p.age <= 38 && overall(p) >= 38) return true;
+    announceRetirement(league, p);
+    return false;
   });
   while (league.freeAgents.length < 50) {
     const p = generatePlayer(rng, { age: randInt(19, 30, rng) });

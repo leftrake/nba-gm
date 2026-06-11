@@ -147,6 +147,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     contract: null,
     stats: emptyStats(),
     careerStats: [],
+    awards: [], // { season, award } — filled by engine/awards.js
   };
   assignOrigin(p, rng);
   p.potential = clamp(overall(p) + Math.max(0, Math.round((27 - age) * 1.8 + gauss(0, 4, rng))), overall(p), 99);

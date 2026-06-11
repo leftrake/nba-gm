@@ -89,12 +89,13 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
         <div className="panel">
           <h2>History</h2>
           <table>
-            <thead><tr><th>Season</th><th>Champion</th><th>Your Record</th></tr></thead>
+            <thead><tr><th>Season</th><th>Champion</th><th>MVP</th><th>Your Record</th></tr></thead>
             <tbody>
               {[...league.history].reverse().map((h) => (
                 <tr key={h.season}>
                   <td>{h.season}</td>
                   <td>{h.champion ? <TeamLink team={getTeam(league, h.champion)} openTeam={openTeam} /> : '–'}</td>
+                  <td>{h.awards?.mvp?.name ?? '–'}</td>
                   <td>{h.userRecord}</td>
                 </tr>
               ))}

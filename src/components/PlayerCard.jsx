@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { askingPrice } from '../engine/league.js';
+import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
 import { Ovr, Pot, money, perGame, fgPct, TeamLink, Origin } from './shared.jsx';
 
@@ -87,6 +88,18 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
 
         <h3 style={{ marginTop: 14 }}>This Season ({league.season})</h3>
         <StatLine stats={p.stats} />
+
+        {p.awards?.length > 0 && (
+          <>
+            <h3 style={{ marginTop: 14 }}>Awards</h3>
+            {groupAwards(p.awards).map((g) => (
+              <div key={g.award} style={{ marginBottom: 2 }}>
+                {g.seasons.length > 1 && <b>{g.seasons.length}× </b>}{g.award}{' '}
+                <span style={{ color: 'var(--muted)' }}>({g.seasons.join(', ')})</span>
+              </div>
+            ))}
+          </>
+        )}
 
         <h3 style={{ marginTop: 14 }}>Career</h3>
         {p.careerStats.length === 0 && <p style={{ color: 'var(--muted)' }}>No previous seasons.</p>}

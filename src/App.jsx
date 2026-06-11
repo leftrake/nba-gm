@@ -5,6 +5,7 @@ import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } 
 import Dashboard from './components/Dashboard.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
+import Leaders from './components/Leaders.jsx';
 import Schedule from './components/Schedule.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
@@ -145,6 +146,7 @@ export default function App() {
     ['dashboard', 'Dashboard'],
     ['roster', 'Roster'],
     ['standings', 'Standings'],
+    ['leaders', 'Leaders'],
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
     ['draft', 'Draft'],
@@ -231,6 +233,7 @@ export default function App() {
         {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
+        {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
