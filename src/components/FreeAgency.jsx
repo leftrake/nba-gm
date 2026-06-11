@@ -1,28 +1,48 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, signFreeAgent, askingPrice } from '../engine/league.js';
-import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
-import { Ovr, money, PlayerLink } from './shared.jsx';
+import { getTeam, payroll, makeOffer, askingPrice } from '../engine/league.js';
+import { scoutedOverall } from '../engine/scouting.js';
+import { SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
+import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
+
+const OFFERS_PER_ROUND = 3;
 
 export default function FreeAgency({ league, commit, openPlayer }) {
   const team = getTeam(league, league.userTeamId);
-  const pay = payroll(team);
-  const room = SALARY_CAP - pay;
-  const [message, setMessage] = useState(null);
+  const room = SALARY_CAP - payroll(team);
   const isOpen = league.phase === 'freeagency';
+  const [negotiatingId, setNegotiatingId] = useState(null);
+  const [salaryM, setSalaryM] = useState(5);
+  const [years, setYears] = useState(2);
+  const [responses, setResponses] = useState({}); // playerId -> last makeOffer result
+  const [message, setMessage] = useState(null); // top-level note (signings)
 
-  const sign = (p) => {
-    const price = askingPrice(p);
-    if (team.roster.length >= ROSTER_MAX) {
-      setMessage({ type: 'error', text: 'Roster full (15). Waive someone first.' });
+  const negotiations = league.negotiations || {};
+
+  const toggleNegotiation = (p) => {
+    if (negotiatingId === p.id) {
+      setNegotiatingId(null);
       return;
     }
-    if (price > room && price > 1_300_000) {
-      setMessage({ type: 'error', text: `Not enough cap room for ${p.name} (${money(price)} asking, ${money(Math.max(room, 0))} available). Minimum contracts can always be signed.` });
-      return;
+    setNegotiatingId(p.id);
+    setSalaryM(askingPrice(p) / 1e6);
+    setYears(2);
+  };
+
+  const offer = (p, salM, yrs) => {
+    const res = makeOffer(league, team.id, p.id, Math.round(salM * 10) * 100_000, yrs);
+    if (res.ok && res.decision === 'accept') {
+      setMessage({ type: 'ok', text: res.reason });
+      setNegotiatingId(null);
+    } else {
+      setMessage(null);
     }
-    signFreeAgent(league, team.id, p.id);
-    setMessage({ type: 'ok', text: `Signed ${p.name}!` });
+    setResponses((r) => ({ ...r, [p.id]: res }));
     commit();
+  };
+
+  const offersUsed = (p) => {
+    const n = negotiations[p.id];
+    return n && n.round === league.faDaysLeft ? n.offers : 0;
   };
 
   return (
@@ -30,7 +50,9 @@ export default function FreeAgency({ league, commit, openPlayer }) {
       <h2>Free Agents</h2>
       <p style={{ marginBottom: 10, color: 'var(--muted)' }}>
         Cap room: <b style={{ color: room > 0 ? 'var(--green)' : 'var(--red)' }}>{money(room)}</b> · Roster: {team.roster.length}/{ROSTER_MAX}
-        {!isOpen && ' · Signings open during the Free Agency phase (after the offseason advance), but you can browse anytime.'}
+        {isOpen
+          ? ' · Negotiate salary and years — players weigh money, your record, and their role. Other teams sign players every round, including ones you\'re talking to.'
+          : ' · Signings open during the Free Agency phase (after the offseason advance), but you can browse anytime.'}
       </p>
       {message && <p style={{ marginBottom: 10, color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{message.text}</p>}
       <table>
@@ -38,19 +60,76 @@ export default function FreeAgency({ league, commit, openPlayer }) {
           <tr><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Asking</th><th></th></tr>
         </thead>
         <tbody>
-          {league.freeAgents.slice(0, 50).map((p) => (
-            <tr key={p.id}>
-              <td><Ovr p={p} /></td>
-              <td style={{ color: 'var(--muted)' }}>{p.potential}</td>
-              <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-              <td>{p.pos}</td>
-              <td className="num">{p.age}</td>
-              <td className="num">{money(askingPrice(p))}</td>
-              <td>
-                <button className="btn small" disabled={!isOpen} onClick={() => sign(p)}>Sign</button>
-              </td>
-            </tr>
-          ))}
+          {[...league.freeAgents]
+            .sort((a, b) => scoutedOverall(b, league.season) - scoutedOverall(a, league.season))
+            .slice(0, 50)
+            .map((p) => {
+              const res = responses[p.id];
+              const counter = negotiations[p.id]?.counter;
+              const left = OFFERS_PER_ROUND - offersUsed(p);
+              return (
+                <React.Fragment key={p.id}>
+                  <tr>
+                    <td><Ovr p={p} league={league} fogged /></td>
+                    <td><Pot p={p} league={league} fogged /></td>
+                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                    <td>{p.pos}</td>
+                    <td className="num">{p.age}</td>
+                    <td className="num">{money(askingPrice(p))}</td>
+                    <td>
+                      <button className="btn small" disabled={!isOpen} onClick={() => toggleNegotiation(p)}>
+                        {negotiatingId === p.id ? 'Close' : counter ? 'Counter…' : 'Negotiate'}
+                      </button>
+                    </td>
+                  </tr>
+                  {negotiatingId === p.id && isOpen && (
+                    <tr>
+                      <td colSpan={7} style={{ background: 'var(--bg)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
+                          <label>
+                            Salary ($M):{' '}
+                            <input
+                              type="number"
+                              min={MIN_SALARY / 1e6}
+                              max={MAX_SALARY / 1e6}
+                              step={0.5}
+                              value={salaryM}
+                              onChange={(e) => setSalaryM(Number(e.target.value))}
+                              style={{ width: 80 }}
+                            />
+                          </label>
+                          <label>
+                            Years:{' '}
+                            <select value={years} onChange={(e) => setYears(Number(e.target.value))}>
+                              {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </label>
+                          <button className="btn small" disabled={left <= 0} onClick={() => offer(p, salaryM, years)}>
+                            Submit Offer
+                          </button>
+                          <span style={{ color: 'var(--muted)' }}>
+                            {left > 0 ? `${left} offer${left === 1 ? '' : 's'} left this round` : 'Agent unavailable until next round'}
+                          </span>
+                          {counter && (
+                            <span style={{ color: 'var(--accent)' }}>
+                              Counter on the table: {money(counter.salary)} x {counter.years}yr{' '}
+                              <button className="btn small" onClick={() => offer(p, counter.salary / 1e6, counter.years)}>
+                                Accept Counter
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                        {res && !(res.ok && res.decision === 'accept') && (
+                          <div style={{ padding: '0 4px 6px', color: !res.ok || res.decision === 'reject' ? 'var(--red)' : 'var(--accent)' }}>
+                            {res.ok ? res.reason : res.error}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
         </tbody>
       </table>
     </div>

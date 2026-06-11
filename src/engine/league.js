@@ -1,4 +1,4 @@
-import { TEAMS } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor } from './players.js';
 import { simGame, applyBoxToStats } from './sim.js';
@@ -325,6 +325,7 @@ export function advanceOffseason(league) {
         }
       }
     }
+    team.lastWins = team.wins; // free agents judge teams by last season's record
     team.wins = 0;
     team.losses = 0;
   }
@@ -351,22 +352,32 @@ export function advanceOffseason(league) {
   league.season += 1;
   league.phase = 'freeagency';
   league.faDaysLeft = 5;
+  league.negotiations = {};
   league.news.unshift({ day: 0, text: `Welcome to the ${league.season} offseason. Free agency is open for 5 rounds of signings.` });
 }
 
-// AI teams sign free agents each FA day
+// AI teams pursue free agents each FA round, negotiating under the same
+// preference rules as the user: a player can turn a team down, so each team
+// works down a short target list.
 export function simFreeAgencyDay(league) {
   const rng = makeRng(league.seed + league.season * 31 + league.faDaysLeft);
-  const CAP = 141_000_000;
   for (const team of league.teams) {
     if (team.id === league.userTeamId) continue;
-    if (team.roster.length >= 15) continue;
+    if (team.roster.length >= ROSTER_MAX) continue;
     if (rng() > 0.6) continue;
-    const room = CAP - payroll(team);
-    const affordable = league.freeAgents.filter((p) => askingPrice(p) <= Math.max(room, 1_200_000));
-    if (!affordable.length) continue;
-    const target = affordable[Math.floor(Math.pow(rng(), 2) * Math.min(affordable.length, 10))];
-    signFreeAgent(league, team.id, target.id);
+    const room = SALARY_CAP - payroll(team);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const affordable = league.freeAgents.filter((p) => askingPrice(p) <= Math.max(room, MIN_SALARY));
+      if (!affordable.length) break;
+      const target = affordable[Math.floor(Math.pow(rng(), 2) * Math.min(affordable.length, 10))];
+      const years = preferredYears(target);
+      const demand = offerDemand(league, team.id, target, years);
+      // how far above asking price this front office will stretch
+      const maxPay = Math.max(askingPrice(target) * (1 + rng() * 0.3), MIN_SALARY);
+      if (demand === null || demand > maxPay || (demand > room && demand > MIN_SALARY)) continue;
+      signFreeAgent(league, team.id, target.id, demand, years);
+      break;
+    }
   }
   league.faDaysLeft -= 1;
   if (league.faDaysLeft <= 0) startNewSeason(league);
@@ -376,15 +387,138 @@ export function askingPrice(p) {
   return salaryFor(overall(p), p.age);
 }
 
-export function signFreeAgent(league, teamId, playerId) {
+// ---------- Free agency negotiation ----------
+// Free agents weigh three things beyond the raw asking price: greed (some
+// demand more than market value), team quality (good players discount for
+// winners and surcharge losing teams), and role (stars won't join a team
+// with two better players at their position). Personality is derived
+// deterministically from the player id, so it needs no stored state and
+// survives save/load.
+
+function faNoise(playerId, salt) {
+  let h = (Math.imul(playerId + 1, 374761393) ^ Math.imul(salt, 668265263)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function greed(p) {
+  return 0.95 + faNoise(p.id, 1) * 0.35; // demands 0.95x–1.30x asking price
+}
+
+export function preferredYears(p) {
+  const n = faNoise(p.id, 2);
+  if (p.age <= 24) return n > 0.4 ? 4 : 3;
+  if (p.age <= 29) return 2 + Math.floor(n * 3);
+  return n > 0.6 ? 3 : 2;
+}
+
+function betterAtPosition(team, p) {
+  const o = overall(p);
+  return team.roster.filter((x) => x.pos === p.pos && overall(x) > o).length;
+}
+
+function roleBlocked(team, p) {
+  return overall(p) >= 75 && betterAtPosition(team, p) >= 2;
+}
+
+// Salary at which this player accepts `years` from this team, or null if
+// no amount of money will do (role-blocked star).
+export function offerDemand(league, teamId, p, years) {
+  const team = getTeam(league, teamId);
+  if (roleBlocked(team, p)) return null;
+  const o = overall(p);
+  let mult = greed(p);
+  const winPct = (team.lastWins ?? 41) / 82;
+  const caresAboutWinning = clamp((o - 60) / 25, 0, 1);
+  mult *= clamp(1 + caresAboutWinning * (0.55 - winPct), 0.85, 1.3);
+  if (o >= 65 && betterAtPosition(team, p) >= 2) mult *= 1.15;
+  const pref = preferredYears(p);
+  if (years < pref) mult *= 1 + 0.08 * (pref - years);
+  else if (years > pref) mult *= Math.max(0.9, 1 - 0.03 * (years - pref));
+  const sal = Math.round((askingPrice(p) * mult) / 100_000) * 100_000;
+  return clamp(sal, MIN_SALARY, MAX_SALARY);
+}
+
+const fmtM = (n) => `$${(n / 1e6).toFixed(1)}M`;
+
+export function evaluateOffer(league, teamId, p, salary, years) {
+  const team = getTeam(league, teamId);
+  if (roleBlocked(team, p)) {
+    return { decision: 'reject', reason: `${p.name} wants a featured role, and the ${team.name} already have two better players at ${p.pos}.` };
+  }
+  const demand = offerDemand(league, teamId, p, years);
+  if (salary >= demand) return { decision: 'accept' };
+  if (salary >= demand * 0.8) {
+    const pref = preferredYears(p);
+    const counterSalary = offerDemand(league, teamId, p, pref);
+    return {
+      decision: 'counter',
+      reason: `${p.name} counters: ${fmtM(counterSalary)} x ${pref}yr.`,
+      counter: { salary: counterSalary, years: pref },
+    };
+  }
+  const lastWins = team.lastWins ?? 41;
+  let reason;
+  if (salary < askingPrice(p) * 0.7) reason = `${p.name}'s agent calls the offer insulting and hangs up.`;
+  else if (lastWins < 35 && overall(p) >= 70) reason = `${p.name} wants to play for a winner — joining a ${lastWins}-win team will cost you a premium.`;
+  else if (overall(p) >= 65 && betterAtPosition(team, p) >= 2) reason = `${p.name} sees too many good ${p.pos}s on your roster and wants to be paid for the smaller role.`;
+  else if (years < preferredYears(p)) reason = `${p.name} is looking for a longer deal (${preferredYears(p)} years).`;
+  else reason = `${p.name} is holding out for more money.`;
+  return { decision: 'reject', reason };
+}
+
+// User-facing offer. Validates cap/roster, enforces per-round patience
+// (three failed offers and the agent stops talking until the next round),
+// and signs the player on acceptance. Counter-offers persist on
+// league.negotiations so they survive reloads — but the player stays on
+// the open market and can sign elsewhere between rounds.
+export function makeOffer(league, teamId, playerId, salary, years) {
+  if (league.phase !== 'freeagency') return { ok: false, error: 'Free agency is not open.' };
+  const team = getTeam(league, teamId);
+  const p = league.freeAgents.find((x) => x.id === playerId);
+  if (!p) return { ok: false, error: 'That player is no longer a free agent.' };
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
+  const room = SALARY_CAP - payroll(team);
+  if (salary > room && salary > MIN_SALARY) {
+    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available). Minimum contracts can always be offered.` };
+  }
+  league.negotiations = league.negotiations || {};
+  const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
+  if (nego.round !== league.faDaysLeft) { nego.offers = 0; nego.round = league.faDaysLeft; }
+  // accepting a standing counter is always honored, even out of patience
+  const meetsCounter = nego.counter && years === nego.counter.years && salary >= nego.counter.salary;
+  if (!meetsCounter && nego.offers >= 3) {
+    league.negotiations[playerId] = nego;
+    return { ok: false, error: `${p.name}'s agent has stopped returning your calls until the next round.` };
+  }
+  nego.offers += 1;
+  const res = meetsCounter ? { decision: 'accept' } : evaluateOffer(league, teamId, p, salary, years);
+  if (res.decision === 'accept') {
+    delete league.negotiations[playerId];
+    signFreeAgent(league, teamId, playerId, salary, years);
+    return { ok: true, decision: 'accept', reason: `${p.name} accepts: ${fmtM(salary)} x ${years}yr!` };
+  }
+  if (res.decision === 'counter') nego.counter = res.counter;
+  league.negotiations[playerId] = nego;
+  return { ok: true, ...res };
+}
+
+export function signFreeAgent(league, teamId, playerId, salary, years) {
   const team = getTeam(league, teamId);
   const idx = league.freeAgents.findIndex((p) => p.id === playerId);
-  if (idx === -1 || team.roster.length >= 15) return false;
+  if (idx === -1 || team.roster.length >= ROSTER_MAX) return false;
   const p = league.freeAgents[idx];
-  p.contract = { salary: askingPrice(p), years: clamp(Math.round(gauss(2.5, 1)), 1, 4) };
+  p.contract = {
+    salary: salary ?? askingPrice(p),
+    years: years ?? clamp(Math.round(gauss(2.5, 1)), 1, 4),
+  };
   league.freeAgents.splice(idx, 1);
   team.roster.push(p);
-  league.news.unshift({ day: 0, text: `${p.name} signs with the ${team.city} ${team.name} ($${(p.contract.salary / 1e6).toFixed(1)}M x ${p.contract.years}yr).` });
+  if (league.negotiations?.[playerId] && teamId !== league.userTeamId) {
+    league.news.unshift({ day: 0, text: `${p.name} broke off negotiations with you to sign elsewhere.` });
+  }
+  if (league.negotiations) delete league.negotiations[playerId];
+  league.news.unshift({ day: 0, text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
   return true;
 }
 
@@ -410,6 +544,7 @@ export function startNewSeason(league) {
       signFreeAgent(league, team.id, cheap.id);
     }
   }
+  league.negotiations = {};
   league.schedule = makeSchedule(league.teams, rng);
   league.dayIndex = 0;
   league.resultsByDay = [];
