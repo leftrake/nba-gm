@@ -1,0 +1,93 @@
+import React, { useState } from 'react';
+import { NewsText, fmtDate } from './shared.jsx';
+
+const CATS = [
+  ['all', 'All'],
+  ['trade', 'Trades'],
+  ['signing', 'Signings'],
+  ['injury', 'Injuries'],
+  ['draft', 'Draft'],
+  ['award', 'Awards'],
+  ['milestone', 'Milestones'],
+  ['league', 'League'],
+];
+
+const PHASE_LABELS = { offseason: 'Offseason', draft: 'Draft', freeagency: 'Free Agency' };
+
+// When a story happened: a calendar date in-season, the phase label in the
+// offseason, nothing for items from saves predating the stamp.
+function newsWhen(n) {
+  if (n.phase === 'regular' || n.phase === 'playoffs') {
+    return fmtDate(new Date(n.season - 1, 9, 21 + (n.day ?? 0)));
+  }
+  return PHASE_LABELS[n.phase] ?? '';
+}
+
+export function NewsItem({ n, openTeam }) {
+  const when = newsWhen(n);
+  return (
+    <div className={`news-item${n.major ? ' major' : ''}`}>
+      <span className="news-text"><NewsText text={n.text} openTeam={openTeam} /></span>
+      {when && <span className="news-when">{when}</span>}
+    </div>
+  );
+}
+
+export default function News({ league, openTeam }) {
+  const [cat, setCat] = useState('all');
+  const [teamId, setTeamId] = useState('all');
+
+  const matches = (n) =>
+    (cat === 'all' || n.category === cat) &&
+    (teamId === 'all' || (n.teamIds || []).includes(teamId));
+
+  const feed = league.news.filter(matches);
+  // past seasons keep only their major headlines (see engine/save.js)
+  const archive = Object.entries(league.newsArchive || {})
+    .map(([season, items]) => ({ season: Number(season), items: items.filter(matches) }))
+    .filter((s) => s.items.length > 0)
+    .sort((a, b) => b.season - a.season);
+
+  const teams = [...league.teams].sort((a, b) =>
+    a.id === league.userTeamId ? -1 : b.id === league.userTeamId ? 1 : a.city.localeCompare(b.city));
+
+  return (
+    <div>
+      <div className="panel">
+        <h2>League News · {league.season}</h2>
+        <div className="news-filters">
+          <div className="news-tabs">
+            {CATS.map(([key, label]) => (
+              <button key={key} className={cat === key ? 'active' : ''} onClick={() => setCat(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            <option value="all">All teams</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.city} {t.name}{t.id === league.userTeamId ? ' (you)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        {feed.length === 0 && (
+          <p style={{ color: 'var(--muted)' }}>No stories match these filters yet.</p>
+        )}
+        {feed.map((n, i) => (
+          <NewsItem n={n} openTeam={openTeam} key={i} />
+        ))}
+      </div>
+
+      {archive.map(({ season, items }) => (
+        <div className="panel" key={season}>
+          <h2>{season} · Biggest Stories</h2>
+          {items.map((n, i) => (
+            <NewsItem n={n} openTeam={openTeam} key={i} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}

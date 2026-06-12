@@ -116,14 +116,15 @@ export function computeAwards(league) {
   };
 
   // unshift in reverse prestige order so the news feed reads MVP first
-  const news = (text) => pushNews(league, { day: league.dayIndex, text });
+  const news = (text, extra) => pushNews(league, { day: league.dayIndex, category: 'award', ...extra, text });
   for (let i = TEAM_NAMES.length - 1; i >= 0; i--) {
-    if (allNba[i].length) news(`All-NBA ${TEAM_NAMES[i]} Team: ${allNba[i].map((c) => c.p.name).join(', ')}.`);
+    if (allNba[i].length) news(`All-NBA ${TEAM_NAMES[i]} Team: ${allNba[i].map((c) => c.p.name).join(', ')}.`,
+      { teamIds: [...new Set(allNba[i].map((c) => c.team.id))] });
   }
-  if (sixth) news(`${sixth.p.name} (${sixth.team.name}) wins Sixth Man of the Year: ${scoringLine(sixth.p.stats)}.`);
-  if (dpoy) news(`${dpoy.p.name} (${dpoy.team.name}) wins Defensive Player of the Year: ${defenseLine(dpoy.p.stats)}.`);
-  if (roy) news(`${roy.p.name} (${roy.team.name}) is the Rookie of the Year: ${scoringLine(roy.p.stats)}.`);
-  if (mvp) news(`🏆 ${mvp.p.name} (${mvp.team.name}) is the ${season} MVP: ${scoringLine(mvp.p.stats)}.`);
+  if (sixth) news(`${sixth.p.name} (${sixth.team.name}) wins Sixth Man of the Year: ${scoringLine(sixth.p.stats)}.`, { teamIds: [sixth.team.id] });
+  if (dpoy) news(`${dpoy.p.name} (${dpoy.team.name}) wins Defensive Player of the Year: ${defenseLine(dpoy.p.stats)}.`, { teamIds: [dpoy.team.id] });
+  if (roy) news(`${roy.p.name} (${roy.team.name}) is the Rookie of the Year: ${scoringLine(roy.p.stats)}.`, { teamIds: [roy.team.id] });
+  if (mvp) news(`🏆 ${mvp.p.name} (${mvp.team.name}) is the ${season} MVP: ${scoringLine(mvp.p.stats)}.`, { teamIds: [mvp.team.id], major: true });
 
   return league.seasonAwards;
 }

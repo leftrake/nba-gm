@@ -5,6 +5,7 @@ import { overall } from '../engine/players.js';
 import { starLines } from '../engine/sim.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
 import { asLines, usePlayerIndex } from './BoxScore.jsx';
+import { NewsItem } from './News.jsx';
 
 // League-wide injury report: every player currently out, the user's team
 // first, then alphabetical by team.
@@ -87,7 +88,7 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   );
 }
 
-export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer, openGame }) {
+export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
@@ -147,10 +148,15 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
       </div>
 
       <div className="panel">
-        <h2>News</h2>
-        {league.news.slice(0, 12).map((n, i) => (
-          <div className="news-item" key={i}><NewsText text={n.text} openTeam={openTeam} /></div>
+        <h2>Latest Headlines</h2>
+        {league.news.slice(0, 5).map((n, i) => (
+          <NewsItem n={n} openTeam={openTeam} key={i} />
         ))}
+        <p style={{ marginTop: 10 }}>
+          <a className="team-link" style={{ color: 'var(--accent)' }} onClick={openNews}>
+            Full news feed ▸
+          </a>
+        </p>
       </div>
 
       <InjuryReport league={league} openTeam={openTeam} openPlayer={openPlayer} />
@@ -161,14 +167,31 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
           <table>
             <thead><tr><th>Season</th><th>Champion</th><th>MVP</th><th>Your Record</th></tr></thead>
             <tbody>
-              {[...league.history].reverse().map((h) => (
-                <tr key={h.season}>
-                  <td>{h.season}</td>
-                  <td>{h.champion ? <TeamLink team={getTeam(league, h.champion)} openTeam={openTeam} /> : '–'}</td>
-                  <td>{h.awards?.mvp?.name ?? '–'}</td>
-                  <td>{h.userRecord}</td>
-                </tr>
-              ))}
+              {[...league.history].reverse().map((h) => {
+                const stories = league.newsArchive?.[h.season] ?? [];
+                return (
+                  <React.Fragment key={h.season}>
+                    <tr>
+                      <td>{h.season}</td>
+                      <td>{h.champion ? <TeamLink team={getTeam(league, h.champion)} openTeam={openTeam} /> : '–'}</td>
+                      <td>{h.awards?.mvp?.name ?? '–'}</td>
+                      <td>{h.userRecord}</td>
+                    </tr>
+                    {stories.length > 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ padding: '0 8px 6px' }}>
+                          <details>
+                            <summary className="stories-toggle">That year's biggest stories ({stories.length})</summary>
+                            {stories.map((n, i) => (
+                              <div className="news-item" key={i}><NewsText text={n.text} openTeam={openTeam} /></div>
+                            ))}
+                          </details>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

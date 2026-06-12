@@ -133,8 +133,50 @@ button.btn.small { padding: 4px 10px; font-size: 12px; }
 .ovr.ok { color: var(--text); }
 .ovr.bad { color: var(--muted); }
 
-.news-item { padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--muted); }
+.news-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
 .news-item:first-child { color: var(--text); }
+.news-item .news-text { flex: 1; }
+.news-item .news-when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* headline events: championships, MVPs, blockbusters, season-enders */
+.news-item.major {
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.news-item.major .news-when { font-weight: 400; }
+
+.news-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.news-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.news-tabs button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.news-tabs button:hover { color: var(--text); background: var(--panel2); }
+.news-tabs button.active { color: var(--text); background: var(--panel2); border-color: var(--border); }
+
+/* "biggest stories" expander in the History panel */
+summary.stories-toggle { cursor: pointer; color: var(--muted); font-size: 12px; padding: 4px 0; }
+summary.stories-toggle:hover { color: var(--text); }
 
 .team-picker {
   display: grid;

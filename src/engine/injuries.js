@@ -55,6 +55,10 @@ export function injurePlayer(league, team, p, rng) {
     const t = p.injury.type;
     pushNews(league, {
       day: league.dayIndex,
+      category: 'injury',
+      teamIds: [team.id],
+      // a season-ending injury changes a team's whole year
+      major: tier.tier === 'season',
       text: `🩹 ${p.name} (${team.city} ${team.name}) goes down with ${article(t)} ${t.toLowerCase()} — ${injuryTimeline(p.injury)}.`,
     });
   }
@@ -72,7 +76,7 @@ export function tickInjuries(league, team) {
       const { type, tier } = p.injury;
       p.injury = null;
       if (tier !== 'dtd' || overall(p) >= 70) {
-        pushNews(league, { day: league.dayIndex, text: `${p.name} (${team.city} ${team.name}) returns from his ${type.toLowerCase()}.` });
+        pushNews(league, { day: league.dayIndex, category: 'injury', teamIds: [team.id], text: `${p.name} (${team.city} ${team.name}) returns from his ${type.toLowerCase()}.` });
       }
     }
   }

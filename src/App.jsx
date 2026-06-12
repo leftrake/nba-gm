@@ -3,6 +3,7 @@ import { TEAMS } from './data/teams.js';
 import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import Dashboard from './components/Dashboard.jsx';
+import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
 import Leaders from './components/Leaders.jsx';
@@ -177,6 +178,7 @@ export default function App() {
 
   const NAV = [
     ['dashboard', 'Dashboard'],
+    ['news', 'News'],
     ['roster', 'Roster'],
     ['standings', 'Standings'],
     ['leaders', 'Leaders'],
@@ -264,7 +266,8 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
+        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} openNews={() => setScreen('news')} />}
+        {screen === 'news' && <News league={league} openTeam={openTeam} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}

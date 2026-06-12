@@ -7,12 +7,61 @@
 // can't migrate instead of loading it broken.
 export const SAVE_VERSION = 1;
 
+// Per-season cap on the live feed (league.news); when a new season starts,
+// the old season's items leave the feed entirely — majors into the archive,
+// the rest dropped.
 export const NEWS_MAX = 100;
 
-// All news goes through here so the feed stays capped at NEWS_MAX.
+// How many major headlines each past season keeps in league.newsArchive
+// (keyed by season, chronological) for the "biggest stories" history view.
+export const ARCHIVE_PER_SEASON = 20;
+
+// Every news item carries:
+//   { day, text, category, season, phase, teamIds?, major? }
+// category: trade | signing | injury | draft | award | milestone | league
+// teamIds:  the teams the story is about (drives the News screen team filter)
+// major:    headline-worthy — highlighted in the UI and archived past seasons
+
+// Majors leaving the live feed land in their season's archive bucket.
+// Items always leave oldest-first, so buckets read chronologically.
+function archiveItem(league, n) {
+  if (!n.major) return;
+  const bucket = (league.newsArchive[n.season] ??= []);
+  if (bucket.length < ARCHIVE_PER_SEASON) bucket.push(n);
+}
+
+// Move any items from finished seasons out of the live feed: majors are
+// archived under their season, routine items are dropped.
+export function archivePastNews(league) {
+  if (!league.newsArchive) league.newsArchive = {};
+  if (!league.news.some((n) => n.season != null && n.season !== league.season)) return;
+  const keep = [];
+  const old = []; // newest-first, like the feed
+  for (const n of league.news) {
+    if (n.season != null && n.season !== league.season) old.push(n);
+    else keep.push(n);
+  }
+  for (const n of old.reverse()) archiveItem(league, n);
+  league.news = keep;
+}
+
+// All news goes through here: stamps the season/phase, rolls finished
+// seasons into the archive, and keeps the live feed capped at NEWS_MAX —
+// a headline evicted by the cap mid-season still makes the archive.
+// Eviction trims the oldest item of the most crowded category, so noisy
+// ones (injuries) can't push a whole rare category (trades) off the feed.
 export function pushNews(league, item) {
+  item.season ??= league.season;
+  item.phase ??= league.phase;
+  archivePastNews(league);
   league.news.unshift(item);
-  if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
+  while (league.news.length > NEWS_MAX) {
+    const counts = {};
+    for (const n of league.news) counts[n.category] = (counts[n.category] || 0) + 1;
+    const cat = Object.keys(counts).reduce((a, b) => (counts[b] > counts[a] ? b : a));
+    const i = league.news.findLastIndex((n) => n.category === cat); // oldest — the feed is newest-first
+    archiveItem(league, league.news.splice(i, 1)[0]);
+  }
 }
 
 // Validate parsed save data (from localStorage or an imported file).

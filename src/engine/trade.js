@@ -110,6 +110,10 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds)
   const names = (ps) => ps.map((p) => p.name).join(', ') || 'nothing';
   pushNews(league, {
     day: league.dayIndex,
+    category: 'trade',
+    teamIds: [a.id, b.id],
+    // a star changing hands makes it a blockbuster
+    major: [...outA, ...outB].some((p) => overall(p) >= 80),
     text: `TRADE: ${a.name} send ${names(outA)} to the ${b.name} for ${names(outB)}.`,
   });
 }

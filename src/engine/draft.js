@@ -93,6 +93,8 @@ export function initDraft(league, rng) {
     .filter((n) => n !== null);
   pushNews(league, {
     day: 0,
+    category: 'draft',
+    teamIds: [winner.id, league.userTeamId],
     text: `Draft lottery: the ${winner.city} ${winner.name} land the #1 pick. You pick at #${userPicks.join(' and #')}.`,
   });
 }
@@ -122,12 +124,12 @@ export function makeDraftPick(league, prospectId) {
   } else {
     // no roster spot — the pick goes unsigned and hits free agency
     league.freeAgents.push(p);
-    pushNews(league, { day: 0, text: `The ${team.name} draft ${p.name} but have no roster spot; he heads to free agency.` });
+    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `The ${team.name} draft ${p.name} but have no roster spot; he heads to free agency.` });
   }
   d.results.push({ pick, round: pick <= 30 ? 1 : 2, teamId, playerId: p.id, playerName: p.name, pos: p.pos });
   d.pickIndex += 1;
   if (teamId === league.userTeamId) {
-    pushNews(league, { day: 0, text: `With pick #${pick}, the ${team.name} select ${p.name} (${p.pos}, ${p.age}).` });
+    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `With pick #${pick}, the ${team.name} select ${p.name} (${p.pos}, ${p.age}).` });
   }
   return p;
 }
@@ -174,5 +176,5 @@ export function finishDraft(league) {
   league.phase = 'freeagency';
   league.faDaysLeft = 5;
   league.negotiations = {};
-  pushNews(league, { day: 0, text: `The draft is complete. Free agency is open for 5 rounds of signings.` });
+  pushNews(league, { day: 0, category: 'league', text: `The draft is complete. Free agency is open for 5 rounds of signings.` });
 }

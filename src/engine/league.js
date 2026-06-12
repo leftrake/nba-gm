@@ -38,7 +38,8 @@ export function createLeague(userTeamId, seed = Date.now()) {
       p.contract = null;
       return p;
     }),
-    news: [{ day: 0, text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
+    news: [{ day: 0, season: 2026, phase: 'regular', category: 'league', teamIds: [userTeamId], text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
+    newsArchive: {}, // { [season]: [major news items, chronological] }
     history: [],
   };
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
@@ -254,6 +255,12 @@ export function backfillPlayers(league) {
   if (!user.lineup) user.lineup = autoLineup(user.roster);
   // Saves predating the news cap
   if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
+  // Saves predating news categories/archiving
+  if (!league.newsArchive) league.newsArchive = {};
+  for (const n of league.news) {
+    if (!n.category) n.category = 'league';
+    if (n.season == null) n.season = league.season;
+  }
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
@@ -361,7 +368,7 @@ export function simDay(league) {
     for (const team of league.teams) {
       for (const p of team.roster) setCond(p, (p.condition ?? 100) + 20 + (100 - (p.condition ?? 100)) * 0.5);
     }
-    pushNews(league, { day: league.dayIndex, text: 'The regular season is over. Playoffs begin!' });
+    pushNews(league, { day: league.dayIndex, category: 'league', text: 'The regular season is over. Playoffs begin!' });
   }
   return results;
 }
@@ -457,7 +464,7 @@ export function simPlayoffGame(league) {
     if (po.finals.winner) {
       po.champion = po.finals.winner;
       const champ = getTeam(league, po.champion);
-      pushNews(league, { day: league.dayIndex, text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
+      pushNews(league, { day: league.dayIndex, category: 'league', major: true, teamIds: [champ.id], text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
       league.phase = 'offseason';
     }
   }
@@ -502,7 +509,7 @@ export function simPlayoffRound(league) {
 // ---------- Offseason ----------
 // A retirement write-up with career averages and honors. Pool players who
 // never appeared in an NBA game leave silently.
-function announceRetirement(league, p) {
+function announceRetirement(league, p, teamId = null) {
   const tot = (p.careerStats || []).reduce(
     (a, s) => ({ gp: a.gp + s.gp, pts: a.pts + s.pts, reb: a.reb + s.reb, ast: a.ast + s.ast }),
     { gp: 0, pts: 0, reb: 0, ast: 0 }
@@ -514,7 +521,8 @@ function announceRetirement(league, p) {
     + `${avg('pts')} ppg, ${avg('reb')} rpg, ${avg('ast')} apg across ${tot.gp} games.`;
   const honors = honorsSummary(p.awards);
   if (honors) text += ` Honors: ${honors}.`;
-  pushNews(league, { day: 0, text });
+  // a decorated career ending is a headline; a journeyman's is a footnote
+  pushNews(league, { day: 0, category: 'milestone', major: !!honors, teamIds: teamId ? [teamId] : undefined, text });
 }
 
 export function advanceOffseason(league) {
@@ -569,7 +577,7 @@ export function advanceOffseason(league) {
 
   for (const { team, p } of retiring) {
     team.roster = team.roster.filter((x) => x.id !== p.id);
-    announceRetirement(league, p);
+    announceRetirement(league, p, team.id);
   }
 
   // Expiring contracts: the incumbent team gets a re-sign window
@@ -593,7 +601,7 @@ export function advanceOffseason(league) {
       if (payroll(team) + salary <= LUXURY_TAX) {
         p.contract = { salary, years: preferredYears(p) };
         if (overall(p) >= 70) {
-          pushNews(league, { day: 0, text: `${p.name} re-signs with the ${team.city} ${team.name} (${fmtM(salary)} x ${p.contract.years}yr).` });
+          pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name} re-signs with the ${team.city} ${team.name} (${fmtM(salary)} x ${p.contract.years}yr).` });
         }
         continue;
       }
@@ -626,14 +634,14 @@ export function advanceOffseason(league) {
   const labels = { contending: 'win-now mode', rebuilding: 'a full rebuild', retooling: 'a retool' };
   for (const { team, to } of evaluateStrategies(league)) {
     if (team.id === league.userTeamId) continue;
-    pushNews(league, { day: 0, text: `The ${team.name} front office shifts to ${labels[to]}.` });
+    pushNews(league, { day: 0, category: 'league', teamIds: [team.id], text: `The ${team.name} front office shifts to ${labels[to]}.` });
   }
 
   league.season += 1;
   // Draft first, then free agency (finishDraft opens it)
   initDraft(league, rng);
   league.phase = 'draft';
-  pushNews(league, { day: 0, text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
+  pushNews(league, { day: 0, category: 'league', text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
 }
 
 // How likely a team is to re-sign its own expiring player before he hits
@@ -723,7 +731,7 @@ export function signMidSeasonFA(league, teamId, playerId) {
   p.contract = { salary: proratedMinSalary(league), years: 1 };
   league.freeAgents.splice(idx, 1);
   team.roster.push(p); // on the roster now — available for the next game
-  pushNews(league, { day: league.dayIndex, text: `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.` });
+  pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.` });
   return { ok: true, player: p };
 }
 
@@ -855,7 +863,7 @@ export function offerExtension(league, teamId, playerId, salary, years) {
     p.extension = { salary, years };
     delete p.extTalksFailed;
     delete league.extensionTalks[playerId];
-    pushNews(league, { day: league.dayIndex, text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}.` });
+    pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}.` });
     return { ok: true, decision: 'accept', reason: `${p.name} signs: ${fmtM(salary)}/yr x ${years}yr, starting next season.` };
   }
   const entry = { best: Math.max(talks?.best ?? 0, salary) };
@@ -896,7 +904,7 @@ function aiExtensions(league, rng) {
       if (payroll(team) - p.contract.salary + demand > LUXURY_TAX) continue;
       p.extension = { salary: demand, years };
       if (overall(p) >= 70) {
-        pushNews(league, { day: league.dayIndex, text: `${p.name} agrees to a ${years}-year, ${fmtM(demand)}/yr extension with the ${team.city} ${team.name}.` });
+        pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} agrees to a ${years}-year, ${fmtM(demand)}/yr extension with the ${team.city} ${team.name}.` });
       }
     }
   }
@@ -978,10 +986,11 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   league.freeAgents.splice(idx, 1);
   team.roster.push(p);
   if (league.negotiations?.[playerId] && teamId !== league.userTeamId) {
-    pushNews(league, { day: 0, text: `${p.name} broke off negotiations with you to sign elsewhere.` });
+    pushNews(league, { day: 0, category: 'signing', teamIds: [team.id, league.userTeamId], text: `${p.name} broke off negotiations with you to sign elsewhere.` });
   }
   if (league.negotiations) delete league.negotiations[playerId];
-  pushNews(league, { day: 0, text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
+  // a star changing teams in free agency is a headline
+  pushNews(league, { day: 0, category: 'signing', major: overall(p) >= 80, teamIds: [team.id], text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
   return true;
 }
 
@@ -997,7 +1006,7 @@ export function releasePlayer(league, teamId, playerId) {
   p.contract = null;
   league.freeAgents.push(p);
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
-  pushNews(league, { day: 0, text: `The ${team.name} waive ${p.name}.` });
+  pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `The ${team.name} waive ${p.name}.` });
   return true;
 }
 
@@ -1018,5 +1027,5 @@ export function startNewSeason(league) {
   league.resultsByDay = [];
   league.phase = 'regular';
   league.playoffs = null;
-  pushNews(league, { day: 0, text: `The ${league.season} season begins!` });
+  pushNews(league, { day: 0, category: 'league', text: `The ${league.season} season begins!` });
 }
