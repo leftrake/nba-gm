@@ -64,7 +64,7 @@ export default function App() {
   // Hand an incoming trade offer to the Trade Machine, pre-filled so the
   // user can tweak it into a counter-offer.
   const openTradeOffer = useCallback((offer) => {
-    setTradePrefill({ otherId: offer.fromTeamId, give: offer.give, get: offer.get, key: offer.id });
+    setTradePrefill({ otherId: offer.fromTeamId, give: offer.give, get: offer.get, givePicks: offer.givePicks ?? [], getPicks: offer.getPicks ?? [], key: offer.id });
     setScreen('trade');
   }, []);
 

@@ -27,6 +27,7 @@ import {
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
 import { autoLineup, lineupWarnings } from '../src/engine/lineup.js';
+import { getTeamPicks, FUTURE_DRAFTS } from '../src/engine/draftPicks.js';
 import { SALARY_CAP } from '../src/data/teams.js';
 
 const SEASONS = Number(process.argv[2]) || 3;
@@ -38,6 +39,10 @@ function check(label, value, lo, hi) {
   const ok = value >= lo && value <= hi;
   if (!ok) failures += 1;
   console.log(`    ${ok ? 'PASS' : 'FAIL'}  ${label}: ${value.toFixed(2)}  (want ${+lo.toFixed(2)}-${+hi.toFixed(2)})`);
+}
+function checkBool(label, ok, detail = '') {
+  if (!ok) failures += 1;
+  console.log(`    ${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `: ${detail}` : ''}`);
 }
 
 const perGame = (p, k) => p.stats[k] / p.stats.gp;
@@ -160,6 +165,29 @@ for (let s = 0; s < SEASONS; s++) {
   let guard = 0;
   while (league.phase === 'playoffs' && guard++ < 500) simPlayoffGame(league);
   advanceOffseason(league);
+
+  console.log('  Draft Picks');
+  const teamIds = new Set(league.teams.map((t) => t.id));
+  // Every slot in this draft resolved to a real team (ownership applied)
+  checkBool('draft order fills 60 slots with valid owners', league.draft.order.length === 60 && league.draft.order.every((id) => teamIds.has(id)));
+  // The pick pool always covers exactly FUTURE_DRAFTS upcoming drafts x 2 rounds x 30 teams
+  const expectedPicks = 30 * 2 * FUTURE_DRAFTS;
+  checkBool('draft pick pool size', league.draftPicks.length === expectedPicks, `${league.draftPicks.length} (want ${expectedPicks})`);
+  // Every pick is owned by exactly one valid team, with no duplicate ids
+  const pickIds = new Set(league.draftPicks.map((p) => p.id));
+  checkBool('no duplicate pick ids', pickIds.size === league.draftPicks.length);
+  checkBool('every pick owned by a valid team', league.draftPicks.every((p) => teamIds.has(p.teamId) && teamIds.has(p.originalTeamId)));
+  // Stepien rule: no team is left without a 1st in two consecutive tracked draft seasons
+  let stepienOk = true;
+  for (const team of league.teams) {
+    const firstSeasons = new Set(getTeamPicks(league, team.id).filter((p) => p.round === 1).map((p) => p.season));
+    const seasons = [...new Set(league.draftPicks.filter((p) => p.round === 1).map((p) => p.season))].sort();
+    for (let i = 0; i < seasons.length - 1; i++) {
+      if (!firstSeasons.has(seasons[i]) && !firstSeasons.has(seasons[i + 1])) stepienOk = false;
+    }
+  }
+  checkBool('no team lacks a 1st in consecutive future drafts (Stepien)', stepienOk);
+
   simDraftToUser(league); // no user team, so this runs the whole draft
   finishDraft(league);
   guard = 0;

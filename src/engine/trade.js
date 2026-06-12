@@ -4,6 +4,7 @@ import { SALARY_CAP } from '../data/teams.js';
 import { pushNews } from './save.js';
 import { clamp } from './rng.js';
 import { bumpTurmoil } from './morale.js';
+import { pickValue, pickLabel, violatesStepien } from './draftPicks.js';
 
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
@@ -39,11 +40,13 @@ export function tradeValue(p, strategy) {
   return Math.round(v);
 }
 
-// Validate a trade under simplified cap rules
-export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds) {
+// Validate a trade under simplified cap rules. Draft picks don't count
+// toward roster size or salary matching — only toward whether the trade is
+// non-empty.
+export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds, picksAIds = [], picksBIds = []) {
   const a = getTeam(league, teamAId);
   const b = getTeam(league, teamBId);
-  if (!playersAIds.length && !playersBIds.length) return { ok: false, reason: 'Empty trade.' };
+  if (!playersAIds.length && !playersBIds.length && !picksAIds.length && !picksBIds.length) return { ok: false, reason: 'Empty trade.' };
 
   const outA = a.roster.filter((p) => playersAIds.includes(p.id));
   const outB = b.roster.filter((p) => playersBIds.includes(p.id));
@@ -70,13 +73,18 @@ export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds
 // AI decision: does team B accept? Both sides of the deal are valued
 // through B's strategy lens, and some deals are vetoed outright because
 // they don't fit the strategy, no matter how fair the value is.
-export function aiEvaluateTrade(league, teamBId, incoming, outgoing) {
+export function aiEvaluateTrade(league, teamBId, incoming, outgoing, incomingPicks = [], outgoingPicks = []) {
   const team = getTeam(league, teamBId);
   const strategy = team.strategy || 'retooling';
   const veto = strategyVeto(team, strategy, incoming, outgoing);
   if (veto) return { accept: false, ratio: 0, reason: veto };
-  const valueIn = incoming.reduce((s, p) => s + tradeValue(p, strategy), 0);
-  const valueOut = outgoing.reduce((s, p) => s + tradeValue(p, strategy), 0);
+  if (violatesStepien(league, teamBId, outgoingPicks.map((p) => p.id))) {
+    return { accept: false, ratio: 0, reason: `The ${team.name} won't trade away first-round picks in consecutive years.` };
+  }
+  const valueIn = incoming.reduce((s, p) => s + tradeValue(p, strategy), 0)
+    + incomingPicks.reduce((s, p) => s + pickValue(league, p, strategy), 0);
+  const valueOut = outgoing.reduce((s, p) => s + tradeValue(p, strategy), 0)
+    + outgoingPicks.reduce((s, p) => s + pickValue(league, p, strategy), 0);
   if (valueOut === 0) return { accept: valueIn > 0, ratio: Infinity };
   const ratio = valueIn / valueOut;
   // AI wants at least ~95% value back, with slight team-specific noise
@@ -101,7 +109,7 @@ function strategyVeto(team, strategy, incoming, outgoing) {
   return null;
 }
 
-export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds) {
+export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds, picksAIds = [], picksBIds = []) {
   const a = getTeam(league, teamAId);
   const b = getTeam(league, teamBId);
   const outA = a.roster.filter((p) => playersAIds.includes(p.id));
@@ -118,15 +126,19 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds)
     p.moraleLowStreak = 0;
     p.morale = Math.round(clamp((p.morale ?? 50) * 0.6 + 20, 0, 100) * 10) / 10;
   }
+  const picksA = picksAIds.map((id) => league.draftPicks.find((p) => p.id === id)).filter(Boolean);
+  const picksB = picksBIds.map((id) => league.draftPicks.find((p) => p.id === id)).filter(Boolean);
+  for (const pick of picksA) pick.teamId = teamBId;
+  for (const pick of picksB) pick.teamId = teamAId;
   bumpTurmoil(a);
   bumpTurmoil(b);
-  const names = (ps) => ps.map((p) => p.name).join(', ') || 'nothing';
+  const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
   pushNews(league, {
     day: league.dayIndex,
     category: 'trade',
     teamIds: [a.id, b.id],
     // a star changing hands makes it a blockbuster
     major: [...outA, ...outB].some((p) => overall(p) >= 80),
-    text: `TRADE: ${a.name} send ${names(outA)} to the ${b.name} for ${names(outB)}.`,
+    text: `TRADE: ${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`,
   });
 }

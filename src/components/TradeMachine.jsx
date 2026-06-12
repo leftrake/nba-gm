@@ -3,8 +3,30 @@ import { getTeam } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
+import { getTeamPicks, pickValue, pickLabel } from '../engine/draftPicks.js';
 import { applyShoppedPenalty } from '../engine/morale.js';
 import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
+
+function PickList({ league, team, valueStrategy, selected, toggle }) {
+  const picks = getTeamPicks(league, team.id);
+  if (!picks.length) return null;
+  return (
+    <table style={{ marginTop: 8 }}>
+      <thead>
+        <tr><th></th><th>Pick</th><th className="num">Value</th></tr>
+      </thead>
+      <tbody>
+        {picks.map((pick) => (
+          <tr key={pick.id} className="clickable" onClick={() => toggle(pick.id)}>
+            <td><input type="checkbox" readOnly checked={selected.includes(pick.id)} /></td>
+            <td>{pickLabel(pick)}</td>
+            <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, valueStrategy)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function TradeSide({ league, team, valueStrategy, fogged, selected, toggle, openPlayer }) {
   const seenOvr = (p) => (fogged ? scoutedOverall(p, league.season) : overall(p));
@@ -38,6 +60,8 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   const [otherId, setOtherId] = useState(prefill?.otherId ?? others[0].id);
   const [give, setGive] = useState(prefill?.give ?? []);
   const [get, setGet] = useState(prefill?.get ?? []);
+  const [givePicks, setGivePicks] = useState(prefill?.givePicks ?? []);
+  const [getPicks, setGetPicks] = useState(prefill?.getPicks ?? []);
   const [message, setMessage] = useState(null);
 
   // A "Counter in Trade Machine" click from an incoming offer seeds the
@@ -47,6 +71,8 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
     setOtherId(prefill.otherId);
     setGive(prefill.give);
     setGet(prefill.get);
+    setGivePicks(prefill.givePicks ?? []);
+    setGetPicks(prefill.getPicks ?? []);
     setMessage(null);
   }, [prefill?.key]);
 
@@ -61,21 +87,24 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   const changeOther = (id) => {
     setOtherId(id);
     setGet([]);
+    setGetPicks([]);
     setMessage(null);
   };
 
   const propose = () => {
-    const valid = validateTrade(league, userId, give, otherId, get);
+    const valid = validateTrade(league, userId, give, otherId, get, givePicks, getPicks);
     if (!valid.ok) {
       setMessage({ type: 'error', text: `Invalid trade: ${valid.reason}` });
       return;
     }
     const incoming = userTeam.roster.filter((p) => give.includes(p.id));
     const outgoing = otherTeam.roster.filter((p) => get.includes(p.id));
-    const evaln = aiEvaluateTrade(league, otherId, incoming, outgoing);
+    const incomingPicks = league.draftPicks.filter((p) => givePicks.includes(p.id));
+    const outgoingPicks = league.draftPicks.filter((p) => getPicks.includes(p.id));
+    const evaln = aiEvaluateTrade(league, otherId, incoming, outgoing, incomingPicks, outgoingPicks);
     if (evaln.accept) {
-      executeTrade(league, userId, give, otherId, get);
-      setGive([]); setGet([]);
+      executeTrade(league, userId, give, otherId, get, givePicks, getPicks);
+      setGive([]); setGet([]); setGivePicks([]); setGetPicks([]);
       setMessage({ type: 'ok', text: `Trade accepted! The ${otherTeam.name} agree to the deal.` });
       commit();
     } else if (evaln.reason) {
@@ -94,8 +123,10 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   };
 
   // values shown through the partner's strategy lens, matching how they judge the deal
-  const giveVal = userTeam.roster.filter((p) => give.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0);
-  const getVal = otherTeam.roster.filter((p) => get.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0);
+  const giveVal = userTeam.roster.filter((p) => give.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0)
+    + league.draftPicks.filter((p) => givePicks.includes(p.id)).reduce((s, p) => s + pickValue(league, p, otherTeam.strategy), 0);
+  const getVal = otherTeam.roster.filter((p) => get.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0)
+    + league.draftPicks.filter((p) => getPicks.includes(p.id)).reduce((s, p) => s + pickValue(league, p, otherTeam.strategy), 0);
 
   return (
     <div>
@@ -108,7 +139,7 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
               <option key={t.id} value={t.id}>{t.city} {t.name} ({t.wins}-{t.losses}, {t.strategy})</option>
             ))}
           </select>
-          <button className="btn" onClick={propose} disabled={!give.length && !get.length}>Propose Trade</button>
+          <button className="btn" onClick={propose} disabled={!give.length && !get.length && !givePicks.length && !getPicks.length}>Propose Trade</button>
           <span style={{ color: 'var(--muted)' }}>You send value {giveVal} · You receive value {getVal} (as the {otherTeam.name} see it)</span>
         </div>
         {message && (
@@ -119,10 +150,12 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
         <div className="panel">
           <h2>You Send ({userTeam.name})</h2>
           <TradeSide league={league} team={userTeam} valueStrategy={otherTeam.strategy} fogged={false} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
+          <PickList league={league} team={userTeam} valueStrategy={otherTeam.strategy} selected={givePicks} toggle={toggle(givePicks, setGivePicks)} />
         </div>
         <div className="panel">
           <h2>You Receive ({otherTeam.name})</h2>
           <TradeSide league={league} team={otherTeam} valueStrategy={otherTeam.strategy} fogged selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
+          <PickList league={league} team={otherTeam} valueStrategy={otherTeam.strategy} selected={getPicks} toggle={toggle(getPicks, setGetPicks)} />
         </div>
       </div>
     </div>

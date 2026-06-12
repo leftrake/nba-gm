@@ -2,6 +2,7 @@ import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
 import { generatePlayer, resetPlayerIds, overall } from './players.js';
 import { pushNews } from './save.js';
+import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
 
 // ---------- NBA Draft ----------
 // Runs between the playoffs and free agency. Two rounds of 30 picks: a
@@ -78,14 +79,29 @@ export function initDraft(league, rng) {
     top4.push(seats.splice(idx === -1 ? seats.length - 1 : idx, 1)[0].id);
   }
   const round1 = [...top4, ...byRecord.filter((id) => !top4.includes(id))];
+  const round2 = byRecord; // round 2 is straight reverse-record
+
+  // The slot order above is keyed by each team's own record (originalTeamId);
+  // resolve each slot to whoever currently owns that team's pick.
+  ensureDraftPicks(league);
+  const draftSeason = league.season;
+  const ownerOf = (round, originalTeamId) => {
+    const p = league.draftPicks.find((p) => p.season === draftSeason && p.round === round && p.originalTeamId === originalTeamId);
+    return p ? p.teamId : originalTeamId;
+  };
 
   league.draft = {
-    season: league.season,
-    order: [...round1, ...byRecord], // round 2 is straight reverse-record
+    season: draftSeason,
+    order: [...round1.map((id) => ownerOf(1, id)), ...round2.map((id) => ownerOf(2, id))],
     pickIndex: 0,
     prospects: generateDraftClass(rng),
     results: [], // { pick, round, teamId, playerId, playerName, pos }
   };
+
+  // This draft's picks are consumed; roll the ownership window forward so
+  // every team always has FUTURE_DRAFTS years of 1sts and 2nds to trade.
+  removeDraftedPicks(league, draftSeason);
+  addFuturePicks(league, draftSeason + FUTURE_DRAFTS);
 
   const winner = league.teams.find((t) => t.id === top4[0]);
   const userPicks = league.draft.order

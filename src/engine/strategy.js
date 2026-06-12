@@ -1,5 +1,6 @@
 import { overall } from './players.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from './trade.js';
+import { getTeamPicks, violatesStepien } from './draftPicks.js';
 
 // Front-office strategies. Every team is tagged 'contending' (top ~10 by
 // record and roster strength), 'rebuilding' (bottom ~8), or 'retooling'
@@ -70,12 +71,24 @@ export function maybeAiTrade(league, rng) {
     }
     const value = (pkg) => pkg.reduce((s, p) => s + tradeValue(p), 0);
     packages.sort((a, b) => value(a) - value(b));
+
+    // Rebuilders covet picks: sometimes the seller asks the buyer to sweeten
+    // the package with one of its own future 1sts (Stepien-legal only). The
+    // gate is keyed off the team ids (not rng()) so it doesn't perturb the
+    // random sequence on attempts where no sweetener applies.
+    const buyerFirsts = seller.strategy === 'rebuilding'
+      ? getTeamPicks(league, buyer.id).filter((p) => p.round === 1 && !violatesStepien(league, buyer.id, [p.id]))
+      : [];
+    const sweetenerGate = (buyer.id.charCodeAt(0) + seller.id.charCodeAt(1)) % 20 === 0;
+    const sweetener = buyerFirsts.length && sweetenerGate ? [buyerFirsts[0]] : [];
+    const sweetenerIds = sweetener.map((p) => p.id);
+
     for (const pkg of packages) {
       const pkgIds = pkg.map((p) => p.id);
-      if (!validateTrade(league, buyer.id, pkgIds, seller.id, [vet.id]).ok) continue;
-      if (!aiEvaluateTrade(league, seller.id, pkg, [vet]).accept) continue;
-      if (!aiEvaluateTrade(league, buyer.id, [vet], pkg).accept) continue;
-      executeTrade(league, buyer.id, pkgIds, seller.id, [vet.id]);
+      if (!validateTrade(league, buyer.id, pkgIds, seller.id, [vet.id], sweetenerIds, []).ok) continue;
+      if (!aiEvaluateTrade(league, seller.id, pkg, [vet], sweetener, []).accept) continue;
+      if (!aiEvaluateTrade(league, buyer.id, [vet], pkg, [], sweetener).accept) continue;
+      executeTrade(league, buyer.id, pkgIds, seller.id, [vet.id], sweetenerIds, []);
       return;
     }
   }

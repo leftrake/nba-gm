@@ -14,6 +14,7 @@
 import { overall } from './players.js';
 import { getTeam } from './league.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from './trade.js';
+import { getTeamPicks, pickValue, pickLabel, violatesStepien } from './draftPicks.js';
 import { pushNews } from './save.js';
 
 export const OFFER_LIFETIME_DAYS = 5;
@@ -31,6 +32,8 @@ export function expireTradeOffers(league) {
     if (!from) return false;
     if (!o.give.every((id) => user.roster.some((p) => p.id === id))) return false;
     if (!o.get.every((id) => from.roster.some((p) => p.id === id))) return false;
+    if (!(o.givePicks || []).every((id) => league.draftPicks.find((p) => p.id === id)?.teamId === user.id)) return false;
+    if (!(o.getPicks || []).every((id) => league.draftPicks.find((p) => p.id === id)?.teamId === from.id)) return false;
     return true;
   });
 }
@@ -128,6 +131,50 @@ function lowballOffer(league, rng, user, ai) {
   return null;
 }
 
+// A contender, lacking immediate trade chips, dangles one of its own future
+// 1st-round picks (the least valuable one it can part with under the Stepien
+// rule) for a useful piece of the user's rotation — "picks for win-now help."
+function contenderPickOffer(league, rng, user, ai) {
+  const contenders = [...ai.filter((t) => t.strategy === 'contending')].sort(() => rng() - 0.5);
+  const targets = user.roster
+    .filter((p) => p.contract && !p.tradeDemand && overall(p) >= 62 && overall(p) <= 80)
+    .sort((a, b) => overall(b) - overall(a));
+  for (const contender of contenders) {
+    const tradeableFirsts = getTeamPicks(league, contender.id)
+      .filter((p) => p.round === 1 && !violatesStepien(league, contender.id, [p.id]))
+      .sort((a, b) => pickValue(league, a, contender.strategy) - pickValue(league, b, contender.strategy));
+    if (!tradeableFirsts.length) continue;
+    const pick = tradeableFirsts[0];
+    for (const target of targets) {
+      if (!validateTrade(league, user.id, [target.id], contender.id, [], [], [pick.id]).ok) continue;
+      if (!aiEvaluateTrade(league, contender.id, [target], [], [], [pick]).accept) continue;
+      return { fromTeamId: contender.id, give: [target.id], get: [], givePicks: [], getPicks: [pick.id] };
+    }
+  }
+  return null;
+}
+
+// A rebuilder covets future picks: it offers a useful veteran for one of the
+// user's future picks (round doesn't matter — any pick sweetens the deal).
+function rebuilderPickAskOffer(league, rng, user, ai) {
+  const rebuilders = [...ai.filter((t) => t.strategy === 'rebuilding')].sort(() => rng() - 0.5);
+  const userPicks = getTeamPicks(league, user.id);
+  if (!userPicks.length) return null;
+  for (const rebuilder of rebuilders) {
+    const vets = rebuilder.roster
+      .filter((p) => p.contract && overall(p) >= 60 && overall(p) < 75)
+      .sort((a, b) => tradeValue(a, rebuilder.strategy) - tradeValue(b, rebuilder.strategy));
+    if (!vets.length) continue;
+    const vet = vets[0];
+    for (const pick of userPicks) {
+      if (!validateTrade(league, user.id, [], rebuilder.id, [vet.id], [pick.id], []).ok) continue;
+      if (!aiEvaluateTrade(league, rebuilder.id, [], [vet], [pick], []).accept) continue;
+      return { fromTeamId: rebuilder.id, give: [], get: [vet.id], givePicks: [pick.id], getPicks: [] };
+    }
+  }
+  return null;
+}
+
 // Called once per sim day. Most days nothing happens; the base chance rises
 // a bit when the user has disgruntled or soon-expiring valuable players, who
 // naturally draw more outside interest.
@@ -143,7 +190,7 @@ export function maybeGenerateTradeOffer(league, rng) {
   if (rng() >= chance) return;
 
   const ai = league.teams.filter((t) => t.id !== league.userTeamId);
-  const generators = [disgruntledOffer, rebuilderVetOffer, contenderStarOffer, lowballOffer];
+  const generators = [disgruntledOffer, rebuilderVetOffer, contenderStarOffer, lowballOffer, contenderPickOffer, rebuilderPickAskOffer];
   for (let i = generators.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [generators[i], generators[j]] = [generators[j], generators[i]];
@@ -156,8 +203,14 @@ export function maybeGenerateTradeOffer(league, rng) {
     offer.createdDay = league.dayIndex;
     offer.expiresDay = league.dayIndex + OFFER_LIFETIME_DAYS;
     league.tradeOffers.push(offer);
-    const giveNames = offer.give.map((id) => user.roster.find((p) => p.id === id)?.name).join(', ');
-    const getNames = offer.get.map((id) => from.roster.find((p) => p.id === id)?.name).join(', ');
+    const giveNames = [
+      ...offer.give.map((id) => user.roster.find((p) => p.id === id)?.name),
+      ...(offer.givePicks || []).map((id) => pickLabel(league.draftPicks.find((p) => p.id === id))),
+    ].join(', ');
+    const getNames = [
+      ...offer.get.map((id) => from.roster.find((p) => p.id === id)?.name),
+      ...(offer.getPicks || []).map((id) => pickLabel(league.draftPicks.find((p) => p.id === id))),
+    ].join(', ');
     pushNews(league, {
       day: league.dayIndex, category: 'trade', teamIds: [from.id, league.userTeamId],
       text: `📨 The ${from.name} have offered ${getNames} for your ${giveNames}.`,
@@ -173,10 +226,12 @@ export function acceptTradeOffer(league, offerId) {
   if (!offer) return { ok: false, reason: 'This offer is no longer available.' };
   const from = getTeam(league, offer.fromTeamId);
   const user = getTeam(league, league.userTeamId);
-  const check = validateTrade(league, user.id, offer.give, from.id, offer.get);
+  const givePicks = offer.givePicks || [];
+  const getPicks = offer.getPicks || [];
+  const check = validateTrade(league, user.id, offer.give, from.id, offer.get, givePicks, getPicks);
   league.tradeOffers = league.tradeOffers.filter((o) => o.id !== offerId);
   if (!check.ok) return { ok: false, reason: `This trade is no longer valid: ${check.reason}` };
-  executeTrade(league, user.id, offer.give, from.id, offer.get);
+  executeTrade(league, user.id, offer.give, from.id, offer.get, givePicks, getPicks);
   return { ok: true };
 }
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { acceptTradeOffer, declineTradeOffer } from '../engine/tradeOffers.js';
+import { pickLabel } from '../engine/draftPicks.js';
 import { Ovr, Pot, PlayerLink, money } from './shared.jsx';
 
 function OfferSide({ league, players, fogged, openPlayer }) {
@@ -47,6 +48,8 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
         const from = getTeam(league, offer.fromTeamId);
         const give = user.roster.filter((p) => offer.give.includes(p.id));
         const get = from.roster.filter((p) => offer.get.includes(p.id));
+        const givePicks = (offer.givePicks || []).map((id) => league.draftPicks.find((p) => p.id === id)).filter(Boolean);
+        const getPicks = (offer.getPicks || []).map((id) => league.draftPicks.find((p) => p.id === id)).filter(Boolean);
         const daysLeft = Math.max(1, offer.expiresDay - league.dayIndex);
         return (
           <div key={offer.id} style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
@@ -58,10 +61,12 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
               <div>
                 <h3>You send</h3>
                 <OfferSide league={league} players={give} fogged={false} openPlayer={openPlayer} />
+                {givePicks.map((pick) => <div key={pick.id} className="tag" style={{ marginTop: 4 }}>{pickLabel(pick)}</div>)}
               </div>
               <div>
                 <h3>You receive</h3>
                 <OfferSide league={league} players={get} fogged openPlayer={openPlayer} />
+                {getPicks.map((pick) => <div key={pick.id} className="tag" style={{ marginTop: 4 }}>{pickLabel(pick)}</div>)}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

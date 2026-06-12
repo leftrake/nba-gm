@@ -3,6 +3,7 @@ import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay,
 import { overall, supportedMinutes } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, posFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall } from '../engine/scouting.js';
+import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
 
@@ -221,6 +222,21 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
             );
           })}
         </div>
+      </div>
+
+      <div className="panel">
+        <h2>Future Picks</h2>
+        {(() => {
+          const picks = getTeamPicks(league, team.id);
+          if (!picks.length) return <p style={{ color: 'var(--muted)' }}>No picks owned.</p>;
+          return (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {picks.map((pick) => (
+                <span key={pick.id} className="tag">{pickLabel(pick)}</span>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {isUser && (

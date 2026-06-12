@@ -4,6 +4,7 @@ import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, sal
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
+import { ensureDraftPicks } from './draftPicks.js';
 import { computeAwards, honorsSummary } from './awards.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
@@ -52,6 +53,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
   // Only the user's lineup persists; AI teams auto-set theirs every game
   getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
   evaluateStrategies(league);
+  ensureDraftPicks(league);
   return league;
 }
 
