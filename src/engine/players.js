@@ -261,6 +261,29 @@ export function generateContract(p, rng = rand) {
   };
 }
 
+// ---------- Progression history ----------
+// One compact row per completed season, snapshotted right before that
+// offseason's development pass, stored on the player as p.ratingHistory:
+//   [season, overall, ...HISTORY_KEYS ratings, stamina]
+// Rows are capped at the last HISTORY_SEASONS so long careers don't bloat
+// the localStorage save. The array is created lazily, so players from old
+// saves need no migration — their history simply starts now.
+export const HISTORY_KEYS = ['inside', 'mid', 'three', 'passing', 'rebounding', 'defense', 'athleticism'];
+export const HISTORY_SEASONS = 12;
+
+// Current ratings in history-row order (without the leading season)
+export function ratingRow(p) {
+  return [overall(p), ...HISTORY_KEYS.map((k) => p.ratings[k]), p.stamina ?? 60];
+}
+
+export function snapshotRatings(p, season) {
+  if (!p.ratingHistory) p.ratingHistory = [];
+  p.ratingHistory.push([season, ...ratingRow(p)]);
+  if (p.ratingHistory.length > HISTORY_SEASONS) {
+    p.ratingHistory.splice(0, p.ratingHistory.length - HISTORY_SEASONS);
+  }
+}
+
 // Yearly development. Growth is ceiling-driven: high-potential players under
 // 25 close on their ceiling fast (3–6 overall a year, with occasional
 // breakout leaps), modest ceilings inch along and plateau early. Decline is

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { askingPrice } from '../engine/league.js';
-import { durabilityNote } from '../engine/players.js';
+import { durabilityNote, ratingRow } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
@@ -43,6 +43,79 @@ function StatLine({ stats }) {
         </span>
       ))}
     </div>
+  );
+}
+
+// Season-over-season change cell: green up-arrow, red down-arrow, dot for flat
+function Delta({ d }) {
+  if (!d) return <span style={{ color: 'var(--muted)' }}>·</span>;
+  return (
+    <span style={{ color: d > 0 ? 'var(--green)' : 'var(--red)' }}>
+      {d > 0 ? '▲' : '▼'}{Math.abs(d)}
+    </span>
+  );
+}
+
+// Overall by season as a small inline line chart. `points` is [season, ovr][].
+function OverallChart({ points }) {
+  const w = 520, h = 130, padX = 26, padY = 22;
+  const ovrs = points.map(([, o]) => o);
+  const lo = Math.min(...ovrs) - 3;
+  const hi = Math.max(...ovrs) + 3;
+  const x = (i) => points.length === 1 ? w / 2 : padX + (i * (w - 2 * padX)) / (points.length - 1);
+  const y = (o) => h - padY - ((o - lo) / (hi - lo)) * (h - 2 * padY);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', display: 'block' }}>
+      <polyline
+        points={points.map(([, o], i) => `${x(i)},${y(o)}`).join(' ')}
+        fill="none" stroke="var(--accent)" strokeWidth="2"
+      />
+      {points.map(([season, o], i) => (
+        <g key={season}>
+          <circle cx={x(i)} cy={y(o)} r="3" fill="var(--accent)" />
+          <text x={x(i)} y={y(o) - 7} textAnchor="middle" fontSize="11" fill="var(--text)">{o}</text>
+          <text x={x(i)} y={h - 5} textAnchor="middle" fontSize="10" fill="var(--muted)">'{String(season).slice(2)}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// Progression: overall-by-season chart plus a matrix of per-attribute
+// offseason changes. History rows are end-of-season snapshots, so the
+// current ratings supply the latest column.
+function Progression({ league, p }) {
+  const history = p.ratingHistory ?? [];
+  if (!history.length) return null;
+  const rows = [...history, [league.season, ...ratingRow(p)]];
+  const labels = [['Overall'], ...RATINGS.map(([, l]) => [l]), ['Stamina']];
+  return (
+    <>
+      <h3 style={{ marginTop: 14 }}>Progression</h3>
+      <OverallChart points={rows.map((r) => [r[0], r[1]])} />
+      <div style={{ overflowX: 'auto', marginTop: 6 }}>
+        <table style={{ fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th></th>
+              {rows.slice(1).map((r) => (
+                <th className="num" key={r[0]} title={`Offseason change heading into ${r[0]}`}>'{String(r[0]).slice(2)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {labels.map(([label], attr) => (
+              <tr key={label}>
+                <td style={attr === 0 ? { fontWeight: 700 } : { color: 'var(--muted)' }}>{label}</td>
+                {rows.slice(1).map((r, i) => (
+                  <td className="num" key={r[0]}><Delta d={r[attr + 1] - rows[i][attr + 1]} /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -100,6 +173,8 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
             </div>
           );
         })}
+
+        {!fogged && <Progression league={league} p={p} />}
 
         <h3 style={{ marginTop: 14 }}>This Season ({league.season})</h3>
         <StatLine stats={p.stats} />

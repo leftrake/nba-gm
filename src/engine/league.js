@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability } from './players.js';
+import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
@@ -538,17 +538,26 @@ export function advanceOffseason(league) {
 
   const expiring = [];
   const retiring = [];
+  const devEntries = []; // the user team's development report rows
   for (const team of league.teams) {
+    const isUserTeam = team.id === league.userTeamId;
     for (const p of team.roster) {
       // archive season stats
       if (p.stats.gp > 0) p.careerStats.push({ season: league.season, ...p.stats });
       p.stats = emptyStats();
       p.condition = 100; // a summer off heals everything
       p.injury = null; // ...including last spring's torn ACL
+      snapshotRatings(p, league.season); // progression history: ratings before this summer's development
+      const oldRow = ratingRow(p);
       developPlayer(p, rng);
+      const entry = isUserTeam
+        ? { id: p.id, name: p.name, pos: p.pos, age: p.age, old: oldRow, now: ratingRow(p) }
+        : null;
+      if (entry) devEntries.push(entry);
       // Retirement comes for everyone, contract or not; a retired contract
       // simply comes off the books.
       if (shouldRetire(p, rng) || (p.age >= 30 && overall(p) < 40)) {
+        if (entry) entry.retired = true;
         retiring.push({ team, p });
         continue;
       }
@@ -574,6 +583,11 @@ export function advanceOffseason(league) {
     team.wins = 0;
     team.losses = 0;
   }
+
+  // The user reviews this on the Development Report screen after advancing.
+  // One report per save — overwritten every offseason, so it stays small.
+  // Empty in headless all-AI sims, where no team is the user's.
+  league.devReport = { season: league.season, entries: devEntries };
 
   for (const { team, p } of retiring) {
     team.roster = team.roster.filter((x) => x.id !== p.id);
@@ -614,6 +628,7 @@ export function advanceOffseason(league) {
   league.freeAgents = league.freeAgents.filter((p) => {
     p.condition = 100;
     p.injury = null;
+    snapshotRatings(p, league.season);
     developPlayer(p, rng);
     if (overall(p) >= 38 && !shouldRetire(p, rng)) return true;
     announceRetirement(league, p);

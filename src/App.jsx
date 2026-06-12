@@ -12,6 +12,7 @@ import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
 import Playoffs from './components/Playoffs.jsx';
+import DevelopmentReport from './components/DevelopmentReport.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
 import GameModal from './components/BoxScore.jsx';
@@ -176,6 +177,11 @@ export default function App() {
     commit();
   };
 
+  // The Dev Report tab only shows while this offseason's report is fresh
+  // (between development and the next season tipping off)
+  const hasDevReport = !!league.devReport?.entries?.length
+    && (league.phase === 'draft' || league.phase === 'freeagency');
+
   const NAV = [
     ['dashboard', 'Dashboard'],
     ['news', 'News'],
@@ -187,6 +193,7 @@ export default function App() {
     ['draft', 'Draft'],
     ['freeagency', 'Free Agency'],
     ['playoffs', 'Playoffs'],
+    ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
     ['settings', 'Settings'],
   ];
 
@@ -228,7 +235,7 @@ export default function App() {
         )}
         {league.phase === 'offseason' && (
           <div className="controls">
-            <button className="btn" onClick={() => { advanceOffseason(league); commit(); setScreen('draft'); }}>
+            <button className="btn" onClick={() => { advanceOffseason(league); commit(); setScreen(league.devReport?.entries?.length ? 'devreport' : 'draft'); }}>
               Advance to Offseason (player development + draft)
             </button>
           </div>
@@ -276,6 +283,7 @@ export default function App() {
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
+        {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} />}
