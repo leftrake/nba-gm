@@ -93,15 +93,16 @@ const ARCHETYPES = {
 let nextPlayerId = 1;
 export function resetPlayerIds(start = 1) { nextPlayerId = start; }
 
-export function ageModifier(age) {
-  // Development curve: improve until ~26, plateau, decline after 30
-  if (age <= 21) return 3.0;
-  if (age <= 23) return 2.0;
-  if (age <= 25) return 1.0;
-  if (age <= 28) return 0.2;
-  if (age <= 30) return -0.5;
-  if (age <= 33) return -1.5;
-  return -3.0;
+// Yearly retirement roll, made after a player ages a season. Most careers
+// end between 34 and 37; stars hang on a year or two longer, but almost
+// nobody plays past 38 and 40 is a hard stop.
+export function shouldRetire(p, rng = rand) {
+  if (p.age < 33) return false;
+  if (p.age >= 40) return true;
+  const ovr = overall(p);
+  const base = (p.age - 33) * 0.25;
+  const quality = (ovr - 62) * 0.012; // stars get a discount, fringe guys a push
+  return rng() < clamp(base - quality, 0.05, 0.97);
 }
 
 // Free-throw shooting, derived from shooting touch rather than stored as a
@@ -150,7 +151,20 @@ export function generatePlayer(rng = rand, opts = {}) {
     awards: [], // { season, award } — filled by engine/awards.js
   };
   assignOrigin(p, rng);
-  p.potential = clamp(overall(p) + Math.max(0, Math.round((27 - age) * 1.8 + gauss(0, 4, rng))), overall(p), 99);
+  const ovr = overall(p);
+  if (opts.potential != null) {
+    p.potential = clamp(Math.round(opts.potential), ovr, 99);
+  } else {
+    // Youth upside: steep for teenagers, gone by the late 20s. A slice of
+    // young players carry a late-bloomer star ceiling so fresh talent keeps
+    // entering the league outside the draft too. Damped near the top of the
+    // scale — a young player already rated in the 80s is close to a
+    // finished product, so true superstar ceilings come from the draft.
+    let upside = (26 - age) * 2.4 + gauss(0, 5, rng);
+    if (age <= 23 && rng() < 0.12) upside += 8 + rng() * 12;
+    upside *= clamp((97 - ovr) / 35, 0, 1);
+    p.potential = clamp(ovr + Math.max(0, Math.round(upside)), ovr, 99);
+  }
   p.contract = opts.contract ?? generateContract(p, rng);
   return p;
 }
@@ -200,14 +214,34 @@ export function generateContract(p, rng = rand) {
   };
 }
 
+// Yearly development. Growth is ceiling-driven: high-potential players under
+// 25 close on their ceiling fast (3–6 overall a year, with occasional
+// breakout leaps), modest ceilings inch along and plateau early. Decline is
+// noticeable from 31 and steep after 33.
 export function developPlayer(p, rng = rand) {
-  const mod = ageModifier(p.age);
   const ovr = overall(p);
   const room = p.potential - ovr;
+  let delta;
+  if (p.age < 25 && room > 0) {
+    const speed = p.potential >= 85 ? 5.5 : p.potential >= 75 ? 4.0 : 1.8;
+    delta = Math.max(0.5, gauss(speed, 1.5, rng));
+    if (p.potential >= 78 && rng() < 0.15) delta += 3 + rng() * 3; // breakout season
+    delta = Math.min(delta, room);
+  } else if (p.age < 25) {
+    delta = gauss(0, 0.6, rng); // hit his ceiling early — plateaued
+  } else if (p.age <= 28) {
+    delta = room > 0 ? clamp(gauss(0.7, 0.8, rng), 0, Math.min(room, 1.5)) : gauss(0, 0.5, rng);
+  } else if (p.age <= 30) {
+    delta = gauss(-1.0, 0.7, rng);
+  } else if (p.age <= 33) {
+    delta = gauss(-2.5, 0.8, rng);
+  } else {
+    delta = gauss(-3.5 - (p.age - 34) * 0.6, 1.0, rng); // falling off the cliff
+  }
   for (const key of Object.keys(p.ratings)) {
-    let delta = mod + gauss(0, 1.5, rng);
-    if (delta > 0 && room <= 0) delta = Math.min(delta, 0.5);
-    p.ratings[key] = Math.round(clamp(p.ratings[key] + delta, 25, 99));
+    let d = delta + gauss(0, 1.2, rng);
+    if (d > 0 && room <= 0) d = 0; // the ceiling is a ceiling
+    p.ratings[key] = Math.round(clamp(p.ratings[key] + d, 25, 99));
   }
   p.age += 1;
   p.exp = (p.exp ?? 0) + 1;

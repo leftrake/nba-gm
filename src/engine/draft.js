@@ -25,12 +25,23 @@ export function rookieSalary(pickNumber) {
   return Math.round((MIN_SALARY + t * t * 8_800_000) / 100_000) * 100_000;
 }
 
+// Every class follows the same talent pyramid: a few future superstars at
+// the top, a band of future starters, and role players the rest of the way
+// down. Prospects arrive far below their ceiling — the younger they are,
+// the wider the gap — and grow into it via developPlayer.
 function generateDraftClass(rng) {
   const prospects = [];
+  const superstars = randInt(2, 4, rng);
+  const starters = superstars + randInt(7, 10, rng);
   for (let i = 0; i < CLASS_SIZE; i++) {
-    // a handful of blue-chip talents headline each class
-    const base = i < 6 ? clamp(gauss(58, 6, rng), 45, 78) : clamp(gauss(46, 8, rng), 30, 68);
-    const p = generatePlayer(rng, { age: randInt(18, 22, rng), base, exp: 0 });
+    // the better the prospect, the younger he declares
+    let age, potential;
+    if (i < superstars) { age = randInt(18, 20, rng); potential = randInt(88, 97, rng); }
+    else if (i < starters) { age = randInt(18, 21, rng); potential = randInt(76, 87, rng); }
+    else { age = randInt(18, 22, rng); potential = Math.round(clamp(gauss(60, 9, rng), 42, 74)); }
+    const gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
+    const base = clamp(potential - gap, 30, 76);
+    const p = generatePlayer(rng, { age, base, exp: 0, potential });
     p.contract = null; // signs a rookie deal when drafted
     prospects.push(p);
   }

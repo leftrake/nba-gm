@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin } from './players.js';
+import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire } from './players.js';
 import { simGame, applyBoxToStats, encodeBox } from './sim.js';
 import { initDraft } from './draft.js';
 import { computeAwards, honorsSummary } from './awards.js';
@@ -66,6 +66,9 @@ function makeRoster(rng) {
   }
   const roster = tiers.map(([mean, spread], i) => generatePlayer(rng, {
     pos: positions[i] || undefined,
+    // min of two rolls skews young (~25 avg), matching the steady-state
+    // league the talent pipeline produces over many simulated seasons
+    age: Math.min(randInt(19, 36, rng), randInt(19, 36, rng)),
     base: clamp(gauss(mean, spread, rng), 35, 90),
   }));
 
@@ -413,12 +416,19 @@ export function advanceOffseason(league) {
   league.seasonAwards = null;
 
   const expiring = [];
+  const retiring = [];
   for (const team of league.teams) {
     for (const p of team.roster) {
       // archive season stats
       if (p.stats.gp > 0) p.careerStats.push({ season: league.season, ...p.stats });
       p.stats = emptyStats();
       developPlayer(p, rng);
+      // Retirement comes for everyone, contract or not; a retired contract
+      // simply comes off the books.
+      if (shouldRetire(p, rng) || (p.age >= 30 && overall(p) < 40)) {
+        retiring.push({ team, p });
+        continue;
+      }
       if (p.contract) {
         p.contract.years -= 1;
         if (p.contract.years <= 0) {
@@ -442,18 +452,18 @@ export function advanceOffseason(league) {
     team.losses = 0;
   }
 
-  // Expiring contracts: retirement first, then the incumbent team gets a
-  // re-sign window (Bird-rights style — allowed to cross the cap, but not
-  // the luxury tax). Teams keep their best players most of the time, so
-  // only a few quality starters reach the open market each summer. The
-  // user's expiring players always hit free agency — re-signing them is
-  // the user's job.
+  for (const { team, p } of retiring) {
+    team.roster = team.roster.filter((x) => x.id !== p.id);
+    announceRetirement(league, p);
+  }
+
+  // Expiring contracts: the incumbent team gets a re-sign window
+  // (Bird-rights style — allowed to cross the cap, but not the luxury
+  // tax). Teams keep their best players most of the time, so only a few
+  // quality starters reach the open market each summer. The user's
+  // expiring players always hit free agency — re-signing them is the
+  // user's job.
   for (const { team, p } of expiring) {
-    if (p.age > 38 || overall(p) < 40) {
-      team.roster = team.roster.filter((x) => x.id !== p.id);
-      announceRetirement(league, p);
-      continue;
-    }
     // If the front office already passed on extending him mid-season, that
     // was the retention decision — he tests the market (no second roll).
     const triedMidSeason = p.extTalksFailed;
@@ -480,7 +490,7 @@ export function advanceOffseason(league) {
   // Age free agents, drop retirees, top up the pool
   league.freeAgents = league.freeAgents.filter((p) => {
     developPlayer(p, rng);
-    if (p.age <= 38 && overall(p) >= 38) return true;
+    if (overall(p) >= 38 && !shouldRetire(p, rng)) return true;
     announceRetirement(league, p);
     return false;
   });
