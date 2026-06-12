@@ -404,15 +404,17 @@ function makeSeries(high, low) {
 }
 
 // Best-of-7 under the 2-2-1-1-1 format: games 1, 2, 5, 7 at the higher seed
-function seriesHomeTeam(m, gameIdx) {
+export function seriesHomeTeam(m, gameIdx) {
   return [m.high, m.high, m.low, m.low, m.high, m.low, m.high][gameIdx];
 }
 
 // Sim one game in every unfinished series of the current round; advance the
-// round only once all its series are decided.
+// round only once all its series are decided. Returns the games played this
+// call as { series, game, round } so the UI can show a post-game view.
 export function simPlayoffGame(league) {
   const po = league.playoffs;
-  if (!po || po.champion) return;
+  if (!po || po.champion) return [];
+  const played = [];
   po.gamesPlayed = po.gamesPlayed || 0; // also covers saves predating this field
   const rng = makeRng(league.seed + 999_983 + po.round * 31 + po.gamesPlayed * 101);
 
@@ -442,11 +444,13 @@ export function simPlayoffGame(league) {
     if (!m.games) m.games = [];
     // playoff games keep their full box scores and game log for the season
     // (league.playoffs resets every year, so they don't accumulate)
-    m.games.push({
+    const game = {
       home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
       homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events,
       homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox),
-    });
+    };
+    m.games.push(game);
+    played.push({ series: m, game, round: po.round });
     po.gamesPlayed += 1;
     const highWon = (r.homePts > r.awayPts) === (homeId === m.high);
     if (highWon) m.highWins += 1; else m.lowWins += 1;
@@ -468,6 +472,7 @@ export function simPlayoffGame(league) {
       league.phase = 'offseason';
     }
   }
+  return played;
 }
 
 function advanceRound(po, league) {

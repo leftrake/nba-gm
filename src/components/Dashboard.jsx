@@ -2,9 +2,8 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { starLines } from '../engine/sim.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
-import { asLines, usePlayerIndex } from './BoxScore.jsx';
+import { LineScore, TopPerformers } from './BoxScore.jsx';
 import { NewsItem } from './News.jsx';
 
 // League-wide injury report: every player currently out, the user's team
@@ -45,14 +44,11 @@ function InjuryReport({ league, openTeam, openPlayer }) {
   );
 }
 
-// The user's most recent game as a rich result card: score, the team's top
-// three performers, and a link to the full game page.
+// The user's most recent game as a rich result card: score, quarter line
+// score, top performers from both teams, and a link to the full game page.
 function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
-  const byId = usePlayerIndex(league);
   const me = league.userTeamId;
   const won = fg.home === me ? fg.homePts > fg.awayPts : fg.awayPts > fg.homePts;
-  const myBox = fg.home === me ? fg.homeBox : fg.awayBox;
-  const stars = myBox ? starLines(asLines(myBox), 3) : [];
   const title = fmtDate(dateForDay(league, fg.day));
   return (
     <div className="panel" style={{ borderLeft: `4px solid ${won ? 'var(--green)' : 'var(--red)'}` }}>
@@ -67,18 +63,8 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
         </span>
         <b style={{ marginLeft: 10, color: won ? 'var(--green)' : 'var(--red)' }}>{won ? 'W' : 'L'}</b>
       </p>
-      {stars.map((l) => {
-        const p = byId.get(l.playerId);
-        return (
-          <div key={l.playerId} className="result-row">
-            <span>★ {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}</span>
-            <span>
-              <b>{l.pts}</b> PTS · {l.reb} REB · {l.ast} AST
-              <span style={{ color: 'var(--muted)' }}> · {l.fgm}-{l.fga} FG</span>
-            </span>
-          </div>
-        );
-      })}
+      <LineScore league={league} game={fg} />
+      <TopPerformers league={league} game={fg} openPlayer={openPlayer} />
       <p style={{ marginTop: 10 }}>
         <a className="team-link" style={{ color: 'var(--accent)' }} onClick={() => openGame(fg, title)}>
           Full box score &amp; game flow ▸

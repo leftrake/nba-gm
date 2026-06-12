@@ -12,6 +12,7 @@ import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
 import Playoffs from './components/Playoffs.jsx';
+import PlayoffPostGame from './components/PlayoffPostGame.jsx';
 import DevelopmentReport from './components/DevelopmentReport.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
@@ -43,6 +44,7 @@ export default function App() {
   const [screen, setScreen] = useState('dashboard');
   const [lastResults, setLastResults] = useState([]);
   const [featuredGame, setFeaturedGame] = useState(null);
+  const [playoffDay, setPlayoffDay] = useState(null); // games from the last playoff sim
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
@@ -83,6 +85,7 @@ export default function App() {
     setLeagueState(imported);
     setLastResults([]);
     setFeaturedGame(null);
+    setPlayoffDay(null);
     setRosterTeamId(null);
     setViewPlayer(null);
     setViewGame(null);
@@ -95,6 +98,7 @@ export default function App() {
       setLeagueState(null);
       setLastResults([]);
       setFeaturedGame(null);
+      setPlayoffDay(null);
       setRosterTeamId(null);
       setViewPlayer(null);
       setViewGame(null);
@@ -145,6 +149,7 @@ export default function App() {
     const results = simDay(league);
     setLastResults(results);
     trackFeatured(results);
+    setScreen('dashboard');
     commit();
   };
   const handleSimWeek = () => {
@@ -154,6 +159,7 @@ export default function App() {
       trackFeatured(results);
     }
     setLastResults(results);
+    setScreen('dashboard');
     commit();
   };
   const handleSimToNextGame = () => {
@@ -174,7 +180,27 @@ export default function App() {
       trackFeatured(results);
     }
     setLastResults(results);
+    setScreen('dashboard');
     commit();
+  };
+
+  // One playoff sim step lands on the post-game screen (the user's result in
+  // full, or the day's scoreboard); a round fast-forward goes to the bracket.
+  const handleSimPlayoffGame = () => {
+    const played = simPlayoffGame(league);
+    commit();
+    if (played.length > 0) {
+      setPlayoffDay(played);
+      setScreen('postgame');
+    } else {
+      setScreen('playoffs');
+    }
+  };
+  const handleSimPlayoffRound = () => {
+    simPlayoffRound(league);
+    setPlayoffDay(null);
+    commit();
+    setScreen('playoffs');
   };
 
   // The Dev Report tab only shows while this offseason's report is fresh
@@ -229,8 +255,8 @@ export default function App() {
         )}
         {league.phase === 'playoffs' && (
           <div className="controls">
-            <button className="btn" onClick={() => { simPlayoffGame(league); commit(); setScreen('playoffs'); }}>Sim Next Playoff Game</button>
-            <button className="btn secondary" onClick={() => { simPlayoffRound(league); commit(); setScreen('playoffs'); }}>Sim Playoff Round</button>
+            <button className="btn" onClick={handleSimPlayoffGame}>Sim Next Playoff Game</button>
+            <button className="btn secondary" onClick={handleSimPlayoffRound}>Sim Playoff Round</button>
           </div>
         )}
         {league.phase === 'offseason' && (
@@ -283,6 +309,9 @@ export default function App() {
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
+        {screen === 'postgame' && (playoffDay?.length
+          ? <PlayoffPostGame league={league} played={playoffDay} onBack={() => setScreen('playoffs')} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
+          : <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />)}
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}

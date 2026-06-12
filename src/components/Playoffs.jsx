@@ -3,7 +3,7 @@ import { getTeam } from '../engine/league.js';
 import { TeamLink, NewsText } from './shared.jsx';
 import SeriesModal from './SeriesModal.jsx';
 
-const ROUND_NAMES = ['First Round', 'Conference Semifinals', 'Conference Finals', 'NBA Finals'];
+export const ROUND_NAMES = ['First Round', 'Conference Semifinals', 'Conference Finals', 'NBA Finals'];
 
 function Series({ league, m, roundName, openTeam, openSeries, openGame }) {
   if (!m) return null;

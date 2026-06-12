@@ -79,7 +79,7 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer }) {
 
 // Quarter-by-quarter line score; renders nothing for results from saves
 // that predate quarter tracking.
-function LineScore({ league, game }) {
+export function LineScore({ league, game }) {
   if (!game.homeQtrs?.length) return null;
   const cols = game.homeQtrs.map((_, i) => periodLabel(i));
   const row = (teamId, qtrs, pts, winner) => (
@@ -103,7 +103,7 @@ function LineScore({ league, game }) {
 }
 
 // "Name (Team) — 31 PTS, 9 REB, 5 AST", the best lines across both teams.
-function TopPerformers({ league, game, openPlayer }) {
+export function TopPerformers({ league, game, openPlayer }) {
   const byId = usePlayerIndex(league);
   const sides = [
     [game.home, game.homeBox || game.homeStars],
@@ -135,7 +135,7 @@ function TopPerformers({ league, game, openPlayer }) {
 
 // The highlight log recorded during the sim: runs, clutch shots, big
 // quarters, quarter scores, injuries. Post-game notes carry no period tag.
-function GameFlow({ events }) {
+export function GameFlow({ events }) {
   if (!events?.length) return null;
   return (
     <div style={{ marginTop: 14 }}>
