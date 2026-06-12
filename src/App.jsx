@@ -237,7 +237,16 @@ export default function App() {
         </span>
         <nav>
           {NAV.map(([key, label]) => (
-            <button key={key} className={screen === key ? 'active' : ''} onClick={() => setScreen(key)}>
+            <button
+              key={key}
+              className={screen === key ? 'active' : ''}
+              onClick={() => {
+                // The Roster tab always opens on the user's team; only
+                // explicit team links (openTeam) show another roster.
+                if (key === 'roster') setRosterTeamId(null);
+                setScreen(key);
+              }}
+            >
               {label}
             </button>
           ))}
