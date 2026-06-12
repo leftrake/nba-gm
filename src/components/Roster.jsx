@@ -1,10 +1,23 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, extensionEligible, offerExtension } from '../engine/league.js';
-import { overall } from '../engine/players.js';
-import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, posFit, isInjured } from '../engine/lineup.js';
+import { overall, supportedMinutes } from '../engine/players.js';
+import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, posFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
-import { Ovr, Pot, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, InjuryTag, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
+
+// Small marker next to a minutes box when the assignment outruns the
+// player's stamina — legal, but the fatigue sim will make him pay.
+function OverStamina({ p, min }) {
+  if (!p) return null;
+  const sup = Math.round(supportedMinutes(p));
+  if (!(min > sup + 2)) return null;
+  return (
+    <span style={{ color: 'var(--red)', marginLeft: 4 }} title={`${min} min assigned, but his stamina supports ~${sup} — he'll wear down late in games`}>
+      ⚠
+    </span>
+  );
+}
 
 // Minutes box that doesn't fight the typist: focusing selects the current
 // value (so typing replaces the 0 instead of appending to it), and the field
@@ -58,6 +71,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
   // lineup against the current roster, mutate, write back, and commit.
   const lineup = isUser ? normalizeLineup(team.lineup, team.roster) : null;
   const luErrors = isUser ? lineupErrors(lineup, team.roster) : [];
+  const luWarnings = isUser && luErrors.length === 0 ? lineupWarnings(lineup, team.roster) : [];
   const byId = new Map(team.roster.map((p) => [p.id, p]));
   const totalMin = isUser
     ? POSITIONS.reduce((s, pos) => s + (lineup.starters[pos].id != null ? lineup.starters[pos].min : 0), 0)
@@ -224,12 +238,17 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               <div style={{ color: 'var(--muted)' }}>Until this is fixed, games use an auto-set rotation instead.</div>
             </div>
           )}
+          {luWarnings.length > 0 && (
+            <div style={{ color: '#d29922', marginBottom: 10 }}>
+              {luWarnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+            </div>
+          )}
           <div className="grid2">
             <div>
               <h2 style={{ fontSize: 14 }}>Starters</h2>
               <table>
                 <thead>
-                  <tr><th>Slot</th><th>Player</th><th className="num">Ovr</th><th>Fit</th><th className="num">Min</th></tr>
+                  <tr><th>Slot</th><th>Player</th><th className="num">Ovr</th><th>Fit</th><th className="num">Cond</th><th className="num">Min</th></tr>
                 </thead>
                 <tbody>
                   {POSITIONS.map((pos) => {
@@ -246,7 +265,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                             onClick={() => setPickSlot(pos)}
                             title={`Choose your starting ${pos}`}
                           >
-                            {p ? p.name : 'empty — pick a starter'} <span style={{ color: 'var(--muted)' }}>▾</span>
+                            {p ? p.name : 'empty — pick a starter'}{p && isInjured(p) ? ' 🩹' : ''} <span style={{ color: 'var(--muted)' }}>▾</span>
                           </button>
                         </td>
                         <td className="num">{p ? overall(p) : '–'}</td>
@@ -257,12 +276,14 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                             </span>
                           )}
                         </td>
+                        <td className="num">{p ? <Cond p={p} /> : '–'}</td>
                         <td className="num">
                           <MinInput
                             value={slot.min}
                             disabled={slot.id == null}
                             onChange={(v) => setStarterMin(pos, v)}
                           />
+                          <OverStamina p={p} min={slot.min} />
                         </td>
                       </tr>
                     );
@@ -274,7 +295,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               <h2 style={{ fontSize: 14 }}>Bench Rotation</h2>
               <table>
                 <thead>
-                  <tr><th></th><th>Player</th><th>Pos</th><th className="num">Ovr</th><th className="num">Min</th></tr>
+                  <tr><th></th><th>Player</th><th>Pos</th><th className="num">Ovr</th><th className="num">Cond</th><th className="num">Min</th></tr>
                 </thead>
                 <tbody>
                   {lineup.bench.map((b, i) => {
@@ -290,12 +311,14 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                         <td><PlayerLink p={p} openPlayer={openPlayer} />{isInjured(p) ? ' 🩹' : ''}</td>
                         <td>{p.pos}</td>
                         <td className="num">{overall(p)}</td>
+                        <td className="num"><Cond p={p} /></td>
                         <td className="num">
                           <MinInput
                             value={b.min}
                             disabled={isInjured(p)}
                             onChange={(v) => setBenchMin(b.id, v)}
                           />
+                          <OverStamina p={p} min={b.min} />
                         </td>
                       </tr>
                     );
@@ -397,6 +420,8 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
           <thead>
             <tr>
               <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th>
+              <th className="num" title="Stamina — how many minutes a night he can handle">Sta</th>
+              <th className="num" title="Condition — drains with heavy minutes, recovers on rest days">Cond</th>
               <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
               <th className="num">Salary</th><th className="num">Yrs</th><th></th>
               {isUser && <th></th>}
@@ -408,9 +433,11 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               <tr>
                 <td><Ovr p={p} league={league} fogged={!isUser} /></td>
                 <td><Pot p={p} league={league} fogged={!isUser} /></td>
-                <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                 <td>{p.pos}</td>
                 <td className="num">{p.age}</td>
+                <td className="num"><Sta p={p} league={league} fogged={!isUser} /></td>
+                <td className="num"><Cond p={p} /></td>
                 <td className="num">{perGame(p.stats, 'pts')}</td>
                 <td className="num">{perGame(p.stats, 'reb')}</td>
                 <td className="num">{perGame(p.stats, 'ast')}</td>
@@ -457,7 +484,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               </tr>
               {extendingId === p.id && canExtend && (
                 <tr>
-                  <td colSpan={13} style={{ background: 'var(--bg)' }}>
+                  <td colSpan={15} style={{ background: 'var(--bg)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
                       <span style={{ color: 'var(--muted)' }}>Market rate: {money(askingPrice(p))}/yr</span>
                       <label>

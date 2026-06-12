@@ -1,10 +1,13 @@
 import { rand, gauss, clamp } from './rng.js';
-import { overall, ftRating } from './players.js';
-import { POSITIONS, autoLineup, lineupErrors, posFit } from './lineup.js';
+import { overall, ftRating, supportedMinutes } from './players.js';
+import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, posFit, isInjured, minutesCap } from './lineup.js';
 
 // A team's game rotation: the saved lineup when it's legal, otherwise a
 // fresh auto lineup (AI teams never store one). Each entry carries the slot
 // the player occupies so out-of-position starters get a fit penalty.
+// Injured players never play: their minutes are redistributed to healthy
+// teammates, best first, respecting stamina caps while that's possible —
+// so an injury punches a hole in the rotation instead of voiding it.
 export function getRotation(team) {
   const lineup = team.lineup && lineupErrors(team.lineup, team.roster).length === 0
     ? team.lineup
@@ -13,11 +16,27 @@ export function getRotation(team) {
   for (const pos of POSITIONS) {
     const s = lineup.starters[pos];
     const p = s.id != null ? team.roster.find((x) => x.id === s.id) : null;
-    if (p && s.min > 0) rot.push({ p, min: s.min, slot: pos });
+    if (p && s.min > 0 && !isInjured(p)) rot.push({ p, min: s.min, slot: pos });
   }
   for (const b of lineup.bench) {
     const p = team.roster.find((x) => x.id === b.id);
-    if (p && b.min > 0) rot.push({ p, min: b.min, slot: p.pos }); // bench subs at natural position
+    if (p && b.min > 0 && !isInjured(p)) rot.push({ p, min: b.min, slot: p.pos }); // bench subs at natural position
+  }
+
+  let deficit = TOTAL_MINUTES - rot.reduce((s, r) => s + r.min, 0);
+  if (deficit > 0) {
+    const inRot = new Set(rot.map((r) => r.p.id));
+    let fill = team.roster.filter((p) => !isInjured(p) && !inRot.has(p.id));
+    // pathological case — nobody healthy left: the walking wounded play
+    if (rot.length === 0 && fill.length === 0) fill = [...team.roster];
+    for (const p of fill) rot.push({ p, min: 0, slot: p.pos });
+    const order = [...rot].sort((a, b) => overall(b.p) - overall(a.p));
+    for (let i = 0; deficit > 0 && order.length > 0 && i < 3000; i++) {
+      const r = order[i % order.length];
+      const cap = i < order.length * 25 ? minutesCap(r.p) : 48;
+      if (r.min < cap) { r.min += 1; deficit -= 1; }
+    }
+    return rot.filter((r) => r.min > 0);
   }
   return rot;
 }
@@ -70,6 +89,21 @@ function gamePlayer({ p, min, slot }, rng) {
     // playing out of position mostly bleeds defense and rebounding
     def: r.defense * (0.55 + 0.45 * fit),
     reb: r.rebounding * (0.55 + 0.45 * fit),
+    // Fatigue bases: the fresh values above, restored each stint before the
+    // current fatigue penalty is subtracted (see applyFatigue).
+    insBase: r.inside + sharp,
+    midBase: r.mid + sharp,
+    threeBase: r.three + sharp,
+    passBase: r.passing,
+    defBase: r.defense * (0.55 + 0.45 * fit),
+    rebBase: r.rebounding * (0.55 + 0.45 * fit),
+    supported: supportedMinutes(p),
+    // A workload assigned beyond what stamina supports costs pace all night
+    // (he knows he's playing 44 and still wears down), on top of the
+    // escalating late-game hit applyFatigue adds once the minutes are real.
+    planPenalty: Math.max(0, min - supportedMinutes(p)) * 1.0,
+    // arriving worn down (heavy recent minutes) costs ratings all night
+    condPenalty: (100 - (p.condition ?? 100)) * 0.2,
     ftPct: clamp(0.465 + ftRating(p) * 0.005, 0.48, 0.95),
     wIns: Math.pow(Math.max(r.inside - 25, 5), 2),
     wMid: Math.pow(Math.max(r.mid - 25, 5), 2) * 0.5,
@@ -81,6 +115,23 @@ function gamePlayer({ p, min, slot }, rng) {
       fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0,
     },
   };
+}
+
+// In-game fatigue, recomputed each stint from minutes already played: free
+// while a player stays inside the minutes his stamina supports, then
+// increasingly expensive past them — a 44-minute night costs a high-stamina
+// star several rating points by the fourth quarter and wrecks a low-stamina
+// big. Arriving in poor condition (condPenalty) hurts from the opening tip.
+// Shooting takes the full hit, defense/rebounding most of it, passing half.
+function applyFatigue(gp) {
+  const over = Math.max(0, gp.line.min - gp.supported);
+  const f = gp.planPenalty + gp.condPenalty + over * 1.7 + over * over * 0.12;
+  gp.ins = gp.insBase - f;
+  gp.mid = gp.midBase - f;
+  gp.three = gp.threeBase - f;
+  gp.def = Math.max(20, gp.defBase - f * 0.8);
+  gp.reb = Math.max(20, gp.rebBase - f * 0.8);
+  gp.pass = Math.max(20, gp.passBase - f * 0.5);
 }
 
 function weightedPick(arr, weightFn, rng) {
@@ -310,9 +361,12 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   const awayScore = { pts: 0 };
 
   const playStint = (minutes, possEach, ot) => {
-    let h = floorContext(pickFive(homePlayers, rng, ot), homeScore);
-    let a = floorContext(pickFive(awayPlayers, rng, ot), awayScore);
-    for (const gp of [...h.five, ...a.five]) { gp.line.min += minutes; gp.remaining -= minutes; }
+    const hFive = pickFive(homePlayers, rng, ot);
+    const aFive = pickFive(awayPlayers, rng, ot);
+    // fatigue reflects minutes already in the books when the stint starts
+    for (const gp of [...hFive, ...aFive]) { applyFatigue(gp); gp.line.min += minutes; gp.remaining -= minutes; }
+    let h = floorContext(hFive, homeScore);
+    let a = floorContext(aFive, awayScore);
     // anyone who picks up his 6th foul leaves the floor before the next play
     for (let k = 0; k < possEach; k++) {
       homeScore.pts += playPossession(h, a, true, rng);

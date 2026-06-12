@@ -90,6 +90,49 @@ const ARCHETYPES = {
   C: { ins: 8, mid: -5, three: -10, pass: -7, reb: 10, def: 4 },
 };
 
+// Stamina runs on its own track, outside p.ratings, so the potential
+// ceiling never caps it and overall() never counts it. Guards carry the
+// biggest tanks, centers the smallest, and everyone's shrinks with age.
+const STAMINA_BASE = { PG: 74, SG: 71, SF: 67, PF: 62, C: 57 };
+
+export function generateStamina(pos, age, rng = rand) {
+  let st = gauss(STAMINA_BASE[pos] ?? 65, 18, rng);
+  if (age > 29) st -= (age - 29) * 1.4;
+  return Math.round(clamp(st, 25, 99));
+}
+
+// Yearly stamina aging, applied alongside developPlayer's rating pass
+// (called with the pre-increment age, like the ratings are).
+function ageStamina(p, rng) {
+  let d;
+  if (p.age < 25) d = Math.max(0, gauss(0.5, 1.0, rng));
+  else if (p.age <= 29) d = gauss(-0.3, 0.8, rng);
+  else if (p.age <= 33) d = gauss(-1.6, 0.8, rng);
+  else d = gauss(-2.6, 1.0, rng);
+  p.stamina = Math.round(clamp((p.stamina ?? 60) + d, 25, 99));
+}
+
+// Minutes per game a player's stamina carries without degrading: ~38 for a
+// 90-stamina iron man, ~27 for a 50-stamina plodder. Past this, his
+// effective ratings drop in-game and his condition drains between games.
+export function supportedMinutes(p) {
+  return 14 + (p.stamina ?? 60) * 0.27;
+}
+
+// Hidden durability tendency (25–99): injury odds scale off it (see
+// engine/injuries.js). The number is never shown anywhere — scouts only
+// leak a vague note when it's bad enough to flag.
+export function generateDurability(rng = rand) {
+  return Math.round(clamp(gauss(65, 18, rng), 25, 99));
+}
+
+export function durabilityNote(p) {
+  const d = p.durability ?? 65;
+  if (d < 45) return 'major durability concerns';
+  if (d < 55) return 'durability concerns';
+  return null;
+}
+
 let nextPlayerId = 1;
 export function resetPlayerIds(start = 1) { nextPlayerId = start; }
 
@@ -144,6 +187,10 @@ export function generatePlayer(rng = rand, opts = {}) {
       defense: mk(arch.def),
       athleticism: Math.round(clamp(base + gauss(0, 8, rng) - (age > 30 ? (age - 30) * 2 : 0), 25, 99)),
     },
+    stamina: generateStamina(pos, age, rng),
+    condition: 100, // game-day freshness, managed by the league's day loop
+    durability: generateDurability(rng),
+    injury: null, // { type, tier, gamesLeft } while hurt — see engine/injuries.js
     potential: 0,
     contract: null,
     stats: emptyStats(),
@@ -244,6 +291,7 @@ export function developPlayer(p, rng = rand) {
     if (d > 0 && room <= 0) d = 0; // the ceiling is a ceiling
     p.ratings[key] = Math.round(clamp(p.ratings[key] + d, 25, 99));
   }
+  ageStamina(p, rng);
   p.age += 1;
   p.exp = (p.exp ?? 0) + 1;
 }

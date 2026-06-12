@@ -1,6 +1,7 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire } from './players.js';
+import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability } from './players.js';
+import { rollGameInjuries, tickInjuries } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox } from './sim.js';
 import { initDraft } from './draft.js';
 import { computeAwards, honorsSummary } from './awards.js';
@@ -237,6 +238,11 @@ export function backfillPlayers(league) {
     if (p.stats && p.stats.ftm == null) { p.stats.ftm = 0; p.stats.fta = 0; p.stats.tov = 0; }
     if (p.stats && p.stats.pf == null) p.stats.pf = 0;
     if (!p.awards) p.awards = []; // saves predating awards
+    // saves predating the stamina/fatigue system
+    if (p.stamina == null) p.stamina = generateStamina(p.pos, p.age, rng);
+    if (p.condition == null) p.condition = 100;
+    // saves predating the injury system
+    if (p.durability == null) p.durability = generateDurability(rng);
   };
   for (const team of league.teams) team.roster.forEach(fill);
   league.freeAgents.forEach(fill);
@@ -264,6 +270,39 @@ export function deadMoneyTotal(team) {
   return (team.deadMoney || []).reduce((s, d) => s + d.salary, 0);
 }
 
+// ---------- Condition ----------
+// Day-to-day freshness (0–100), shown on the Roster screen and read by the
+// game sim as a flat rating penalty. Playing burns it: cheap minutes for
+// high-stamina players, expensive for low-stamina ones, with a steep
+// surcharge past the minutes stamina supports.
+function conditionCost(p, min) {
+  const perMin = clamp(0.42 - ((p.stamina ?? 60) - 50) * 0.006, 0.16, 0.65);
+  const over = Math.max(0, min - supportedMinutes(p));
+  return min * perMin + Math.pow(over, 1.5) * 0.35;
+}
+
+const setCond = (p, v) => { p.condition = Math.round(clamp(v, 0, 100) * 10) / 10; };
+
+// One calendar day for every player: a big overnight recovery on a rest
+// day, a small one on a game day — which is why the second night of a
+// back-to-back starts lower — minus the burn for tonight's minutes.
+function updateConditions(league, results) {
+  const minToday = new Map();
+  for (const r of results) {
+    for (const line of [...r.homeBox, ...r.awayBox]) minToday.set(line.playerId, line.min);
+  }
+  for (const team of league.teams) {
+    for (const p of team.roster) {
+      const cond = p.condition ?? 100;
+      const min = minToday.get(p.id) ?? 0;
+      const recover = min > 0 ? 2 + (100 - cond) * 0.08 : 5 + (100 - cond) * 0.2;
+      setCond(p, cond + recover - conditionCost(p, min));
+    }
+  }
+  // unsigned players rest too, so a mid-season signing arrives fresh
+  for (const p of league.freeAgents) setCond(p, (p.condition ?? 100) + 5 + (100 - (p.condition ?? 100)) * 0.2);
+}
+
 // Simulate one day of games. Returns results.
 export function simDay(league) {
   if (league.phase !== 'regular' || league.dayIndex >= league.schedule.length) return [];
@@ -275,9 +314,21 @@ export function simDay(league) {
     const r = simGame(home, away, rng);
     applyBoxToStats(home.roster, r.homeBox);
     applyBoxToStats(away.roster, r.awayBox);
+    // injured players sat out tonight (tick), then anyone who played risks
+    // getting hurt (roll) — order matters so fresh casualties don't tick
+    tickInjuries(league, home);
+    tickInjuries(league, away);
+    rollGameInjuries(league, home, r.homeBox, rng);
+    rollGameInjuries(league, away, r.awayBox, rng);
     if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox });
+  }
+  // unsigned players heal on the calendar — no games to count down
+  if (league.dayIndex % 2 === 0) {
+    for (const p of league.freeAgents) {
+      if (p.injury && p.injury.tier !== 'season' && --p.injury.gamesLeft <= 0) p.injury = null;
+    }
   }
   if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
   // box scores persist in compact array form (see BOX_COLS in sim.js) so a
@@ -286,6 +337,7 @@ export function simDay(league) {
   league.resultsByDay[league.dayIndex] = results.map(({ home, away, homePts, awayPts, homeBox, awayBox }) => ({
     home, away, homePts, awayPts, homeBox: encodeBox(homeBox), awayBox: encodeBox(awayBox),
   }));
+  updateConditions(league, results);
   maybeAiTrade(league, rng);
   aiExtensions(league, rng);
   maybeAiMidSeasonSigning(league, rng);
@@ -294,6 +346,10 @@ export function simDay(league) {
     league.phase = 'playoffs';
     league.playoffs = initPlayoffs(league);
     computeAwards(league);
+    // the week off before the playoffs gets everyone most of the way fresh
+    for (const team of league.teams) {
+      for (const p of team.roster) setCond(p, (p.condition ?? 100) + 20 + (100 - (p.condition ?? 100)) * 0.5);
+    }
     pushNews(league, { day: league.dayIndex, text: 'The regular season is over. Playoffs begin!' });
   }
   return results;
@@ -341,11 +397,27 @@ export function simPlayoffGame(league) {
   po.gamesPlayed = po.gamesPlayed || 0; // also covers saves predating this field
   const rng = makeRng(league.seed + 999_983 + po.round * 31 + po.gamesPlayed * 101);
 
+  // Playoff schedules have off days between games: burn condition for
+  // tonight's minutes, then bank roughly two rest days before the next one.
+  const playoffCondition = (team, box) => {
+    const minByPlayer = new Map(box.map((l) => [l.playerId, l.min]));
+    for (const p of team.roster) {
+      const cond = p.condition ?? 100;
+      setCond(p, cond + 9 + (100 - cond) * 0.3 - conditionCost(p, minByPlayer.get(p.id) ?? 0));
+    }
+  };
+
   const playGame = (m) => {
     if (!m || m.winner) return;
     const homeId = seriesHomeTeam(m, m.highWins + m.lowWins);
     const awayId = homeId === m.high ? m.low : m.high;
     const r = simGame(getTeam(league, homeId), getTeam(league, awayId), rng);
+    for (const [id, box] of [[homeId, r.homeBox], [awayId, r.awayBox]]) {
+      const team = getTeam(league, id);
+      playoffCondition(team, box);
+      tickInjuries(league, team);
+      rollGameInjuries(league, team, box, rng);
+    }
     if (!m.games) m.games = [];
     m.games.push({ home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts });
     po.gamesPlayed += 1;
@@ -438,6 +510,8 @@ export function advanceOffseason(league) {
       // archive season stats
       if (p.stats.gp > 0) p.careerStats.push({ season: league.season, ...p.stats });
       p.stats = emptyStats();
+      p.condition = 100; // a summer off heals everything
+      p.injury = null; // ...including last spring's torn ACL
       developPlayer(p, rng);
       // Retirement comes for everyone, contract or not; a retired contract
       // simply comes off the books.
@@ -505,6 +579,8 @@ export function advanceOffseason(league) {
 
   // Age free agents, drop retirees, top up the pool
   league.freeAgents = league.freeAgents.filter((p) => {
+    p.condition = 100;
+    p.injury = null;
     developPlayer(p, rng);
     if (overall(p) >= 38 && !shouldRetire(p, rng)) return true;
     announceRetirement(league, p);
@@ -626,13 +702,16 @@ export function signMidSeasonFA(league, teamId, playerId) {
   return { ok: true, player: p };
 }
 
-// AI teams with an open roster spot occasionally add a body mid-season.
+// AI teams with an open roster spot occasionally add a body mid-season —
+// and go shopping in earnest when injuries leave the roster thin.
 function maybeAiMidSeasonSigning(league, rng) {
   for (const team of league.teams) {
     if (team.id === league.userTeamId) continue;
     if (team.roster.length >= ROSTER_MAX) continue;
-    if (rng() >= 0.01) continue;
-    const target = league.freeAgents.find((p) => midSeasonSignable(p)); // pool is sorted best-first
+    const healthy = team.roster.filter((p) => !p.injury).length;
+    if (rng() >= (healthy < 10 ? 0.25 : 0.01)) continue;
+    // pool is sorted best-first; nobody signs a guy who's also hurt
+    const target = league.freeAgents.find((p) => midSeasonSignable(p) && !p.injury);
     if (target) signMidSeasonFA(league, team.id, target.id);
   }
 }

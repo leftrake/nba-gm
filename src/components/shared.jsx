@@ -1,6 +1,6 @@
 import React from 'react';
 import { overall, flagFor } from '../engine/players.js';
-import { scoutedOverallRange, scoutedPotential, potentialGrade } from '../engine/scouting.js';
+import { scoutRange, scoutedOverallRange, scoutedPotential, potentialGrade } from '../engine/scouting.js';
 import { TEAMS } from '../data/teams.js';
 
 function ovrClass(o) {
@@ -33,6 +33,47 @@ export function Origin({ p, full }) {
   const flag = flagFor(p.nationality);
   if (full && p.from !== p.nationality) return <>{flag} {p.nationality} · {p.from}</>;
   return <>{flag} {full ? p.nationality : p.from}</>;
+}
+
+// Stamina: exact for the user's own players, a scouted range for everyone
+// else, same fog rules as the other ratings.
+export function Sta({ p, league, fogged }) {
+  if (p.stamina == null) return <span className="ovr">–</span>;
+  if (fogged) {
+    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta');
+    return <span className="ovr">{lo}–{hi}</span>;
+  }
+  return <span className="ovr">{p.stamina}</span>;
+}
+
+// Condition dot: green fresh → red gassed. Not fogged — it tracks publicly
+// visible minutes played, so everyone's is common knowledge.
+export function condColor(c) {
+  return c >= 85 ? 'var(--green)' : c >= 70 ? '#d29922' : c >= 50 ? '#f0883e' : 'var(--red)';
+}
+
+export function Cond({ p }) {
+  const c = Math.round(p.condition ?? 100);
+  return (
+    <span style={{ whiteSpace: 'nowrap' }} title={`Condition ${c}% — drains with heavy minutes (worse on back-to-backs), recovers on rest days`}>
+      <span style={{ color: condColor(c), fontSize: 10, verticalAlign: 'middle' }}>●</span> {c}
+    </span>
+  );
+}
+
+// Red injury chip: type plus games remaining. Renders nothing for the healthy.
+export function InjuryTag({ p }) {
+  if (!p.injury) return null;
+  const season = p.injury.tier === 'season';
+  return (
+    <span
+      className="tag"
+      style={{ color: 'var(--red)', marginLeft: 6 }}
+      title={`${p.injury.type} — ${season ? 'out for the season' : `${p.injury.gamesLeft} game${p.injury.gamesLeft === 1 ? '' : 's'} remaining`}`}
+    >
+      🩹 {p.injury.type} · {season ? 'season' : `${p.injury.gamesLeft} gm`}
+    </span>
+  );
 }
 
 // Front-office strategy badge (see engine/strategy.js)

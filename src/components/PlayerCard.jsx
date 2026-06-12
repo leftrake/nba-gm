@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
 import { askingPrice } from '../engine/league.js';
+import { durabilityNote } from '../engine/players.js';
+import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
-import { Ovr, Pot, money, perGame, fgPct, TeamLink, Origin } from './shared.jsx';
+import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, Origin } from './shared.jsx';
 
 const RATINGS = [
   ['inside', 'Inside'],
@@ -66,16 +68,28 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
         </div>
 
         <p style={{ margin: '10px 0' }}>
-          Overall: <Ovr p={p} league={league} fogged={fogged} /> · Potential: <Pot p={p} league={league} fogged={fogged} /> ·{' '}
+          Overall: <Ovr p={p} league={league} fogged={fogged} /> · Potential: <Pot p={p} league={league} fogged={fogged} /> · Condition: <Cond p={p} /> ·{' '}
           {p.contract
             ? <>Contract: <b>{money(p.contract.salary)}</b>/yr × <b>{p.contract.years}</b> {p.contract.years === 1 ? 'year' : 'years'}</>
             : <>Asking: <b>{money(askingPrice(p))}</b>/yr</>}
           {p.extension && <> · Extension: <b style={{ color: 'var(--green)' }}>{money(p.extension.salary)}</b>/yr × <b>{p.extension.years}</b> (starts next season)</>}
         </p>
 
+        {p.injury && (
+          <p style={{ margin: '10px 0', color: 'var(--red)' }}>
+            🩹 <b>{p.injury.type}</b> — {injuryTimeline(p.injury)}.
+          </p>
+        )}
+        {durabilityNote(p) && (
+          <p style={{ margin: '10px 0', color: 'var(--muted)' }}>
+            ⚕ Scouting note: {durabilityNote(p)}.
+          </p>
+        )}
+
         <h3>Ratings {fogged && <span style={{ color: 'var(--muted)', textTransform: 'none', letterSpacing: 0 }}>(scouted — ranges tighten with experience)</span>}</h3>
-        {RATINGS.map(([key, label]) => {
-          const v = p.ratings[key];
+        {[...RATINGS, ['stamina', 'Stamina']].map(([key, label]) => {
+          // stamina lives outside p.ratings but scouts like any other rating
+          const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
           const [lo, hi] = fogged ? scoutRange(p, v, league.season, key) : [v, v];
           const mid = (lo + hi) / 2;
           return (

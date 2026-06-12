@@ -5,6 +5,44 @@ import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
 import { BoxTable } from './BoxScore.jsx';
 
+// League-wide injury report: every player currently out, the user's team
+// first, then alphabetical by team.
+function InjuryReport({ league, openTeam, openPlayer }) {
+  const sortKey = (e) => (e.team.id === league.userTeamId ? '' : `${e.team.city} ${e.team.name}`);
+  const injured = league.teams
+    .flatMap((team) => team.roster.filter((p) => p.injury).map((p) => ({ team, p })))
+    .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  return (
+    <div className="panel">
+      <h2>League Injury Report</h2>
+      {injured.length === 0 && <p style={{ color: 'var(--muted)' }}>A clean bill of health — nobody is injured right now.</p>}
+      {injured.length > 0 && (
+        <table>
+          <thead>
+            <tr><th>Team</th><th>Player</th><th>Pos</th><th>Injury</th><th className="num">Out</th></tr>
+          </thead>
+          <tbody>
+            {injured.map(({ team, p }) => {
+              const severe = p.injury.tier === 'season' || p.injury.tier === 'significant';
+              return (
+                <tr key={p.id} style={team.id === league.userTeamId ? { background: 'var(--panel2)' } : undefined}>
+                  <td><TeamLink team={team} openTeam={openTeam}>{team.name}</TeamLink></td>
+                  <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                  <td>{p.pos}</td>
+                  <td style={severe ? { color: 'var(--red)' } : undefined}>🩹 {p.injury.type}</td>
+                  <td className="num" style={severe ? { color: 'var(--red)' } : undefined}>
+                    {p.injury.tier === 'season' ? 'Season' : `${p.injury.gamesLeft} gm`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
@@ -84,6 +122,8 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
           <div className="news-item" key={i}><NewsText text={n.text} openTeam={openTeam} /></div>
         ))}
       </div>
+
+      <InjuryReport league={league} openTeam={openTeam} openPlayer={openPlayer} />
 
       {league.history.length > 0 && (
         <div className="panel">

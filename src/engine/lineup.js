@@ -1,4 +1,5 @@
-import { overall } from './players.js';
+import { overall, supportedMinutes } from './players.js';
+import { clamp } from './rng.js';
 
 // Lineups: each team can carry `team.lineup`, shaped
 //   { starters: { PG: { id, min }, SG: ..., SF: ..., PF: ..., C: ... },
@@ -20,14 +21,18 @@ export function posFit(naturalPos, slotPos) {
   return FIT[Math.abs(POS_INDEX[naturalPos] - POS_INDEX[slotPos])];
 }
 
-// There's no injury system yet; lineups already refuse injured players so
-// one can hang an `injury` field on players without touching this code.
 export function isInjured(p) {
   return !!p.injury;
 }
 
-const STARTER_WEIGHTS = [36, 34, 32, 30, 28];
-const BENCH_WEIGHTS = [26, 22, 18, 14, 10];
+const STARTER_WEIGHTS = [40, 35, 33, 31, 29];
+const BENCH_WEIGHTS = [25, 21, 17, 13, 9];
+
+// Minutes ceiling a sensible rotation respects: a couple past what stamina
+// supports is tolerable; beyond that the sim punishes it badly.
+export function minutesCap(p) {
+  return Math.round(clamp(supportedMinutes(p) + 3, 12, 48));
+}
 
 // Best lineup for a roster: starters greedily assigned to the slot where
 // they're worth the most (fit-adjusted), bench ordered by overall, minutes
@@ -61,18 +66,28 @@ export function autoLineup(roster) {
     .sort((a, b) => overall(b) - overall(a))
     .map((p, i) => ({ p, w: BENCH_WEIGHTS[i] ?? 0 }));
 
-  // Scale weights so minutes land on exactly TOTAL_MINUTES
+  // Scale weights so minutes land on exactly TOTAL_MINUTES, while keeping
+  // everyone at or under his stamina cap. Worn-down players (low condition)
+  // also get their share trimmed, so AI rotations rest tired legs — this
+  // runs fresh every game for AI teams.
   const weighted = [...starterEntries, ...benchEntries].filter((e) => e.w > 0);
+  for (const e of weighted) {
+    e.cap = minutesCap(e.p);
+    e.w *= 0.6 + 0.4 * ((e.p.condition ?? 100) / 100);
+  }
   const wSum = weighted.reduce((s, e) => s + e.w, 0);
   let total = 0;
   for (const e of weighted) {
-    e.min = Math.min(48, Math.round((e.w / wSum) * TOTAL_MINUTES));
+    e.min = Math.min(e.cap, Math.round((e.w / wSum) * TOTAL_MINUTES));
     total += e.min;
   }
   let drift = TOTAL_MINUTES - total;
   for (let i = 0; drift !== 0 && i < 1000; i++) {
     const e = weighted[i % weighted.length];
-    if (drift > 0 && e.min < 48) { e.min++; drift--; }
+    // respect stamina caps while any headroom is left; a short or exhausted
+    // roster may have no choice but to blow past them
+    const cap = i < weighted.length * 20 ? e.cap : 48;
+    if (drift > 0 && e.min < cap) { e.min++; drift--; }
     else if (drift < 0 && e.min > 1) { e.min--; drift++; }
   }
 
@@ -109,6 +124,10 @@ export function normalizeLineup(lineup, roster) {
 
 // Everything wrong with a lineup, as user-facing strings. Empty array =
 // legal to play. The sim falls back to autoLineup when this is non-empty.
+// Injuries are deliberately NOT errors: an injured player in the lineup
+// still validates (his minutes count toward the 240), the game just sits
+// him and redistributes (see getRotation in sim.js) — lineupWarnings is
+// what tells the user about it.
 export function lineupErrors(lineup, roster) {
   if (!lineup) return ['No lineup set.'];
   const errs = [];
@@ -121,7 +140,6 @@ export function lineupErrors(lineup, roster) {
     const p = s?.id != null ? byId.get(s.id) : null;
     if (!p) { errs.push(`The ${pos} slot is empty.`); continue; }
     counts.set(p.id, (counts.get(p.id) || 0) + 1);
-    if (isInjured(p)) errs.push(`${p.name} is injured and can't start at ${pos}.`);
     if (!(s.min >= 1 && s.min <= 48)) errs.push(`${p.name} must play 1–48 minutes as a starter.`);
     total += s.min;
   }
@@ -130,7 +148,6 @@ export function lineupErrors(lineup, roster) {
     if (!p) continue; // departed player; contributes nothing
     counts.set(p.id, (counts.get(p.id) || 0) + 1);
     if (!(b.min >= 0 && b.min <= 48)) errs.push(`${p.name} must play 0–48 minutes.`);
-    if (b.min > 0 && isInjured(p)) errs.push(`${p.name} is injured and can't be in the rotation.`);
     total += b.min;
   }
   for (const [id, n] of counts) {
@@ -138,4 +155,34 @@ export function lineupErrors(lineup, roster) {
   }
   if (total !== TOTAL_MINUTES) errs.push(`Minutes total ${total} — they must total exactly ${TOTAL_MINUTES}.`);
   return errs;
+}
+
+// Soft problems with a legal lineup, as user-facing strings: the game will
+// play it, but the fatigue sim will punish it. Distinct from lineupErrors —
+// these never force a fallback to autoLineup.
+export function lineupWarnings(lineup, roster) {
+  if (!lineup) return [];
+  const byId = new Map(roster.map((p) => [p.id, p]));
+  const warns = [];
+  const entries = [
+    ...POSITIONS.map((pos) => lineup.starters?.[pos]),
+    ...(lineup.bench ?? []),
+  ];
+  for (const e of entries) {
+    const p = e?.id != null ? byId.get(e.id) : null;
+    if (!p || !(e.min > 0)) continue;
+    if (isInjured(p)) {
+      const left = p.injury.tier === 'season' ? 'out for the season' : `${p.injury.gamesLeft} game${p.injury.gamesLeft === 1 ? '' : 's'} left`;
+      warns.push(`${p.name} is injured (${p.injury.type}, ${left}) — his minutes will be covered by healthy players until he returns.`);
+      continue; // no point also nagging about his stamina
+    }
+    const sup = Math.round(supportedMinutes(p));
+    if (e.min > sup + 2) {
+      warns.push(`${p.name} is set for ${e.min} min, but his stamina (${p.stamina ?? '?'}) supports ~${sup} — expect his efficiency to fade late in games.`);
+    }
+    if ((p.condition ?? 100) < 60) {
+      warns.push(`${p.name} is worn down (${Math.round(p.condition)}% condition) — trim his minutes until he recovers.`);
+    }
+  }
+  return warns;
 }
