@@ -4,7 +4,7 @@ import { overall, supportedMinutes } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, posFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
-import { Ovr, Pot, Sta, Cond, InjuryTag, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
 
 // Small marker next to a minutes box when the assignment outruns the
 // player's stamina — legal, but the fatigue sim will make him pay.
@@ -422,6 +422,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th>
               <th className="num" title="Stamina — how many minutes a night he can handle">Sta</th>
               <th className="num" title="Condition — drains with heavy minutes, recovers on rest days">Cond</th>
+              <th title="Morale — team chemistry and happiness">Morale</th>
               <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
               <th className="num">Salary</th><th className="num">Yrs</th><th></th>
               {isUser && <th></th>}
@@ -438,6 +439,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                 <td className="num">{p.age}</td>
                 <td className="num"><Sta p={p} league={league} fogged={!isUser} /></td>
                 <td className="num"><Cond p={p} /></td>
+                <td><Morale p={p} /></td>
                 <td className="num">{perGame(p.stats, 'pts')}</td>
                 <td className="num">{perGame(p.stats, 'reb')}</td>
                 <td className="num">{perGame(p.stats, 'ast')}</td>
@@ -484,7 +486,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               </tr>
               {extendingId === p.id && canExtend && (
                 <tr>
-                  <td colSpan={15} style={{ background: 'var(--bg)' }}>
+                  <td colSpan={16} style={{ background: 'var(--bg)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
                       <span style={{ color: 'var(--muted)' }}>Market rate: {money(askingPrice(p))}/yr</span>
                       <label>

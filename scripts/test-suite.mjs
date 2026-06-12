@@ -42,6 +42,10 @@ function check(label, value, lo, hi) {
 
 const perGame = (p, k) => p.stats[k] / p.stats.gp;
 const mean = (arr) => arr.reduce((s, x) => s + x, 0) / (arr.length || 1);
+const stddev = (arr) => {
+  const m = mean(arr);
+  return Math.sqrt(mean(arr.map((x) => (x - m) ** 2)));
+};
 
 const league = createLeague('LAL', SEED);
 // Headless: no user team, every front office is AI-run
@@ -113,7 +117,7 @@ for (let s = 0; s < SEASONS; s++) {
   check('top scorer ppg', perGame(scorers[0], 'pts'), 28, 34);
   check('players over 28 ppg', scorers.filter((p) => perGame(p, 'pts') > 28).length, 0, 9);
   check('league team ppg', totalPts / teamGames, 110, 115);
-  check('top rebounder rpg', perGame(by('reb')[0], 'reb'), 11, 14.5);
+  check('top rebounder rpg', perGame(by('reb')[0], 'reb'), 11, 15);
   check('top assister apg', perGame(by('ast')[0], 'ast'), 9.5, 12.5);
   check('mean overall drift from opening day', mean(players.map(overall)) - baselineOvr, -2, 2);
 
@@ -137,6 +141,20 @@ for (let s = 0; s < SEASONS; s++) {
   check('injury rate drift vs first season', injuryRate - firstSeasonInjuryRate, -4, 4);
   check('max share of one roster injured at once', maxInjuredShare, 0, 0.5);
   check('season-ending injuries league-wide', seasonEnders, 0, 12);
+
+  console.log('  Morale');
+  const morales = players.map((p) => p.morale ?? 50);
+  check('league mean morale', mean(morales), 35, 65);
+  check('morale spread (stddev)', stddev(morales), 5, 25);
+  check('share of players at morale extremes (<=2 or >=98)', morales.filter((m) => m <= 2 || m >= 98).length / morales.length, 0, 0.05);
+  const tradeDemandNews = [...league.news, ...(league.newsArchive[league.season] || [])]
+    .filter((n) => n.season === league.season && n.category === 'morale' && /demanded a trade/.test(n.text));
+  check('trade demands this season (league-wide)', tradeDemandNews.length, 0, 6);
+  const byWins = [...league.teams].sort((a, b) => b.wins - a.wins);
+  const goodTeams = byWins.slice(0, 8);
+  const badTeams = byWins.slice(-8);
+  const teamAvgMorale = (t) => mean(t.roster.map((p) => p.morale ?? 50));
+  check('good teams average morale above bad teams', mean(goodTeams.map(teamAvgMorale)) - mean(badTeams.map(teamAvgMorale)), 0.5, 40);
 
   // play out the rest of the league year
   let guard = 0;

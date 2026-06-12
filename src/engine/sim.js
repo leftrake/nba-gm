@@ -1,5 +1,6 @@
 import { rand, gauss, clamp } from './rng.js';
 import { overall, ftRating, supportedMinutes } from './players.js';
+import { moraleRatingMod } from './morale.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, posFit, isInjured, minutesCap } from './lineup.js';
 
 // A team's game rotation: the saved lineup when it's legal, otherwise a
@@ -73,6 +74,7 @@ function gamePlayer({ p, min, slot }, rng) {
   const form = gauss(0, 1, rng);
   const r = p.ratings;
   const sharp = form * 2.5; // shooting bump in rating points
+  const moraleAdj = moraleRatingMod(p); // small +/- from happiness, see engine/morale.js
   const score = r.inside * 0.4 + r.mid * 0.25 + r.three * 0.35;
   return {
     name: p.name, // for the game-flow log
@@ -83,19 +85,19 @@ function gamePlayer({ p, min, slot }, rng) {
     // without it the league's top ~10 scorers bunch tightly around the
     // same ppg, and no one looks like a season-leading #1 option.
     usage: Math.pow(Math.max(score + sharp, 25) / 60, 2.36) * (1 + Math.max(0, score - 88) * 0.012),
-    ins: r.inside + sharp,
-    mid: r.mid + sharp,
-    three: r.three + sharp,
-    pass: r.passing,
+    ins: r.inside + sharp + moraleAdj,
+    mid: r.mid + sharp + moraleAdj,
+    three: r.three + sharp + moraleAdj,
+    pass: r.passing + moraleAdj,
     // playing out of position mostly bleeds defense and rebounding
     def: r.defense * (0.55 + 0.45 * fit),
     reb: r.rebounding * (0.55 + 0.45 * fit),
     // Fatigue bases: the fresh values above, restored each stint before the
     // current fatigue penalty is subtracted (see applyFatigue).
-    insBase: r.inside + sharp,
-    midBase: r.mid + sharp,
-    threeBase: r.three + sharp,
-    passBase: r.passing,
+    insBase: r.inside + sharp + moraleAdj,
+    midBase: r.mid + sharp + moraleAdj,
+    threeBase: r.three + sharp + moraleAdj,
+    passBase: r.passing + moraleAdj,
     defBase: r.defense * (0.55 + 0.45 * fit),
     rebBase: r.rebounding * (0.55 + 0.45 * fit),
     supported: supportedMinutes(p),

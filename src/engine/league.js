@@ -8,6 +8,10 @@ import { computeAwards, honorsSummary } from './awards.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
 import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
+import {
+  initMorale, moraleSalaryMult, applyResultMorale, bumpRosterMorale, bumpTurmoil,
+  dailyMoraleUpdate, updateTradeDemands, maybeShopDisgruntled,
+} from './morale.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
@@ -244,8 +248,13 @@ export function backfillPlayers(league) {
     if (p.condition == null) p.condition = 100;
     // saves predating the injury system
     if (p.durability == null) p.durability = generateDurability(rng);
+    // saves predating the morale system
+    if (p.morale == null) p.morale = initMorale(p.id);
+    if (p.moraleLowStreak == null) p.moraleLowStreak = 0;
+    if (p.tradeDemand == null) p.tradeDemand = false;
   };
   for (const team of league.teams) team.roster.forEach(fill);
+  for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
   league.freeAgents.forEach(fill);
   league.draft?.prospects?.forEach(fill);
   // Saves predating front-office strategies
@@ -356,6 +365,9 @@ export function simDay(league) {
     return { ...slim, homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) };
   });
   updateConditions(league, results);
+  dailyMoraleUpdate(league, results);
+  updateTradeDemands(league);
+  maybeShopDisgruntled(league, rng);
   maybeAiTrade(league, rng);
   aiExtensions(league, rng);
   maybeAiMidSeasonSigning(league, rng);
@@ -454,6 +466,9 @@ export function simPlayoffGame(league) {
     po.gamesPlayed += 1;
     const highWon = (r.homePts > r.awayPts) === (homeId === m.high);
     if (highWon) m.highWins += 1; else m.lowWins += 1;
+    // playoff results swing morale harder than a regular-season game
+    applyResultMorale(getTeam(league, homeId), r.homePts > r.awayPts, 2);
+    applyResultMorale(getTeam(league, awayId), r.awayPts > r.homePts, 2);
     if (m.highWins === 4 || m.lowWins === 4) {
       m.winner = m.highWins === 4 ? m.high : m.low;
       po.log.push(`${getTeam(league, m.winner).name} win series ${Math.max(m.highWins, m.lowWins)}-${Math.min(m.highWins, m.lowWins)}`);
@@ -468,6 +483,7 @@ export function simPlayoffGame(league) {
     if (po.finals.winner) {
       po.champion = po.finals.winner;
       const champ = getTeam(league, po.champion);
+      bumpRosterMorale(champ, 10);
       pushNews(league, { day: league.dayIndex, category: 'league', major: true, teamIds: [champ.id], text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
       league.phase = 'offseason';
     }
@@ -479,7 +495,10 @@ function advanceRound(po, league) {
   // archive the round's series so their games stay viewable all season
   if (!po.completed) po.completed = []; // saves predating series history
   for (const conf of ['East', 'West']) {
-    for (const m of po[conf]) po.completed.push({ round: po.round, conf, series: m });
+    for (const m of po[conf]) {
+      po.completed.push({ round: po.round, conf, series: m });
+      bumpRosterMorale(getTeam(league, m.winner), 3); // playoff series win
+    }
   }
   if (po.East.length === 1 && po.West.length === 1) {
     // Finals home court goes to the conference champ with the better record
@@ -668,6 +687,7 @@ export function advanceOffseason(league) {
 // the market. Better players are kept harder, winners keep their guys,
 // and homegrown draftees (p.draftTeam) get a loyalty bump.
 function resignChance(team, p) {
+  if (p.tradeDemand) return 0; // a player who demanded out won't stay
   const ovr = overall(p);
   let chance = ovr >= 80 ? 0.88 : ovr >= 70 ? 0.8 : ovr >= 60 ? 0.6 : 0.35;
   // mid-season (extensions) this is the live record; in the offseason the
@@ -751,6 +771,7 @@ export function signMidSeasonFA(league, teamId, playerId) {
   p.contract = { salary: proratedMinSalary(league), years: 1 };
   league.freeAgents.splice(idx, 1);
   team.roster.push(p); // on the roster now — available for the next game
+  bumpTurmoil(team, 0.5);
   pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.` });
   return { ok: true, player: p };
 }
@@ -810,6 +831,7 @@ function demandSalary(team, p, years, winPct) {
   let mult = greed(p);
   const caresAboutWinning = clamp((o - 60) / 25, 0, 1);
   mult *= clamp(1 + caresAboutWinning * (0.55 - winPct), 0.85, 1.3);
+  mult *= moraleSalaryMult(p);
   if (o >= 65 && betterAtPosition(team, p) >= 2) mult *= 1.15;
   const pref = preferredYears(p);
   if (years < pref) mult *= 1 + 0.08 * (pref - years);
@@ -823,6 +845,7 @@ function demandSalary(team, p, years, winPct) {
 export function offerDemand(league, teamId, p, years) {
   const team = getTeam(league, teamId);
   if (roleBlocked(team, p)) return null;
+  if (p.tradeDemand && p.tradeDemandTeam === teamId) return null; // won't re-sign with the team he demanded out from
   return demandSalary(team, p, years, (team.lastWins ?? 41) / 82);
 }
 
@@ -848,6 +871,7 @@ export function extensionEligible(p) {
 export function extensionDemand(league, teamId, p, years) {
   const team = getTeam(league, teamId);
   if (roleBlocked(team, p)) return null;
+  if (p.tradeDemand) return null; // a disgruntled player won't commit long-term to this team
   const winPct = currentWinPct(team);
   if (overall(p) >= 78 && winPct < 0.45 && faNoise(p.id, 7) < 0.6) return null;
   return demandSalary(team, p, years, winPct);
@@ -883,6 +907,7 @@ export function offerExtension(league, teamId, playerId, salary, years) {
     p.extension = { salary, years };
     delete p.extTalksFailed;
     delete league.extensionTalks[playerId];
+    p.morale = Math.round(clamp((p.morale ?? 50) + 6, 0, 100) * 10) / 10;
     pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}.` });
     return { ok: true, decision: 'accept', reason: `${p.name} signs: ${fmtM(salary)}/yr x ${years}yr, starting next season.` };
   }
@@ -923,6 +948,7 @@ function aiExtensions(league, rng) {
       if (demand === null) continue; // player won't extend now; the offseason window may still keep him
       if (payroll(team) - p.contract.salary + demand > LUXURY_TAX) continue;
       p.extension = { salary: demand, years };
+      p.morale = Math.round(clamp((p.morale ?? 50) + 6, 0, 100) * 10) / 10;
       if (overall(p) >= 70) {
         pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} agrees to a ${years}-year, ${fmtM(demand)}/yr extension with the ${team.city} ${team.name}.` });
       }
@@ -1019,6 +1045,7 @@ export function releasePlayer(league, teamId, playerId) {
   const idx = team.roster.findIndex((p) => p.id === playerId);
   if (idx === -1) return false;
   const p = team.roster.splice(idx, 1)[0];
+  bumpTurmoil(team);
   if (p.contract) {
     if (!team.deadMoney) team.deadMoney = []; // saves predating this field
     team.deadMoney.push({ playerName: p.name, salary: p.contract.salary, years: p.contract.years });

@@ -61,6 +61,30 @@ export function Cond({ p }) {
   );
 }
 
+// Morale dot: green happy → red disgruntled. Not fogged — every team's
+// chemistry is common knowledge, even if the underlying ratings aren't.
+export function moraleColor(m) {
+  return m >= 70 ? 'var(--green)' : m >= 50 ? 'var(--accent)' : m >= 30 ? '#d29922' : 'var(--red)';
+}
+
+function moraleEmoji(m) {
+  return m >= 70 ? '😄' : m >= 50 ? '🙂' : m >= 30 ? '😕' : '😠';
+}
+
+export function Morale({ p }) {
+  const m = Math.round(p.morale ?? 50);
+  return (
+    <span style={{ whiteSpace: 'nowrap' }} title={`Morale ${m}/100 — rises with winning, minutes/role, playoff success and extensions; falls with losing, being underused, being shopped, and roster turmoil`}>
+      <span style={{ color: moraleColor(m) }}>{moraleEmoji(m)}</span> {m}
+      {p.tradeDemand && (
+        <span className="tag" style={{ color: 'var(--red)', marginLeft: 4 }} title={`${p.name} has publicly demanded a trade`}>
+          TRADE REQUEST
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Red injury chip: type plus games remaining. Renders nothing for the healthy.
 export function InjuryTag({ p }) {
   if (!p.injury) return null;

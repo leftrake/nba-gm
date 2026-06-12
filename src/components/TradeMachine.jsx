@@ -3,6 +3,7 @@ import { getTeam } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
+import { applyShoppedPenalty } from '../engine/morale.js';
 import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
 
 function TradeSide({ league, team, valueStrategy, fogged, selected, toggle, openPlayer }) {
@@ -68,13 +69,17 @@ export default function TradeMachine({ league, commit, openPlayer }) {
       setMessage({ type: 'ok', text: `Trade accepted! The ${otherTeam.name} agree to the deal.` });
       commit();
     } else if (evaln.reason) {
+      applyShoppedPenalty(incoming);
       setMessage({ type: 'error', text: `The ${otherTeam.name} reject the offer. ${evaln.reason}` });
+      commit();
     } else {
       const pct = Math.round(evaln.ratio * 100);
+      applyShoppedPenalty(incoming);
       setMessage({
         type: 'error',
         text: `The ${otherTeam.name} reject the offer. They value your package at ~${pct}% of what they're giving up. ${pct < 70 ? 'Not even close.' : pct < 90 ? 'Add more value.' : 'You\'re close — sweeten it slightly.'}`,
       });
+      commit();
     }
   };
 

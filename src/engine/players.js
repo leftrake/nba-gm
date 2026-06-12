@@ -1,5 +1,6 @@
 import { rand, randInt, pick, gauss, clamp } from './rng.js';
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
+import { initMorale } from './morale.js';
 
 const FIRST_NAMES = [
   'Jalen', 'Marcus', 'DeAndre', 'Tyrese', 'Cade', 'Darius', 'Malik', 'Jaylen', 'Zion', 'Trey',
@@ -172,8 +173,9 @@ export function generatePlayer(rng = rand, opts = {}) {
 
   const mk = (mod) => Math.round(clamp(base + mod + gauss(0, 7, rng), 25, 99));
 
+  const id = nextPlayerId++;
   const p = {
-    id: nextPlayerId++,
+    id,
     name: `${pick(FIRST_NAMES, rng)} ${pick(LAST_NAMES, rng)}`,
     pos,
     age,
@@ -192,6 +194,9 @@ export function generatePlayer(rng = rand, opts = {}) {
     condition: 100, // game-day freshness, managed by the league's day loop
     durability: generateDurability(rng),
     injury: null, // { type, tier, gamesLeft } while hurt — see engine/injuries.js
+    morale: initMorale(id), // 0-100, see engine/morale.js
+    moraleLowStreak: 0,
+    tradeDemand: false,
     potential: 0,
     contract: null,
     stats: emptyStats(),

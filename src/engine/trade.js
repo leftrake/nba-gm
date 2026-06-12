@@ -2,6 +2,8 @@ import { overall } from './players.js';
 import { getTeam, payroll } from './league.js';
 import { SALARY_CAP } from '../data/teams.js';
 import { pushNews } from './save.js';
+import { clamp } from './rng.js';
+import { bumpTurmoil } from './morale.js';
 
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
@@ -19,6 +21,8 @@ export function tradeValue(p, strategy) {
   v *= 1 + upside * 0.02;
   // bad contract discount
   if (p.contract && p.contract.salary > 30_000_000 && ovr < 75) v *= 0.7;
+  // a player who has publicly demanded a trade has sharply reduced value
+  if (p.tradeDemand) v *= 0.5;
   if (strategy === 'rebuilding') {
     // youth and upside are the whole point; veterans are trade bait
     if (p.age <= 25) v *= 1.2;
@@ -106,7 +110,16 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds)
   b.roster = b.roster.filter((p) => !playersBIds.includes(p.id)).concat(outA);
   // failed extension talks don't follow a player to a new front office
   // (signed extensions do, like any contract)
-  for (const p of [...outA, ...outB]) delete p.extTalksFailed;
+  for (const p of [...outA, ...outB]) {
+    delete p.extTalksFailed;
+    // a fresh start: any trade demand is resolved, and morale nudges toward neutral
+    p.tradeDemand = false;
+    p.tradeDemandTeam = null;
+    p.moraleLowStreak = 0;
+    p.morale = Math.round(clamp((p.morale ?? 50) * 0.6 + 20, 0, 100) * 10) / 10;
+  }
+  bumpTurmoil(a);
+  bumpTurmoil(b);
   const names = (ps) => ps.map((p) => p.name).join(', ') || 'nothing';
   pushNews(league, {
     day: league.dayIndex,

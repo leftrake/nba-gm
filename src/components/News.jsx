@@ -7,6 +7,7 @@ const CATS = [
   ['signing', 'Signings'],
   ['injury', 'Injuries'],
   ['draft', 'Draft'],
+  ['morale', 'Morale'],
   ['award', 'Awards'],
   ['milestone', 'Milestones'],
   ['league', 'League'],
