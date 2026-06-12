@@ -26,6 +26,7 @@ import {
 } from '../src/engine/league.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
+import { autoLineup, lineupWarnings } from '../src/engine/lineup.js';
 import { SALARY_CAP } from '../src/data/teams.js';
 
 const SEASONS = Number(process.argv[2]) || 3;
@@ -124,6 +125,12 @@ for (let s = 0; s < SEASONS; s++) {
   check('minutes leader mpg (~36-38)', perGame(by('min')[0], 'min'), 35, 38.5);
   check('players at 40+ mpg', qualified.filter((p) => perGame(p, 'min') >= 40).length, 0, 0);
   check('high-stamina guard mpg edge over low-stamina bigs', mean(guards.map((p) => perGame(p, 'min'))) - mean(bigs.map((p) => perGame(p, 'min'))), 1.5, 30);
+
+  // AI-set rotations (autoLineup) should rarely trip the stamina warning —
+  // a couple of teams might have one overworked player, but most should be clean
+  const teamWarnCounts = league.teams.map((t) => lineupWarnings(autoLineup(t.roster), t.roster).length);
+  check('avg lineup warnings per team (AI rotations)', mean(teamWarnCounts), 0, 1);
+  check('max lineup warnings on any team', Math.max(...teamWarnCounts), 0, 3);
 
   console.log('  Injuries');
   check('avg injury stretches per team', injuryRate, 5, 15);

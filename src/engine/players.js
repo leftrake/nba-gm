@@ -112,11 +112,12 @@ function ageStamina(p, rng) {
   p.stamina = Math.round(clamp((p.stamina ?? 60) + d, 25, 99));
 }
 
-// Minutes per game a player's stamina carries without degrading: ~38 for a
-// 90-stamina iron man, ~27 for a 50-stamina plodder. Past this, his
-// effective ratings drop in-game and his condition drains between games.
+// Minutes per game a player's stamina carries without degrading: ~46 for a
+// 90-stamina iron man, ~34 for an average (60) starter, ~28 for a 45-stamina
+// plodder. Past this, his effective ratings drop in-game and his condition
+// drains between games.
 export function supportedMinutes(p) {
-  return 14 + (p.stamina ?? 60) * 0.27;
+  return 10 + (p.stamina ?? 60) * 0.4;
 }
 
 // Hidden durability tendency (25–99): injury odds scale off it (see

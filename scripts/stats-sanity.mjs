@@ -161,11 +161,11 @@ for (let s = 0; s < SEASONS; s++) {
   };
 
   const normal = runGames(null);
-  const heavy = runGames(44);
+  const heavy = runGames(48);
   console.log(`Fatigue experiment — ${star.name} (ovr ${overall(star)}, stamina ${star.stamina})`);
   console.log(`  normal: ${normal.mpg.toFixed(1)} mpg, ${normal.ppg.toFixed(1)} ppg, ${normal.fgPct.toFixed(1)} FG%`);
   console.log(`  forced: ${heavy.mpg.toFixed(1)} mpg, ${heavy.ppg.toFixed(1)} ppg, ${heavy.fgPct.toFixed(1)} FG%`);
-  check('experiment', 'FG% drop at 44 min (pct points)', normal.fgPct - heavy.fgPct, 2, 30);
+  check('experiment', 'FG% drop at 48 min (pct points)', normal.fgPct - heavy.fgPct, 2, 30);
   console.log('');
 }
 
