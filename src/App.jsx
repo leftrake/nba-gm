@@ -48,6 +48,7 @@ export default function App() {
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
+  const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
 
   const openTeam = useCallback((teamId) => {
     setViewPlayer(null);
@@ -59,6 +60,13 @@ export default function App() {
   const openPlayer = useCallback((p) => setViewPlayer(p), []);
   const closePlayer = useCallback(() => setViewPlayer(null), []);
   const openGame = useCallback((game, title) => setViewGame({ game, title }), []);
+
+  // Hand an incoming trade offer to the Trade Machine, pre-filled so the
+  // user can tweak it into a counter-offer.
+  const openTradeOffer = useCallback((offer) => {
+    setTradePrefill({ otherId: offer.fromTeamId, give: offer.give, get: offer.get, key: offer.id });
+    setScreen('trade');
+  }, []);
 
   // The engine mutates the league object; this forces a re-render + saves.
   const commit = useCallback(() => {
@@ -154,9 +162,11 @@ export default function App() {
   };
   const handleSimWeek = () => {
     let results = [];
+    const offersBefore = league.tradeOffers.length;
     for (let i = 0; i < 4 && league.phase === 'regular'; i++) {
       results = simDay(league);
       trackFeatured(results);
+      if (league.tradeOffers.length > offersBefore) break;
     }
     setLastResults(results);
     setScreen('dashboard');
@@ -165,9 +175,11 @@ export default function App() {
   const handleSimToNextGame = () => {
     let results = [];
     let mine = null;
+    const offersBefore = league.tradeOffers.length;
     while (league.phase === 'regular' && !mine) {
       results = simDay(league);
       mine = trackFeatured(results);
+      if (league.tradeOffers.length > offersBefore) break;
     }
     setLastResults(results);
     setScreen('dashboard');
@@ -175,9 +187,11 @@ export default function App() {
   };
   const handleSimToEnd = () => {
     let results = [];
+    const offersBefore = league.tradeOffers.length;
     while (league.phase === 'regular') {
       results = simDay(league);
       trackFeatured(results);
+      if (league.tradeOffers.length > offersBefore) break;
     }
     setLastResults(results);
     setScreen('dashboard');
@@ -308,13 +322,13 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} openNews={() => setScreen('news')} />}
+        {screen === 'dashboard' && <Dashboard league={league} commit={commit} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} openNews={() => setScreen('news')} onCounterTradeOffer={openTradeOffer} />}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
-        {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} />}
+        {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} prefill={tradePrefill} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}

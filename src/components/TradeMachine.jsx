@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getTeam } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
@@ -32,13 +32,23 @@ function TradeSide({ league, team, valueStrategy, fogged, selected, toggle, open
   );
 }
 
-export default function TradeMachine({ league, commit, openPlayer }) {
+export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   const userId = league.userTeamId;
   const others = league.teams.filter((t) => t.id !== userId);
-  const [otherId, setOtherId] = useState(others[0].id);
-  const [give, setGive] = useState([]);
-  const [get, setGet] = useState([]);
+  const [otherId, setOtherId] = useState(prefill?.otherId ?? others[0].id);
+  const [give, setGive] = useState(prefill?.give ?? []);
+  const [get, setGet] = useState(prefill?.get ?? []);
   const [message, setMessage] = useState(null);
+
+  // A "Counter in Trade Machine" click from an incoming offer seeds the
+  // partner and both sides of the deal so the user can tweak it.
+  useEffect(() => {
+    if (!prefill) return;
+    setOtherId(prefill.otherId);
+    setGive(prefill.give);
+    setGet(prefill.get);
+    setMessage(null);
+  }, [prefill?.key]);
 
   const userTeam = getTeam(league, userId);
   const otherTeam = getTeam(league, otherId);

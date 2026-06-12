@@ -5,6 +5,7 @@ import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
 import { LineScore, TopPerformers } from './BoxScore.jsx';
 import { NewsItem } from './News.jsx';
+import TradeOffers from './TradeOffers.jsx';
 
 // League-wide injury report: every player currently out, the user's team
 // first, then alphabetical by team.
@@ -74,7 +75,7 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   );
 }
 
-export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews }) {
+export default function Dashboard({ league, commit, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews, onCounterTradeOffer }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
@@ -87,6 +88,8 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
 
   return (
     <div>
+      <TradeOffers league={league} commit={commit} openPlayer={openPlayer} onCounter={onCounterTradeOffer} />
+
       {featuredGame && (
         <FeaturedGame league={league} fg={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
       )}

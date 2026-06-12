@@ -12,6 +12,7 @@ import {
   initMorale, moraleSalaryMult, applyResultMorale, bumpRosterMorale, bumpTurmoil,
   dailyMoraleUpdate, updateTradeDemands, maybeShopDisgruntled,
 } from './morale.js';
+import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 
 export function createLeague(userTeamId, seed = Date.now()) {
   const rng = makeRng(seed);
@@ -44,6 +45,7 @@ export function createLeague(userTeamId, seed = Date.now()) {
     }),
     news: [{ day: 0, season: 2026, phase: 'regular', category: 'league', teamIds: [userTeamId], text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
     newsArchive: {}, // { [season]: [major news items, chronological] }
+    tradeOffers: [], // incoming AI trade offers awaiting a response
     history: [],
   };
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
@@ -264,6 +266,8 @@ export function backfillPlayers(league) {
   if (!user.lineup) user.lineup = autoLineup(user.roster);
   // Saves predating the news cap
   if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
+  // Saves predating incoming trade offers
+  if (!league.tradeOffers) league.tradeOffers = [];
   // Saves predating news categories/archiving
   if (!league.newsArchive) league.newsArchive = {};
   for (const n of league.news) {
@@ -371,6 +375,8 @@ export function simDay(league) {
   maybeAiTrade(league, rng);
   aiExtensions(league, rng);
   maybeAiMidSeasonSigning(league, rng);
+  expireTradeOffers(league);
+  maybeGenerateTradeOffer(league, rng);
   league.dayIndex += 1;
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
