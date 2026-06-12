@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo } from 'react';
 import { getTeam } from '../engine/league.js';
-import { decodeBox } from '../engine/sim.js';
+import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
 import { TeamLink, PlayerLink } from './shared.jsx';
 
 // Players move teams (or get waived) mid-season, so box-score names resolve
 // against the whole league, not just the current roster of the team shown.
-function usePlayerIndex(league) {
+export function usePlayerIndex(league) {
   return useMemo(() => {
     const byId = new Map();
     for (const t of league.teams) for (const p of t.roster) byId.set(p.id, p);
@@ -16,7 +16,7 @@ function usePlayerIndex(league) {
 
 // Lines arrive either as objects (fresh sim results) or compact arrays
 // (loaded from the save) — see BOX_COLS in sim.js.
-const asLines = (box) => (box.length > 0 && Array.isArray(box[0]) ? decodeBox(box) : box);
+export const asLines = (box) => (box.length > 0 && Array.isArray(box[0]) ? decodeBox(box) : box);
 
 export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer }) {
   const byId = usePlayerIndex(league);
@@ -77,8 +77,87 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer }) {
   );
 }
 
-// Full-game modal: away and home box scores for one stored result.
-export default function BoxScoreModal({ league, game, title, onClose, openTeam, openPlayer }) {
+// Quarter-by-quarter line score; renders nothing for results from saves
+// that predate quarter tracking.
+function LineScore({ league, game }) {
+  if (!game.homeQtrs?.length) return null;
+  const cols = game.homeQtrs.map((_, i) => periodLabel(i));
+  const row = (teamId, qtrs, pts, winner) => (
+    <tr style={winner ? { fontWeight: 700 } : undefined}>
+      <td>{getTeam(league, teamId).name}</td>
+      {qtrs.map((q, i) => <td className="num" key={i}>{q}</td>)}
+      <td className="num"><b>{pts}</b></td>
+    </tr>
+  );
+  return (
+    <table style={{ maxWidth: 460, marginBottom: 14 }}>
+      <thead>
+        <tr><th />{cols.map((c) => <th className="num" key={c}>{c}</th>)}<th className="num">T</th></tr>
+      </thead>
+      <tbody>
+        {row(game.away, game.awayQtrs, game.awayPts, game.awayPts > game.homePts)}
+        {row(game.home, game.homeQtrs, game.homePts, game.homePts > game.awayPts)}
+      </tbody>
+    </table>
+  );
+}
+
+// "Name (Team) — 31 PTS, 9 REB, 5 AST", the best lines across both teams.
+function TopPerformers({ league, game, openPlayer }) {
+  const byId = usePlayerIndex(league);
+  const sides = [
+    [game.home, game.homeBox || game.homeStars],
+    [game.away, game.awayBox || game.awayStars],
+  ].filter(([, box]) => box);
+  const all = sides.flatMap(([teamId, box]) => asLines(box).map((l) => ({ l, teamId })));
+  const top = starLines(all.map((x) => x.l), 3).map((l) => all.find((x) => x.l === l));
+  if (top.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <h3>Top Performers</h3>
+      {top.map(({ l, teamId }) => {
+        const p = byId.get(l.playerId);
+        return (
+          <div key={l.playerId} className="result-row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+            <span>★ {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
+              <span style={{ color: 'var(--muted)' }}> ({getTeam(league, teamId).name})</span>
+            </span>
+            <span style={{ marginLeft: 'auto' }}>
+              <b>{l.pts}</b> PTS · {l.reb} REB · {l.ast} AST
+              <span style={{ color: 'var(--muted)' }}> · {l.fgm}-{l.fga} FG</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// The highlight log recorded during the sim: runs, clutch shots, big
+// quarters, quarter scores, injuries. Post-game notes carry no period tag.
+function GameFlow({ events }) {
+  if (!events?.length) return null;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <h3>Game Flow</h3>
+      {events.map((e, i) => (
+        <div className="news-item" key={i}>
+          {e.q && (
+            <span style={{ color: 'var(--muted)', display: 'inline-block', minWidth: 70 }}>
+              {e.q}{e.t ? ` ${e.t}` : ''}
+            </span>
+          )}
+          {e.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Full game page (as a modal): line score, top performers, box scores when
+// the save kept them, and the game-flow log. Falls back gracefully for
+// games stored slim (top performers only) and for results from old saves.
+export default function GameModal({ league, game, title, onClose, openTeam, openPlayer }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -87,6 +166,7 @@ export default function BoxScoreModal({ league, game, title, onClose, openTeam, 
 
   const away = getTeam(league, game.away);
   const home = getTeam(league, game.home);
+  const fullBox = !!(game.homeBox && game.awayBox);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -100,9 +180,20 @@ export default function BoxScoreModal({ league, game, title, onClose, openTeam, 
           </h2>
           <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
         </div>
-        <div className="grid2" style={{ marginTop: 12 }}>
-          <BoxTable league={league} teamId={game.away} pts={game.awayPts} box={game.awayBox} openTeam={openTeam} openPlayer={openPlayer} />
-          <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} />
+        <div style={{ marginTop: 12 }}>
+          <LineScore league={league} game={game} />
+          <TopPerformers league={league} game={game} openPlayer={openPlayer} />
+          {fullBox ? (
+            <div className="grid2">
+              <BoxTable league={league} teamId={game.away} pts={game.awayPts} box={game.awayBox} openTeam={openTeam} openPlayer={openPlayer} />
+              <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} />
+            </div>
+          ) : (
+            <p style={{ color: 'var(--muted)', fontSize: 12 }}>
+              Full box scores are kept for your games and playoff games; other games keep the line score and top performers.
+            </p>
+          )}
+          <GameFlow events={game.events} />
         </div>
       </div>
     </div>

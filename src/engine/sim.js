@@ -75,6 +75,7 @@ function gamePlayer({ p, min, slot }, rng) {
   const sharp = form * 2.5; // shooting bump in rating points
   const score = r.inside * 0.4 + r.mid * 0.25 + r.three * 0.35;
   return {
+    name: p.name, // for the game-flow log
     targetMin: min,
     remaining: min,
     score, // form-free scoring talent — decides who the featured option is
@@ -277,6 +278,7 @@ function playPossession(off, def, home, rng) {
     chargeFoul(def, rng);
     const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
     const { made, lastMissed } = shootFreeThrows(shooter, 2, rng);
+    if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
     if (lastMissed && offenseRebounds(off, def, rng)) return made + playShots(off, def, home, rng);
     return made;
   }
@@ -307,6 +309,7 @@ function playShots(off, def, home, rng) {
       if (type === 'three') { shooter.line.tpa += 1; shooter.line.tpm += 1; }
       shooter.line.pts += shotPts;
       pts += shotPts;
+      off.team.last = { name: shooter.name, type };
       maybeAssist(off, shooter, type, rng);
       if (fouled) {
         chargeFoul(def, rng);
@@ -318,6 +321,7 @@ function playShots(off, def, home, rng) {
       // missed but fouled: no FGA, shoot 2 (or 3 beyond the arc)
       chargeFoul(def, rng);
       const { made: ftPts, lastMissed } = shootFreeThrows(shooter, shotPts, rng);
+      if (ftPts > 0) off.team.last = { name: shooter.name, type: 'ft' };
       pts += ftPts;
       if (lastMissed && offenseRebounds(off, def, rng)) continue;
       return pts;
@@ -357,10 +361,78 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   featureTopOption(awayPlayers);
 
   const poss = Math.round(clamp(gauss(99, 2.5, rng), 92, 106));
-  const homeScore = { pts: 0 };
-  const awayScore = { pts: 0 };
+  const homeScore = { pts: 0, last: null }; // .last: most recent scorer, for the log
+  const awayScore = { pts: 0, last: null };
 
-  const playStint = (minutes, possEach, ot) => {
+  // ---- Game log: quarter line score + highlight events ----
+  // Detection reads scores and box lines but never the rng, so adding or
+  // changing events can't perturb seeded sim results.
+  const homeQtrs = [];
+  const awayQtrs = [];
+  const events = [];
+  let period = 0; // 0-3 = Q1-Q4, 4+ = overtimes
+  const sideName = (side) => (side === 0 ? homeTeam : awayTeam).name;
+  const fmtClock = (rem) => {
+    const t = Math.max(0, Math.round(rem * 60));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  };
+  const addEv = (text, t = '', q = periodLabel(period)) => events.push({ q, t, text });
+
+  let leadSign = 0; // sign of home - away while someone leads
+  let leadChanges = 0;
+  let run = { side: null, pts: 0 }; // current streak of unanswered points
+
+  // Called after every scoring possession with minutes remaining in the period.
+  const track = (side, pts, rem) => {
+    if (pts === 0) return;
+    if (run.side === side) {
+      run.pts += pts;
+    } else {
+      if (run.side != null && run.pts >= 10) {
+        addEv(`The ${sideName(run.side)} ripped off a ${run.pts}-0 run.`, fmtClock(rem));
+      }
+      run = { side, pts };
+    }
+    const diff = homeScore.pts - awayScore.pts;
+    const sign = Math.sign(diff);
+    // clutch time: final two minutes of the 4th or any OT, shot ties or flips the lead
+    const last = (side === 0 ? homeScore : awayScore).last;
+    if (period >= 3 && rem <= 2.05 && last) {
+      const shot = { ins: 'layup', mid: 'jumper', three: 'three', ft: 'free throw' }[last.type];
+      if (sign === 0) {
+        addEv(`${last.name} ties it at ${homeScore.pts} with a ${shot}.`, fmtClock(rem));
+      } else if (sign !== leadSign && sign === (side === 0 ? 1 : -1)) {
+        addEv(`${last.name}'s ${shot} puts the ${sideName(side)} up ${Math.max(homeScore.pts, awayScore.pts)}-${Math.min(homeScore.pts, awayScore.pts)}.`, fmtClock(rem));
+      }
+    }
+    if (sign !== 0 && sign !== leadSign) {
+      if (leadSign !== 0) leadChanges += 1;
+      leadSign = sign;
+    }
+  };
+
+  let hPrev = 0;
+  let aPrev = 0;
+  const endPeriod = () => {
+    const hq = homeScore.pts - hPrev;
+    const aq = awayScore.pts - aPrev;
+    homeQtrs.push(hq);
+    awayQtrs.push(aq);
+    hPrev = homeScore.pts;
+    aPrev = awayScore.pts;
+    if (hq >= 38) addEv(`The ${homeTeam.name} poured in ${hq} points in ${periodLabel(period)}.`);
+    if (aq >= 38) addEv(`The ${awayTeam.name} poured in ${aq} points in ${periodLabel(period)}.`);
+    // period markers carry no q/t prefix — the text says it all
+    if (period < 3) {
+      const [lead, trail] = homeScore.pts >= awayScore.pts ? [homeTeam, awayTeam] : [awayTeam, homeTeam];
+      addEv(`End of ${periodLabel(period)}: ${lead.name} ${Math.max(homeScore.pts, awayScore.pts)}, ${trail.name} ${Math.min(homeScore.pts, awayScore.pts)}.`, '', '');
+    } else if (homeScore.pts === awayScore.pts) {
+      addEv(`Tied at ${homeScore.pts} — headed to ${period === 3 ? 'overtime' : 'another overtime'}.`, '', '');
+    }
+    period += 1;
+  };
+
+  const playStint = (minutes, possEach, ot, remStart) => {
     const hFive = pickFive(homePlayers, rng, ot);
     const aFive = pickFive(awayPlayers, rng, ot);
     // fatigue reflects minutes already in the books when the stint starts
@@ -369,9 +441,14 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     let a = floorContext(aFive, awayScore);
     // anyone who picks up his 6th foul leaves the floor before the next play
     for (let k = 0; k < possEach; k++) {
-      homeScore.pts += playPossession(h, a, true, rng);
+      const rem = remStart - (minutes * (k + 1)) / Math.max(possEach, 1);
+      const hp = playPossession(h, a, true, rng);
+      homeScore.pts += hp;
+      track(0, hp, rem);
       a = replaceFouledOut(a, awayPlayers, rng);
-      awayScore.pts += playPossession(a, h, false, rng);
+      const ap = playPossession(a, h, false, rng);
+      awayScore.pts += ap;
+      track(1, ap, rem);
       h = replaceFouledOut(h, homePlayers, rng);
       a = replaceFouledOut(a, awayPlayers, rng);
     }
@@ -380,17 +457,47 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   let done = 0;
   for (let s = 0; s < SEGMENTS; s++) {
     const target = Math.round(((s + 1) / SEGMENTS) * poss);
-    playStint(SEGMENT_MIN, target - done, false);
+    playStint(SEGMENT_MIN, target - done, false, 12 - (s % 4) * SEGMENT_MIN);
     done = target;
+    if (s % 4 === 3) endPeriod();
   }
-  while (homeScore.pts === awayScore.pts) playStint(OT_MIN, OT_POSS, true); // overtime(s)
+  while (homeScore.pts === awayScore.pts) {
+    playStint(OT_MIN, OT_POSS, true, OT_MIN); // overtime(s)
+    endPeriod();
+  }
+
+  // post-game notes (q='' so the UI shows them unprefixed, after the action)
+  if (run.side != null && run.pts >= 10) addEv(`The ${sideName(run.side)} closed the game on a ${run.pts}-0 run.`, '', '');
+  if (leadChanges >= 12) addEv(`A back-and-forth battle: ${leadChanges} lead changes.`, '', '');
+  for (const gp of [...homePlayers, ...awayPlayers]) {
+    const l = gp.line;
+    if (l.pts >= 40) addEv(`${gp.name} erupted for ${l.pts} points.`, '', '');
+    if (l.pts >= 10 && l.reb >= 10 && l.ast >= 10) {
+      addEv(`${gp.name} posted a triple-double: ${l.pts} pts, ${l.reb} reb, ${l.ast} ast.`, '', '');
+    }
+  }
 
   return {
     homePts: homeScore.pts,
     awayPts: awayScore.pts,
     homeBox: homePlayers.map((gp) => gp.line),
     awayBox: awayPlayers.map((gp) => gp.line),
+    homeQtrs,
+    awayQtrs,
+    events,
   };
+}
+
+// "Q1"…"Q4", then "OT", "2OT", … — shared by the sim log and the line score.
+export function periodLabel(i) {
+  return i < 4 ? `Q${i + 1}` : i === 4 ? 'OT' : `${i - 3}OT`;
+}
+
+// The n best lines in a box by a crude game score — the "top performers"
+// summaries, and what gets stored for games whose full box isn't kept.
+export function starLines(box, n = 3) {
+  const gameScore = (l) => l.pts + 0.7 * (l.reb + l.ast) + l.stl + l.blk - 0.7 * l.tov;
+  return box.filter((l) => l.min > 0).sort((a, b) => gameScore(b) - gameScore(a)).slice(0, n);
 }
 
 // ---------- Box-score storage ----------

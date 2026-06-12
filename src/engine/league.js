@@ -1,8 +1,8 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability } from './players.js';
-import { rollGameInjuries, tickInjuries } from './injuries.js';
-import { simGame, applyBoxToStats, encodeBox } from './sim.js';
+import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
+import { simGame, applyBoxToStats, encodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
 import { computeAwards, honorsSummary } from './awards.js';
 import { evaluateStrategies, maybeAiTrade } from './strategy.js';
@@ -318,11 +318,16 @@ export function simDay(league) {
     // getting hurt (roll) — order matters so fresh casualties don't tick
     tickInjuries(league, home);
     tickInjuries(league, away);
-    rollGameInjuries(league, home, r.homeBox, rng);
-    rollGameInjuries(league, away, r.awayBox, rng);
+    const hurt = [
+      ...rollGameInjuries(league, home, r.homeBox, rng),
+      ...rollGameInjuries(league, away, r.awayBox, rng),
+    ];
+    for (const p of hurt) {
+      r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+    }
     if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
-    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox });
+    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events });
   }
   // unsigned players heal on the calendar — no games to count down
   if (league.dayIndex % 2 === 0) {
@@ -331,12 +336,18 @@ export function simDay(league) {
     }
   }
   if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
-  // box scores persist in compact array form (see BOX_COLS in sim.js) so a
-  // full season of them stays around ~1MB of localStorage; resultsByDay
-  // resets every season, so they don't pile up across years
-  league.resultsByDay[league.dayIndex] = results.map(({ home, away, homePts, awayPts, homeBox, awayBox }) => ({
-    home, away, homePts, awayPts, homeBox: encodeBox(homeBox), awayBox: encodeBox(awayBox),
-  }));
+  // What persists per game (resultsByDay resets every season, so nothing
+  // piles up across years): the user's games keep the full box scores and
+  // game-flow events; everyone else's keep just the quarter line score and
+  // each side's top performers, so a season of results stays well under
+  // ~1MB of localStorage. Boxes store in compact array form (see BOX_COLS).
+  league.resultsByDay[league.dayIndex] = results.map((r) => {
+    const slim = { home: r.home, away: r.away, homePts: r.homePts, awayPts: r.awayPts, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs };
+    if (r.home === league.userTeamId || r.away === league.userTeamId) {
+      return { ...slim, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox), events: r.events };
+    }
+    return { ...slim, homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) };
+  });
   updateConditions(league, results);
   maybeAiTrade(league, rng);
   aiExtensions(league, rng);
@@ -370,6 +381,7 @@ export function initPlayoffs(league) {
     West: makeRoundMatchups(seedConf('West')),
     finals: null,
     champion: null,
+    completed: [], // finished series from earlier rounds: { round, conf, series }
     log: [],
   };
 }
@@ -416,10 +428,18 @@ export function simPlayoffGame(league) {
       const team = getTeam(league, id);
       playoffCondition(team, box);
       tickInjuries(league, team);
-      rollGameInjuries(league, team, box, rng);
+      for (const p of rollGameInjuries(league, team, box, rng)) {
+        r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+      }
     }
     if (!m.games) m.games = [];
-    m.games.push({ home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts });
+    // playoff games keep their full box scores and game log for the season
+    // (league.playoffs resets every year, so they don't accumulate)
+    m.games.push({
+      home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
+      homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events,
+      homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox),
+    });
     po.gamesPlayed += 1;
     const highWon = (r.homePts > r.awayPts) === (homeId === m.high);
     if (highWon) m.highWins += 1; else m.lowWins += 1;
@@ -444,6 +464,11 @@ export function simPlayoffGame(league) {
 }
 
 function advanceRound(po, league) {
+  // archive the round's series so their games stay viewable all season
+  if (!po.completed) po.completed = []; // saves predating series history
+  for (const conf of ['East', 'West']) {
+    for (const m of po[conf]) po.completed.push({ round: po.round, conf, series: m });
+  }
   if (po.East.length === 1 && po.West.length === 1) {
     // Finals home court goes to the conference champ with the better record
     const e = getTeam(league, po.East[0].winner);

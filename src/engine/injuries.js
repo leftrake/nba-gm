@@ -79,11 +79,17 @@ export function tickInjuries(league, team) {
 }
 
 // Roll tonight's injuries for everyone who logged minutes in this box.
+// Returns the players hurt tonight, so the game log can mention them.
 export function rollGameInjuries(league, team, box, rng) {
+  const injured = [];
   for (const line of box) {
     if (line.min === 0) continue;
     const p = team.roster.find((x) => x.id === line.playerId);
     if (!p || p.injury) continue;
-    if (rng() < injuryChance(p, line.min)) injurePlayer(league, team, p, rng);
+    if (rng() < injuryChance(p, line.min)) {
+      injurePlayer(league, team, p, rng);
+      injured.push(p);
+    }
   }
+  return injured;
 }

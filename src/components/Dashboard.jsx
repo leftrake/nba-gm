@@ -2,8 +2,9 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
+import { starLines } from '../engine/sim.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
-import { BoxTable } from './BoxScore.jsx';
+import { asLines, usePlayerIndex } from './BoxScore.jsx';
 
 // League-wide injury report: every player currently out, the user's team
 // first, then alphabetical by team.
@@ -43,7 +44,50 @@ function InjuryReport({ league, openTeam, openPlayer }) {
   );
 }
 
-export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer }) {
+// The user's most recent game as a rich result card: score, the team's top
+// three performers, and a link to the full game page.
+function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
+  const byId = usePlayerIndex(league);
+  const me = league.userTeamId;
+  const won = fg.home === me ? fg.homePts > fg.awayPts : fg.awayPts > fg.homePts;
+  const myBox = fg.home === me ? fg.homeBox : fg.awayBox;
+  const stars = myBox ? starLines(asLines(myBox), 3) : [];
+  const title = fmtDate(dateForDay(league, fg.day));
+  return (
+    <div className="panel" style={{ borderLeft: `4px solid ${won ? 'var(--green)' : 'var(--red)'}` }}>
+      <h2>Your Last Game · {title}</h2>
+      <p style={{ fontSize: 18, marginBottom: 12 }}>
+        <span className={fg.awayPts > fg.homePts ? 'winner' : ''}>
+          <TeamLink team={getTeam(league, fg.away)} openTeam={openTeam} /> {fg.awayPts}
+        </span>
+        <span style={{ color: 'var(--muted)' }}> @ </span>
+        <span className={fg.homePts > fg.awayPts ? 'winner' : ''}>
+          <TeamLink team={getTeam(league, fg.home)} openTeam={openTeam} /> {fg.homePts}
+        </span>
+        <b style={{ marginLeft: 10, color: won ? 'var(--green)' : 'var(--red)' }}>{won ? 'W' : 'L'}</b>
+      </p>
+      {stars.map((l) => {
+        const p = byId.get(l.playerId);
+        return (
+          <div key={l.playerId} className="result-row">
+            <span>★ {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}</span>
+            <span>
+              <b>{l.pts}</b> PTS · {l.reb} REB · {l.ast} AST
+              <span style={{ color: 'var(--muted)' }}> · {l.fgm}-{l.fga} FG</span>
+            </span>
+          </div>
+        );
+      })}
+      <p style={{ marginTop: 10 }}>
+        <a className="team-link" style={{ color: 'var(--accent)' }} onClick={() => openGame(fg, title)}>
+          Full box score &amp; game flow ▸
+        </a>
+      </p>
+    </div>
+  );
+}
+
+export default function Dashboard({ league, lastResults, featuredGame, openTeam, openPlayer, openGame }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
@@ -51,31 +95,13 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
   const dead = deadMoneyTotal(team);
   const topPlayers = [...team.roster].sort((a, b) => overall(b) - overall(a)).slice(0, 5);
 
-  const fg = featuredGame;
-  const won = fg && (fg.home === team.id ? fg.homePts > fg.awayPts : fg.awayPts > fg.homePts);
+  // lastResults all come from the most recently simmed day
+  const lastDay = Math.max(0, league.dayIndex - 1);
 
   return (
     <div>
-      {fg && (
-        <div className="panel" style={{ borderLeft: `4px solid ${won ? 'var(--green)' : 'var(--red)'}` }}>
-          <h2>Your Last Game · {fmtDate(dateForDay(league, fg.day))}</h2>
-          <p style={{ fontSize: 18, marginBottom: 12 }}>
-            <span className={fg.awayPts > fg.homePts ? 'winner' : ''}>
-              <TeamLink team={getTeam(league, fg.away)} openTeam={openTeam} /> {fg.awayPts}
-            </span>
-            <span style={{ color: 'var(--muted)' }}> @ </span>
-            <span className={fg.homePts > fg.awayPts ? 'winner' : ''}>
-              <TeamLink team={getTeam(league, fg.home)} openTeam={openTeam} /> {fg.homePts}
-            </span>
-            <b style={{ marginLeft: 10, color: won ? 'var(--green)' : 'var(--red)' }}>{won ? 'W' : 'L'}</b>
-          </p>
-          {fg.homeBox && fg.awayBox && (
-            <div className="grid2">
-              <BoxTable league={league} teamId={fg.away} box={fg.awayBox} openTeam={openTeam} openPlayer={openPlayer} />
-              <BoxTable league={league} teamId={fg.home} box={fg.homeBox} openTeam={openTeam} openPlayer={openPlayer} />
-            </div>
-          )}
-        </div>
+      {featuredGame && (
+        <FeaturedGame league={league} fg={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
       )}
 
       <div className="grid2">
@@ -111,6 +137,10 @@ export default function Dashboard({ league, lastResults, featuredGame, openTeam,
               <span className={r.homePts > r.awayPts ? 'winner' : ''}>
                 <TeamLink team={getTeam(league, r.home)} openTeam={openTeam}>{r.home}</TeamLink> {r.homePts}
               </span>
+              <a className="team-link" style={{ color: 'var(--muted)', fontSize: 12 }}
+                 onClick={() => openGame(r, fmtDate(dateForDay(league, lastDay)))}>
+                view ▸
+              </a>
             </div>
           ))}
         </div>

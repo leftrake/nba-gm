@@ -13,6 +13,7 @@ import Draft from './components/Draft.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
+import GameModal from './components/BoxScore.jsx';
 import { checkSave } from './engine/save.js';
 
 const SAVE_KEY = 'nba-gm-save';
@@ -42,15 +43,18 @@ export default function App() {
   const [featuredGame, setFeaturedGame] = useState(null);
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
+  const [viewGame, setViewGame] = useState(null); // { game, title }
 
   const openTeam = useCallback((teamId) => {
     setViewPlayer(null);
+    setViewGame(null); // a team link inside the game modal navigates away
     setRosterTeamId(teamId);
     setScreen('roster');
   }, []);
 
   const openPlayer = useCallback((p) => setViewPlayer(p), []);
   const closePlayer = useCallback(() => setViewPlayer(null), []);
+  const openGame = useCallback((game, title) => setViewGame({ game, title }), []);
 
   // The engine mutates the league object; this forces a re-render + saves.
   const commit = useCallback(() => {
@@ -79,6 +83,7 @@ export default function App() {
     setFeaturedGame(null);
     setRosterTeamId(null);
     setViewPlayer(null);
+    setViewGame(null);
     setScreen('dashboard');
   };
 
@@ -90,6 +95,7 @@ export default function App() {
       setFeaturedGame(null);
       setRosterTeamId(null);
       setViewPlayer(null);
+      setViewGame(null);
     }
   };
 
@@ -258,16 +264,17 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} />}
+        {screen === 'dashboard' && <Dashboard league={league} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
-        {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openPlayer={openPlayer} />}
+        {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
-        {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} />}
+        {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
+        {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} />}
       </main>
     </div>

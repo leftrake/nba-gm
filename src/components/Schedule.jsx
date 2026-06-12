@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { getTeam, dateForDay } from '../engine/league.js';
 import { fmtDate, TeamLink } from './shared.jsx';
-import BoxScoreModal from './BoxScore.jsx';
 
-export default function Schedule({ league, openTeam, openPlayer }) {
+export default function Schedule({ league, openTeam, openGame }) {
   const me = league.userTeamId;
   const lastDay = league.schedule.length - 1;
   const [selDay, setSelDay] = useState(() => Math.min(league.dayIndex, lastDay));
-  const [boxGame, setBoxGame] = useState(null); // { r, di } — stored result + day
   const day = Math.min(selDay, lastDay);
+
+  // stored results carry either a full box (user games) or top-performer
+  // lines (other games); either way there's a game page to open
+  const viewable = (r) => r.homeBox || r.homeStars;
 
   const resultFor = (di, g) =>
     (league.resultsByDay?.[di] || []).find((r) => r.home === g.home && r.away === g.away);
@@ -35,8 +37,8 @@ export default function Schedule({ league, openTeam, openPlayer }) {
           {myPts > oppPts ? 'W' : 'L'}
         </td>
         <td className="num">
-          {r.homeBox
-            ? <a className="team-link" title="View box score" onClick={() => setBoxGame({ r, di })}>{score}</a>
+          {viewable(r)
+            ? <a className="team-link" title="View game" onClick={() => openGame(r, fmtDate(dateForDay(league, di)))}>{score}</a>
             : score}
         </td>
       </>
@@ -120,10 +122,10 @@ export default function Schedule({ league, openTeam, openPlayer }) {
                   <span className={r.homePts > r.awayPts ? 'winner' : ''}>
                     <TeamLink team={getTeam(league, g.home)} openTeam={openTeam}>{g.home}</TeamLink> {r.homePts}
                   </span>
-                  {r.homeBox && (
+                  {viewable(r) && (
                     <a className="team-link" style={{ color: 'var(--muted)', fontSize: 12 }}
-                       onClick={() => setBoxGame({ r, di: day })}>
-                      box
+                       onClick={() => openGame(r, fmtDate(dateForDay(league, day)))}>
+                      view ▸
                     </a>
                   )}
                 </>
@@ -138,17 +140,6 @@ export default function Schedule({ league, openTeam, openPlayer }) {
           );
         })}
       </div>
-
-      {boxGame && (
-        <BoxScoreModal
-          league={league}
-          game={boxGame.r}
-          title={fmtDate(dateForDay(league, boxGame.di))}
-          onClose={() => setBoxGame(null)}
-          openTeam={openTeam}
-          openPlayer={openPlayer}
-        />
-      )}
     </div>
   );
 }
