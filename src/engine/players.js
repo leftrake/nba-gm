@@ -161,7 +161,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     // scale — a young player already rated in the 80s is close to a
     // finished product, so true superstar ceilings come from the draft.
     let upside = (26 - age) * 2.4 + gauss(0, 5, rng);
-    if (age <= 23 && rng() < 0.12) upside += 8 + rng() * 12;
+    if (age <= 23 && rng() < 0.1) upside += 7 + rng() * 11;
     upside *= clamp((97 - ovr) / 35, 0, 1);
     p.potential = clamp(ovr + Math.max(0, Math.round(upside)), ovr, 99);
   }
@@ -224,17 +224,18 @@ export function developPlayer(p, rng = rand) {
   let delta;
   if (p.age < 25 && room > 0) {
     const speed = p.potential >= 85 ? 5.5 : p.potential >= 75 ? 4.0 : 1.8;
-    delta = Math.max(0.5, gauss(speed, 1.5, rng));
+    delta = Math.max(0, gauss(speed, 1.5, rng)); // a bad year can mean no growth, but never guaranteed creep
     if (p.potential >= 78 && rng() < 0.15) delta += 3 + rng() * 3; // breakout season
     delta = Math.min(delta, room);
   } else if (p.age < 25) {
     delta = gauss(0, 0.6, rng); // hit his ceiling early — plateaued
   } else if (p.age <= 28) {
-    delta = room > 0 ? clamp(gauss(0.7, 0.8, rng), 0, Math.min(room, 1.5)) : gauss(0, 0.5, rng);
+    // prime years hold steady: late bloomers inch up, finished products erode a touch
+    delta = room > 0 ? clamp(gauss(0.4, 0.8, rng), 0, Math.min(room, 1.2)) : gauss(-0.4, 0.6, rng);
   } else if (p.age <= 30) {
-    delta = gauss(-1.0, 0.7, rng);
+    delta = gauss(-1.4, 0.7, rng);
   } else if (p.age <= 33) {
-    delta = gauss(-2.5, 0.8, rng);
+    delta = gauss(-2.8, 0.8, rng);
   } else {
     delta = gauss(-3.5 - (p.age - 34) * 0.6, 1.0, rng); // falling off the cliff
   }

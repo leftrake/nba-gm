@@ -58,7 +58,11 @@ function gamePlayer({ p, min, slot }, rng) {
   return {
     targetMin: min,
     remaining: min,
-    usage: Math.pow(Math.max(score + sharp, 25) / 60, 3.1),
+    score, // form-free scoring talent — decides who the featured option is
+    // The trailing term separates true superstars from everyday stars:
+    // without it the league's top ~10 scorers bunch tightly around the
+    // same ppg, and no one looks like a season-leading #1 option.
+    usage: Math.pow(Math.max(score + sharp, 25) / 60, 2.36) * (1 + Math.max(0, score - 88) * 0.012),
     ins: r.inside + sharp,
     mid: r.mid + sharp,
     three: r.three + sharp,
@@ -145,15 +149,27 @@ function replaceFouledOut(ctx, players, rng) {
     bench.splice(bench.indexOf(sub), 1);
     five.push(sub);
   }
-  return floorContext(five);
+  return floorContext(five, ctx.team);
 }
 
-// Floor-unit aggregates the possession loop reads constantly.
-function floorContext(five) {
+// Floor-unit aggregates the possession loop reads constantly. `team` is the
+// shared running team score, which the usage soft-cap reads.
+function floorContext(five, team) {
   const n = five.length || 1;
   let def = 0, pass = 0, reb = 0;
   for (const gp of five) { def += gp.def; pass += gp.pass; reb += gp.reb; }
-  return { five, def: def / n, pass: pass / n, reb: reb / n };
+  return { five, team, def: def / n, pass: pass / n, reb: reb / n };
+}
+
+// Soft cap on any one player's share of team scoring: full usage up to ~28%
+// of the team's points, then his weight falls off quickly, so even a
+// monster scorer settles near 30% rather than running away with half the
+// offense. No-op early in the game, before "share" means anything.
+const SHARE_CAP = 0.30;
+function shotWeight(gp, team) {
+  if (team.pts < 30) return gp.usage;
+  const over = gp.line.pts / team.pts - SHARE_CAP;
+  return over <= 0 ? gp.usage : gp.usage * Math.max(0.1, 1 - over * 10);
 }
 
 // True if the offense keeps the ball (offensive board); credits the rebound.
@@ -162,7 +178,7 @@ function offenseRebounds(off, def, rng) {
   const offensive = rng() < orbP;
   const side = offensive ? off.five : def.five;
   // ~7% of misses go out of bounds / become team rebounds — no credit
-  if (rng() < 0.93) weightedPick(side, (g) => g.reb * g.reb * Math.sqrt(g.reb), rng).line.reb += 1;
+  if (rng() < 0.93) weightedPick(side, (g) => Math.pow(g.reb, 2.7), rng).line.reb += 1;
   return offensive;
 }
 
@@ -178,13 +194,15 @@ function shootFreeThrows(shooter, n, rng) {
   return { made, lastMissed };
 }
 
-const ASSISTED_P = { ins: 0.58, mid: 0.5, three: 0.83 };
+const ASSISTED_P = { ins: 0.76, mid: 0.68, three: 0.955 };
 
 function maybeAssist(off, shooter, type, rng) {
   if (rng() >= ASSISTED_P[type]) return;
   const others = off.five.filter((g) => g !== shooter);
   if (others.length === 0) return;
-  weightedPick(others, (g) => Math.pow(g.pass, 4.5), rng).line.ast += 1;
+  // pass rating capped so a generational 95+ passer concentrates assists
+  // like a 92 passer, not a black hole
+  weightedPick(others, (g) => Math.pow(Math.min(g.pass, 90), 4.75), rng).line.ast += 1;
 }
 
 // One offensive possession. Mutates box-score lines, returns points scored.
@@ -206,7 +224,7 @@ function playPossession(off, def, home, rng) {
   // non-shooting foul in the penalty: two shots, no field-goal attempt
   if (rng() < 0.04) {
     chargeFoul(def, rng);
-    const shooter = weightedPick(off.five, (g) => g.usage, rng);
+    const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
     const { made, lastMissed } = shootFreeThrows(shooter, 2, rng);
     if (lastMissed && offenseRebounds(off, def, rng)) return made + playShots(off, def, home, rng);
     return made;
@@ -219,15 +237,15 @@ function playShots(off, def, home, rng) {
   const defAdj = (def.def - 58) * 0.0035;
   let pts = 0;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const shooter = weightedPick(off.five, (g) => g.usage, rng);
+    const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
 
     let roll = rng() * (shooter.wIns + shooter.wMid + shooter.wThree);
     const type = (roll -= shooter.wIns) < 0 ? 'ins' : (roll - shooter.wMid) < 0 ? 'mid' : 'three';
 
     let makeP, shotPts, foulP;
-    if (type === 'ins') { makeP = 0.555 + (shooter.ins - 58) * 0.004 - defAdj * 1.15; shotPts = 2; foulP = 0.21; }
-    else if (type === 'mid') { makeP = 0.42 + (shooter.mid - 58) * 0.0035 - defAdj; shotPts = 2; foulP = 0.06; }
-    else { makeP = 0.345 + (shooter.three - 58) * 0.003 - defAdj; shotPts = 3; foulP = 0.013; }
+    if (type === 'ins') { makeP = 0.541 + (shooter.ins - 58) * 0.004 - defAdj * 1.15; shotPts = 2; foulP = 0.21; }
+    else if (type === 'mid') { makeP = 0.412 + (shooter.mid - 58) * 0.0035 - defAdj; shotPts = 2; foulP = 0.06; }
+    else { makeP = 0.338 + (shooter.three - 58) * 0.003 - defAdj; shotPts = 3; foulP = 0.013; }
     if (home) makeP += 0.012;
 
     const made = rng() < clamp(makeP, 0.12, 0.85);
@@ -265,22 +283,41 @@ function playShots(off, def, home, rng) {
 }
 
 // Simulate one game between two teams. Returns box score + result.
+// Every offense runs through its best scorer: the #1 option gets a usage
+// bump beyond what his ratings alone earn, scaled by how clearly he's the
+// alpha — a lone star with no co-star monopolizes the offense, twin stars
+// split it. This keeps a real scoring leader emerging even in seasons when
+// the league lacks a monster talent (those leaders are usually lone
+// alphas), without inflating co-star scoring tallies. Chosen by form-free
+// talent, not tonight's hot hand, so the bump compounds across a season.
+function featureTopOption(players) {
+  if (players.length < 2) return;
+  let top = players[0];
+  for (const gp of players) if (gp.score > top.score) top = gp;
+  let second = null;
+  for (const gp of players) if (gp !== top && (!second || gp.score > second.score)) second = gp;
+  top.usage *= 1.02 + clamp(top.score - second.score, 0, 8) * 0.012;
+}
+
 export function simGame(homeTeam, awayTeam, rng = rand) {
   const homePlayers = getRotation(homeTeam).map((e) => gamePlayer(e, rng));
   const awayPlayers = getRotation(awayTeam).map((e) => gamePlayer(e, rng));
+  featureTopOption(homePlayers);
+  featureTopOption(awayPlayers);
 
   const poss = Math.round(clamp(gauss(99, 2.5, rng), 92, 106));
-  let homePts = 0, awayPts = 0;
+  const homeScore = { pts: 0 };
+  const awayScore = { pts: 0 };
 
   const playStint = (minutes, possEach, ot) => {
-    let h = floorContext(pickFive(homePlayers, rng, ot));
-    let a = floorContext(pickFive(awayPlayers, rng, ot));
+    let h = floorContext(pickFive(homePlayers, rng, ot), homeScore);
+    let a = floorContext(pickFive(awayPlayers, rng, ot), awayScore);
     for (const gp of [...h.five, ...a.five]) { gp.line.min += minutes; gp.remaining -= minutes; }
     // anyone who picks up his 6th foul leaves the floor before the next play
     for (let k = 0; k < possEach; k++) {
-      homePts += playPossession(h, a, true, rng);
+      homeScore.pts += playPossession(h, a, true, rng);
       a = replaceFouledOut(a, awayPlayers, rng);
-      awayPts += playPossession(a, h, false, rng);
+      awayScore.pts += playPossession(a, h, false, rng);
       h = replaceFouledOut(h, homePlayers, rng);
       a = replaceFouledOut(a, awayPlayers, rng);
     }
@@ -292,11 +329,11 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     playStint(SEGMENT_MIN, target - done, false);
     done = target;
   }
-  while (homePts === awayPts) playStint(OT_MIN, OT_POSS, true); // overtime(s)
+  while (homeScore.pts === awayScore.pts) playStint(OT_MIN, OT_POSS, true); // overtime(s)
 
   return {
-    homePts,
-    awayPts,
+    homePts: homeScore.pts,
+    awayPts: awayScore.pts,
     homeBox: homePlayers.map((gp) => gp.line),
     awayBox: awayPlayers.map((gp) => gp.line),
   };

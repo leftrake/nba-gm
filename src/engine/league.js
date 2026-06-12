@@ -53,9 +53,12 @@ function makeRoster(rng) {
   // effective sd of ~0.4x the nominal value, so i.i.d. rolls would produce
   // a league with no stars at all — the pyramid is explicit instead.)
   // Priced by salaryFor, a roster like this naturally costs near the cap.
+  // Tier levels match the league the draft pipeline sustains long-run, so
+  // the league-wide average rating holds steady from season one instead of
+  // inflating toward a stronger steady state.
   const tiers = [
-    [84, 10], [76, 8], [70, 7], [64, 6], [64, 6], [59, 6], [59, 6],
-    [53, 6], [53, 6], [53, 6], [45, 6], [45, 6], [45, 6], [45, 6],
+    [81, 10], [75, 8], [71, 7], [67, 6], [67, 6], [63, 6], [63, 6],
+    [57, 6], [57, 6], [57, 6], [48, 6], [48, 6], [48, 6], [48, 6],
   ];
   // positional coverage: 2 of each position + 4 random, shuffled so the
   // star slot isn't always a point guard
@@ -64,13 +67,26 @@ function makeRoster(rng) {
     const j = Math.floor(rng() * (i + 1));
     [positions[i], positions[j]] = [positions[j], positions[i]];
   }
-  const roster = tiers.map(([mean, spread], i) => generatePlayer(rng, {
-    pos: positions[i] || undefined,
+  const roster = tiers.map(([mean, spread], i) => {
     // min of two rolls skews young (~25 avg), matching the steady-state
     // league the talent pipeline produces over many simulated seasons
-    age: Math.min(randInt(19, 36, rng), randInt(19, 36, rng)),
-    base: clamp(gauss(mean, spread, rng), 35, 90),
-  }));
+    const age = Math.min(randInt(19, 36, rng), randInt(19, 36, rng));
+    // ...which also concentrates talent in the prime years: the young
+    // arrive raw (the potential curve hands their value back as upside),
+    // primes run hot. Without this skew the opening league's young
+    // cohort peaks too strong and the league average inflates for the
+    // first several seasons before settling.
+    const ageAdj = age <= 24 ? -4 : age <= 32 ? 6 : 2;
+    return generatePlayer(rng, {
+      pos: positions[i] || undefined,
+      age,
+      base: clamp(gauss(mean + ageAdj, spread, rng), 35, 90),
+      // A young opening-day star keeps a superstar ceiling. Without these,
+      // the league hits a star drought in seasons 2-4: opening primes have
+      // declined and the first drafted superstars haven't matured yet.
+      potential: i === 0 && age <= 23 ? randInt(84, 91, rng) : undefined,
+    });
+  });
 
   // Calibrate opening-day books: scale every contract toward a target near
   // the cap, so most franchises start within $10M of it and some slightly

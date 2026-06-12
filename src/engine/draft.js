@@ -31,8 +31,11 @@ export function rookieSalary(pickNumber) {
 // the wider the gap — and grow into it via developPlayer.
 function generateDraftClass(rng) {
   const prospects = [];
-  const superstars = randInt(2, 4, rng);
-  const starters = superstars + randInt(7, 10, rng);
+  // Sized so the league's talent pyramid holds steady year over year: more
+  // superstar/starter prospects than this and star counts inflate the
+  // league-wide average rating across seasons.
+  const superstars = randInt(1, 3, rng);
+  const starters = superstars + randInt(4, 7, rng);
   for (let i = 0; i < CLASS_SIZE; i++) {
     // the better the prospect, the younger he declares
     let age, potential;

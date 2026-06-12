@@ -9,12 +9,17 @@ A single-player NBA franchise-management game (React 18 + Vite SPA). 30 real NBA
 ## Commands
 
 ```
-npm run dev       # start dev server (http://localhost:5173)
-npm run build     # production build to dist/
-npm run preview   # serve the production build
+npm run dev          # start dev server (http://localhost:5173)
+npm run build        # production build to dist/
+npm run preview      # serve the production build
+npm run test:stats   # stats sanity check: sims 5 seasons headless, verifies
+                     # league stat distributions (scripts/stats-sanity.mjs)
 ```
 
-There are no tests and no linter configured.
+There is no unit-test framework and no linter configured. `test:stats` is the
+one regression check — run it after touching `sim.js`, player development/aging
+in `players.js`, draft-class generation, or roster generation: the league's
+stat distributions are an equilibrium of all of those.
 
 ## Architecture
 
