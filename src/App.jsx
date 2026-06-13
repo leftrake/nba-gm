@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { TEAMS } from './data/teams.js';
-import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
+import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
@@ -10,6 +10,7 @@ import Standings from './components/Standings.jsx';
 import Leaders from './components/Leaders.jsx';
 import Stats from './components/Stats.jsx';
 import Schedule from './components/Schedule.jsx';
+import AllStarScreen from './components/AllStarScreen.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
@@ -89,10 +90,19 @@ export default function App() {
     setScreen('trade');
   }, [league]);
 
+  // leagueRef always points at the same object the engine is currently
+  // mutating, so multiple commits in a row (e.g. an animated multi-day sim
+  // loop) each snapshot the latest mutations rather than a stale render's
+  // copy. Kept in sync with `league` state for the no-arg single-commit
+  // case used throughout the app.
+  const leagueRef = useRef(league);
+  useEffect(() => { leagueRef.current = league; }, [league]);
+
   // The engine mutates the league object; this forces a re-render + saves.
   const commit = useCallback(() => {
-    setLeagueState((l) => {
-      const next = { ...l };
+    setLeagueState(() => {
+      const next = { ...leagueRef.current };
+      leagueRef.current = next;
       return next;
     });
   }, []);
@@ -204,50 +214,6 @@ export default function App() {
     return mine;
   };
 
-  const handleSimDay = () => {
-    const results = simDay(league);
-    setLastResults(results);
-    trackFeatured(results);
-    setScreen('dashboard');
-    commit();
-  };
-  const handleSimWeek = () => {
-    let results = [];
-    const offersBefore = league.tradeOffers.length;
-    for (let i = 0; i < 4 && league.phase === 'regular'; i++) {
-      results = simDay(league);
-      trackFeatured(results);
-      if (league.tradeOffers.length > offersBefore) break;
-    }
-    setLastResults(results);
-    setScreen('dashboard');
-    commit();
-  };
-  const handleSimToNextGame = () => {
-    let results = [];
-    let mine = null;
-    const offersBefore = league.tradeOffers.length;
-    while (league.phase === 'regular' && !mine) {
-      results = simDay(league);
-      mine = trackFeatured(results);
-      if (league.tradeOffers.length > offersBefore) break;
-    }
-    setLastResults(results);
-    setScreen('dashboard');
-    commit();
-  };
-  const handleSimToEnd = () => {
-    let results = [];
-    const offersBefore = league.tradeOffers.length;
-    while (league.phase === 'regular') {
-      results = simDay(league);
-      trackFeatured(results);
-      if (league.tradeOffers.length > offersBefore) break;
-    }
-    setLastResults(results);
-    setScreen('dashboard');
-    commit();
-  };
 
   // One playoff sim step lands on the post-game screen (the user's result in
   // full, or the day's scoreboard); a round fast-forward goes to the bracket.
@@ -324,14 +290,6 @@ export default function App() {
         </nav>
       </div>
       <main>
-        {league.phase === 'regular' && (
-          <div className="controls">
-            <button className="btn" onClick={handleSimToNextGame}>Sim to Next Game</button>
-            <button className="btn secondary" onClick={handleSimDay}>Sim Day</button>
-            <button className="btn secondary" onClick={handleSimWeek}>Sim Week</button>
-            <button className="btn secondary" onClick={handleSimToEnd}>Sim to Playoffs</button>
-          </div>
-        )}
         {league.phase === 'playoffs' && (
           <div className="controls">
             <button className="btn" onClick={handleSimPlayoffGame}>Sim Next Playoff Game</button>
@@ -408,13 +366,37 @@ export default function App() {
           </div>
         )}
 
-        {screen === 'dashboard' && <Dashboard league={league} commit={commit} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} openNews={() => setScreen('news')} onCounterTradeOffer={openTradeOffer} />}
+        {screen === 'dashboard' && (
+          <Dashboard
+            league={league}
+            leagueRef={leagueRef}
+            commit={commit}
+            lastResults={lastResults}
+            featuredGame={featuredGame}
+            openTeam={openTeam}
+            openPlayer={openPlayer}
+            openGame={openGame}
+            openNews={() => setScreen('news')}
+            onCounterTradeOffer={openTradeOffer}
+            setScreen={setScreen}
+            trackFeatured={trackFeatured}
+            setLastResults={setLastResults}
+          />
+        )}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
+        {screen === 'allstar' && (
+          <AllStarScreen
+            league={league}
+            openPlayer={openPlayer}
+            openTeam={openTeam}
+            onContinue={() => { league.allStar.shown = true; commit(); setScreen('dashboard'); }}
+          />
+        )}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} prefill={tradePrefill} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'fantasydraft' && <FantasyDraft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}

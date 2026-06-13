@@ -1,5 +1,5 @@
 import { overall } from './players.js';
-import { getTeam, payroll, recordSeasonStint } from './league.js';
+import { getTeam, payroll, recordSeasonStint, TRADE_DEADLINE_DAY } from './league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews } from './save.js';
 import { clamp } from './rng.js';
@@ -59,6 +59,9 @@ export function tradeValue(p, strategy, team) {
 // toward roster size or salary matching — only toward whether the trade is
 // non-empty.
 export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds, picksAIds = [], picksBIds = []) {
+  if (league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY) {
+    return { ok: false, reason: 'The trade deadline has passed.' };
+  }
   const a = getTeam(league, teamAId);
   const b = getTeam(league, teamBId);
   if (!playersAIds.length && !playersBIds.length && !picksAIds.length && !picksBIds.length) return { ok: false, reason: 'Empty trade.' };

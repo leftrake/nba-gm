@@ -16,6 +16,7 @@ import {
 } from './morale.js';
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
+import { buildAllStarEvent } from './allstar.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -128,6 +129,22 @@ function makeRoster(rng) {
 // The placer may run a few days over if constraints force it.
 export const SEASON_DAYS = 175;
 
+// Fixed calendar events, as dayIndex offsets from Oct 21 (day 0).
+export const OPENING_NIGHT_DAY = 0;
+export const CHRISTMAS_DAY = 65; // Oct 21 + 65 = Dec 25
+export const TRADE_DEADLINE_DAY = 115; // ~Feb 13 — last day trades are allowed
+export const ALL_STAR_DAYS = [116, 117, 118]; // Fri (skills/dunk), Sat, Sun (game) — no games scheduled
+
+export function getLeagueEvents() {
+  return [
+    { id: 'opening-night', dayIndex: OPENING_NIGHT_DAY, icon: '🎉', label: 'Opening Night', description: 'The season tips off around the league tonight.' },
+    { id: 'christmas', dayIndex: CHRISTMAS_DAY, icon: '🎄', label: 'Christmas Day Games', description: "A full slate of marquee Christmas Day matchups around the league." },
+    { id: 'trade-deadline', dayIndex: TRADE_DEADLINE_DAY, icon: '⏰', label: 'Trade Deadline', description: 'Last day for trades this season — all deals lock after today.' },
+    { id: 'all-star-friday', dayIndex: ALL_STAR_DAYS[0], icon: '⭐', label: 'All-Star Friday', description: 'Skills Challenge and 3-Point Contest — no games tonight.' },
+    { id: 'all-star-game', dayIndex: ALL_STAR_DAYS[ALL_STAR_DAYS.length - 1], icon: '⭐', label: 'All-Star Game', description: "The All-Star Game caps the league's mid-season break." },
+  ];
+}
+
 // Real NBA formula, per team: 4 division opponents x4 (16 games),
 // 6 in-conference opponents x4 + 4 in-conference opponents x3 (36),
 // all 15 other-conference opponents x2, one home one away (30) = 82.
@@ -204,6 +221,11 @@ export function makeSchedule(teams, rng) {
   const schedule = [];
   let remaining = pool;
   for (let d = 0; remaining.length > 0; d++) {
+    // All-Star Weekend: no games leaguewide.
+    if (ALL_STAR_DAYS.includes(d)) {
+      schedule.push([]);
+      continue;
+    }
     // Pace the league so games run out right around SEASON_DAYS; teams with
     // the most games left get scheduled first so nobody falls behind.
     const target = d < SEASON_DAYS
@@ -291,6 +313,13 @@ export function backfillPlayers(league) {
 // (a season labeled 2026 runs Oct 2025 – spring 2026).
 export function dateForDay(league, dayIndex) {
   return new Date(league.season - 1, 9, 21 + dayIndex);
+}
+
+// Inverse of dateForDay: which dayIndex (possibly negative or beyond the
+// schedule) does a given calendar date fall on?
+export function dayIndexForDate(league, date) {
+  const start = new Date(league.season - 1, 9, 21);
+  return Math.round((date - start) / 86400000);
 }
 
 export function payroll(team) {
@@ -393,6 +422,13 @@ export function simDay(league) {
   expireTradeOffers(league);
   maybeGenerateTradeOffer(league, rng);
   league.dayIndex += 1;
+  if (league.dayIndex === TRADE_DEADLINE_DAY + 1) {
+    pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '🔒 The trade deadline has passed. All trades are locked until the offseason.' });
+  }
+  if (league.dayIndex === ALL_STAR_DAYS[0] && league.allStar?.season !== league.season) {
+    league.allStar = buildAllStarEvent(league, rng);
+    pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '⭐ All-Star rosters have been announced — the league pauses for All-Star Weekend.' });
+  }
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'playoffs';
     league.playoffs = initPlayoffs(league);

@@ -19,7 +19,7 @@ export const LEADER_CATS = [
   ['blk', 'Blocks', 'BPG'],
 ];
 
-const pg = (s, k) => (s.gp ? (s[k] || 0) / s.gp : 0);
+export const pg = (s, k) => (s.gp ? (s[k] || 0) / s.gp : 0);
 
 // Early in the season nobody has 20 games yet, so the qualifying bar tracks
 // the league's most-played player until it reaches the real minimum.
@@ -41,7 +41,7 @@ export function statLeaders(league, key, count = 10) {
 }
 
 // All-around production per game — the basis of MVP/ROY/Sixth Man "voting"
-function valueScore(s) {
+export function valueScore(s) {
   return pg(s, 'pts') + 1.2 * pg(s, 'reb') + 1.5 * pg(s, 'ast')
     + 2 * pg(s, 'stl') + 2 * pg(s, 'blk') - pg(s, 'tov');
 }
