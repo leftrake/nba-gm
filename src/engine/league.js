@@ -4,6 +4,7 @@ import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, sal
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
+import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
 import { computeAwards, honorsSummary } from './awards.js';
 import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump } from './strategy.js';
@@ -15,13 +16,14 @@ import {
 } from './morale.js';
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 
-export function createLeague(userTeamId, seed = Date.now()) {
+export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
   resetPlayerIds(1);
+  const fantasy = !!opts.fantasyDraft;
 
   const teams = TEAMS.map((t) => ({
     ...t,
-    roster: makeRoster(rng),
+    roster: fantasy ? [] : makeRoster(rng),
     deadMoney: [], // { playerName, salary, years } — cap hits from waived contracts
     wins: 0,
     losses: 0,
@@ -36,9 +38,9 @@ export function createLeague(userTeamId, seed = Date.now()) {
     schedule: makeSchedule(teams, rng),
     dayIndex: 0,
     resultsByDay: [],
-    phase: 'regular', // regular | playoffs | offseason | draft | freeagency
+    phase: fantasy ? 'fantasydraft' : 'regular', // regular | playoffs | offseason | draft | freeagency | fantasydraft
     playoffs: null,
-    freeAgents: Array.from({ length: 60 }, () => {
+    freeAgents: fantasy ? [] : Array.from({ length: 60 }, () => {
       // unsigned for a reason: the open market skews toward fringe talent
       const p = generatePlayer(rng, { base: clamp(gauss(48, 8, rng), 35, 72) });
       p.contract = null;
@@ -49,11 +51,15 @@ export function createLeague(userTeamId, seed = Date.now()) {
     tradeOffers: [], // incoming AI trade offers awaiting a response
     history: [],
   };
-  league.freeAgents.sort((a, b) => overall(b) - overall(a));
-  // Only the user's lineup persists; AI teams auto-set theirs every game
-  getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
-  evaluateStrategies(league);
-  ensureDraftPicks(league);
+  if (fantasy) {
+    initFantasyDraft(league, rng);
+  } else {
+    league.freeAgents.sort((a, b) => overall(b) - overall(a));
+    // Only the user's lineup persists; AI teams auto-set theirs every game
+    getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
+    evaluateStrategies(league);
+    ensureDraftPicks(league);
+  }
   return league;
 }
 

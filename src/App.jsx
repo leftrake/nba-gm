@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { TEAMS } from './data/teams.js';
 import { createLeague, getTeam, simDay, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
+import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
 import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
@@ -11,6 +12,7 @@ import Schedule from './components/Schedule.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
+import FantasyDraft from './components/FantasyDraft.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayoffPostGame from './components/PlayoffPostGame.jsx';
 import DevelopmentReport from './components/DevelopmentReport.jsx';
@@ -49,6 +51,8 @@ export default function App() {
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
+  const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
+  const [fantasyMode, setFantasyMode] = useState(false);
 
   const openTeam = useCallback((teamId) => {
     setViewPlayer(null);
@@ -82,9 +86,9 @@ export default function App() {
     }
   }, [league]);
 
-  const newGame = (teamId) => {
-    setLeagueState(createLeague(teamId));
-    setScreen('dashboard');
+  const newGame = (teamId, fantasyDraft) => {
+    setLeagueState(createLeague(teamId, Date.now(), { fantasyDraft }));
+    setScreen(fantasyDraft ? 'fantasydraft' : 'dashboard');
   };
 
   // Replace the running game with an imported save (already validated by Settings)
@@ -110,6 +114,8 @@ export default function App() {
       setRosterTeamId(null);
       setViewPlayer(null);
       setViewGame(null);
+      setPendingTeamId(null);
+      setFantasyMode(false);
     }
   };
 
@@ -130,15 +136,35 @@ export default function App() {
               </p>
             )}
           </div>
-          <div className="team-picker">
-            {TEAMS.map((t) => (
-              <button key={t.id} className="team-card" style={{ '--tc': t.color }} onClick={() => newGame(t.id)}>
-                <div className="city">{t.city}</div>
-                <div className="name">{t.name}</div>
-                <div className="city">{t.conf} · {t.div}</div>
-              </button>
-            ))}
-          </div>
+          {!pendingTeamId ? (
+            <div className="team-picker">
+              {TEAMS.map((t) => (
+                <button key={t.id} className="team-card" style={{ '--tc': t.color }} onClick={() => setPendingTeamId(t.id)}>
+                  <div className="city">{t.city}</div>
+                  <div className="name">{t.name}</div>
+                  <div className="city">{t.conf} · {t.div}</div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="panel" style={{ maxWidth: 480, marginInline: 'auto' }}>
+              {(() => {
+                const t = TEAMS.find((x) => x.id === pendingTeamId);
+                return <h2 style={{ marginTop: 0 }}>{t.city} {t.name}</h2>;
+              })()}
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={fantasyMode} onChange={(e) => setFantasyMode(e.target.checked)} />
+                <span>
+                  Fantasy Draft — pool every player from all 30 teams plus free agents,
+                  then draft your roster from scratch in a 15-round snake draft.
+                </span>
+              </label>
+              <div className="controls" style={{ marginTop: 12 }}>
+                <button className="btn" onClick={() => newGame(pendingTeamId, fantasyMode)}>Start</button>
+                <button className="btn secondary" onClick={() => setPendingTeamId(null)}>Back</button>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
@@ -231,6 +257,7 @@ export default function App() {
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
     ['draft', 'Draft'],
+    ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
     ['freeagency', 'Free Agency'],
     ['playoffs', 'Playoffs'],
     ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
@@ -246,6 +273,7 @@ export default function App() {
           {league.phase === 'regular' ? `Day ${league.dayIndex + 1}/${league.schedule.length}`
             : league.phase === 'playoffs' ? 'Playoffs'
             : league.phase === 'draft' ? (onTheClock(league) ? `Draft (Pick ${league.draft.pickIndex + 1}/${league.draft.order.length})` : 'Draft complete')
+            : league.phase === 'fantasydraft' ? (onFantasyClock(league) ? `Fantasy Draft (Pick ${league.fantasyDraft.pickIndex + 1}/${league.fantasyDraft.order.length})` : 'Fantasy Draft complete')
             : league.phase === 'freeagency' ? `Free Agency (${league.faDaysLeft} rounds left)`
             : 'Offseason'}
         </span>
@@ -314,6 +342,36 @@ export default function App() {
             )}
           </div>
         )}
+        {league.phase === 'fantasydraft' && (
+          <div className="controls">
+            {!onFantasyClock(league) ? (
+              <button className="btn" onClick={() => { finishFantasyDraft(league); commit(); setScreen('dashboard'); }}>
+                Finish Draft & Start Season
+              </button>
+            ) : onFantasyClock(league) === league.userTeamId ? (
+              <>
+                <button className="btn" onClick={() => setScreen('fantasydraft')}>
+                  You're on the clock — make your pick
+                </button>
+                <button className="btn secondary" onClick={() => { autoFantasyPick(league); commit(); setScreen('fantasydraft'); }}>
+                  Auto-Pick for Me
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn" onClick={() => { simFantasyToUser(league); commit(); setScreen('fantasydraft'); }}>
+                  Sim to My Pick
+                </button>
+                <button className="btn secondary" onClick={() => { simFantasyPick(league); commit(); setScreen('fantasydraft'); }}>
+                  Next Pick
+                </button>
+                <button className="btn secondary" onClick={() => { simFantasyRound(league); commit(); setScreen('fantasydraft'); }}>
+                  Sim Round
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {league.phase === 'freeagency' && (
           <div className="controls">
             <button className="btn" onClick={() => { simFreeAgencyDay(league); commit(); }}>
@@ -330,6 +388,7 @@ export default function App() {
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} prefill={tradePrefill} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
+        {screen === 'fantasydraft' && <FantasyDraft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
         {screen === 'postgame' && (playoffDay?.length

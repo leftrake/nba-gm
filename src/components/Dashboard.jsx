@@ -167,6 +167,39 @@ export default function Dashboard({ league, commit, lastResults, featuredGame, o
 
       <InjuryReport league={league} openTeam={openTeam} openPlayer={openPlayer} />
 
+      {league.fantasyDraftResults?.length > 0 && (
+        <div className="panel">
+          <h2>Founding Fantasy Draft</h2>
+          <p style={{ color: 'var(--muted)' }}>
+            How this franchise was built: every team drafted its roster from a
+            league-wide player pool in a 15-round snake draft.
+          </p>
+          <details>
+            <summary className="stories-toggle">All {league.fantasyDraftResults.length} picks</summary>
+            <table>
+              <thead>
+                <tr><th className="num">Pick</th><th>Rnd</th><th>Team</th><th>Player</th><th>Pos</th></tr>
+              </thead>
+              <tbody>
+                {league.fantasyDraftResults.map((r) => {
+                  const p = getTeam(league, r.teamId).roster.find((x) => x.id === r.playerId);
+                  const mine = r.teamId === league.userTeamId;
+                  return (
+                    <tr key={r.pick} style={mine ? { color: 'var(--green)' } : undefined}>
+                      <td className="num">{r.pick}</td>
+                      <td className="num">{r.round}</td>
+                      <td><TeamLink team={getTeam(league, r.teamId)} openTeam={openTeam} /></td>
+                      <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : r.playerName}</td>
+                      <td>{r.pos}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </details>
+        </div>
+      )}
+
       {league.history.length > 0 && (
         <div className="panel">
           <h2>History</h2>
