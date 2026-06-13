@@ -28,6 +28,8 @@ export function tradeValue(p, strategy, team) {
   if (p.contract && p.contract.salary > 30_000_000 && ovr < 75) v *= 0.7;
   // a player who has publicly demanded a trade has sharply reduced value
   if (p.tradeDemand) v *= 0.5;
+  // a useful secondary position is worth a little extra — versatility
+  if (p.pos2) v *= 1.05;
   if (strategy === 'rebuilding') {
     // youth and upside are the whole point; veterans are trade bait
     if (p.age <= 25) v *= 1.2;

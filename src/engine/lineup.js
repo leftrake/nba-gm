@@ -21,6 +21,15 @@ export function posFit(naturalPos, slotPos) {
   return FIT[Math.abs(POS_INDEX[naturalPos] - POS_INDEX[slotPos])];
 }
 
+// A player's fit at a slot, accounting for his secondary position: pos2 is
+// treated as a second natural position (full value at that slot), not just
+// an adjacent one, so the better of the two fits wins.
+export function playerFit(p, slotPos) {
+  let fit = posFit(p.pos, slotPos);
+  if (p.pos2) fit = Math.max(fit, posFit(p.pos2, slotPos));
+  return fit;
+}
+
 export function isInjured(p) {
   return !!p.injury;
 }
@@ -47,7 +56,7 @@ export function autoLineup(roster) {
       if (starters[pos].id != null) continue;
       for (const p of pool) {
         if (used.has(p.id)) continue;
-        const v = overall(p) * posFit(p.pos, pos);
+        const v = overall(p) * playerFit(p, pos);
         if (!best || v > best.v) best = { pos, p, v };
       }
     }

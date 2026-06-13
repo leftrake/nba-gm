@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { askingPrice } from '../engine/league.js';
-import { durabilityNote, ratingRow } from '../engine/players.js';
+import { durabilityNote, ratingRow, posLabel } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
@@ -135,7 +135,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, onTra
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <h2 style={{ fontSize: 18, textTransform: 'none', letterSpacing: 0, marginBottom: 0 }}>{p.name}</h2>
           <span style={{ color: 'var(--muted)' }}>
-            {p.pos} · {p.age} yrs · {p.exp != null && <>{p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`} · </>}{p.nationality && <><Origin p={p} full /> · </>}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
+            {posLabel(p)} · {p.age} yrs · {p.exp != null &&<>{p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`} · </>}{p.nationality && <><Origin p={p} full /> · </>}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
           </span>
           <span style={{ flex: 1 }} />
           {team && onTradeFor && (

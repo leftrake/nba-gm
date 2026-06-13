@@ -1,7 +1,7 @@
 import { rand, gauss, clamp } from './rng.js';
 import { overall, ftRating, supportedMinutes } from './players.js';
 import { moraleRatingMod } from './morale.js';
-import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, posFit, isInjured, minutesCap } from './lineup.js';
+import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, playerFit, isInjured, minutesCap } from './lineup.js';
 
 // A team's game rotation: the saved lineup when it's legal, otherwise a
 // fresh auto lineup (AI teams never store one). Each entry carries the slot
@@ -45,7 +45,7 @@ export function getRotation(team) {
 function rotationStrength(rot) {
   if (rot.length === 0) return 30;
   const totalMin = rot.reduce((s, r) => s + r.min, 0);
-  return rot.reduce((s, r) => s + overall(r.p) * posFit(r.p.pos, r.slot) * r.min, 0) / totalMin;
+  return rot.reduce((s, r) => s + overall(r.p) * playerFit(r.p, r.slot) * r.min, 0) / totalMin;
 }
 
 export function teamStrength(team) {
@@ -70,7 +70,7 @@ const OT_POSS = 10;
 // it boosts both usage and shooting, which is what lets stars detonate for
 // 50 every so often.
 function gamePlayer({ p, min, slot }, rng) {
-  const fit = posFit(p.pos, slot);
+  const fit = playerFit(p, slot);
   const form = gauss(0, 1, rng);
   const r = p.ratings;
   const sharp = form * 2.5; // shooting bump in rating points

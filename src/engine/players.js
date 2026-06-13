@@ -5,6 +5,33 @@ import { NATIONALITIES, NATIONALITY_W } from './names.js';
 
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
+// Realistic positional overlap: the secondary positions a player could
+// plausibly slide to, in roughly ascending order of how far they are from
+// the primary spot.
+const SECONDARY_OPTIONS = {
+  PG: ['SG'],
+  SG: ['PG', 'SF'],
+  SF: ['SG', 'PF'],
+  PF: ['SF', 'C'],
+  C: ['PF'],
+};
+
+// How well a player's rating profile suits playing a given secondary
+// position — used both to pick among multiple candidates and to weight the
+// odds of having a secondary position at all (a more "versatile" profile is
+// more likely to carry one).
+function pos2Score(p, pos2) {
+  const r = p.ratings;
+  switch (pos2) {
+    case 'PG': return r.passing;
+    case 'SG': return (r.three + r.passing) / 2;
+    case 'SF': return (r.three + r.defense) / 2;
+    case 'PF': return (r.rebounding + r.inside) / 2;
+    case 'C': return (r.rebounding + r.inside) / 2;
+    default: return 50;
+  }
+}
+
 const COLLEGES = [
   'Duke', 'Kentucky', 'Kansas', 'North Carolina', 'UCLA', 'Gonzaga', 'Arizona', 'UConn', 'Villanova',
   'Michigan State', 'Texas', 'Arkansas', 'Baylor', 'Houston', 'Purdue', 'Alabama', 'Auburn', 'Tennessee',
@@ -29,6 +56,34 @@ export function assignOrigin(p, rng = rand, country = pickCountry(rng)) {
 
 export function flagFor(nationality) {
   return NATIONALITIES.find((c) => c.name === nationality)?.flag ?? '';
+}
+
+// Roughly 60% of players carry a secondary position; the odds tilt up for a
+// rating profile that fits one of the candidate spots well (a more
+// "versatile" player) and down for one that doesn't. Returns null for about
+// 40% of players, and for centers/point guards more often than not when
+// their lone candidate spot doesn't suit them.
+export function assignPos2(p, rng = rand) {
+  const candidates = SECONDARY_OPTIONS[p.pos];
+  if (!candidates) return null;
+  const scores = candidates.map((pos2) => ({ pos2, score: pos2Score(p, pos2) }));
+  const ovr = overall(p);
+  const best = Math.max(...scores.map((s) => s.score));
+  const chance = clamp(0.45 + (best - ovr) / 50, 0.15, 0.85);
+  if (rng() >= chance) return null;
+  if (scores.length === 1) return scores[0].pos2;
+  const total = scores.reduce((s, x) => s + Math.max(x.score, 1), 0);
+  let roll = rng() * total;
+  for (const x of scores) {
+    roll -= Math.max(x.score, 1);
+    if (roll < 0) return x.pos2;
+  }
+  return scores[scores.length - 1].pos2;
+}
+
+// "PG", or "PG/SG" if the player has a secondary position — for display.
+export function posLabel(p) {
+  return p.pos2 ? `${p.pos}/${p.pos2}` : p.pos;
 }
 
 const ARCHETYPES = {
@@ -127,6 +182,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     id,
     name: `${pick(country.firstNames, rng)} ${pick(country.lastNames, rng)}`,
     pos,
+    pos2: null,
     age,
     // NBA seasons completed; veterans entered the league at 19–22
     exp: opts.exp ?? Math.max(0, age - randInt(19, 22, rng)),
@@ -153,6 +209,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     awards: [], // { season, award } — filled by engine/awards.js
   };
   assignOrigin(p, rng, country);
+  p.pos2 = assignPos2(p, rng);
   const ovr = overall(p);
   if (opts.potential != null) {
     p.potential = clamp(Math.round(opts.potential), ovr, 99);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, extensionEligible, offerExtension } from '../engine/league.js';
-import { overall, supportedMinutes } from '../engine/players.js';
-import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, posFit, isInjured } from '../engine/lineup.js';
+import { overall, supportedMinutes, posLabel } from '../engine/players.js';
+import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
@@ -270,7 +270,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                   {POSITIONS.map((pos) => {
                     const slot = lineup.starters[pos];
                     const p = slot.id != null ? byId.get(slot.id) : null;
-                    const fit = p ? posFit(p.pos, pos) : 1;
+                    const fit = p ? playerFit(p, pos) : 1;
                     return (
                       <tr key={pos}>
                         <td><b>{pos}</b></td>
@@ -325,7 +325,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                           <button className="btn secondary small" disabled={i === lineup.bench.length - 1} onClick={() => moveBench(i, 1)}>▼</button>
                         </td>
                         <td><PlayerLink p={p} openPlayer={openPlayer} />{isInjured(p) ? ' 🩹' : ''}</td>
-                        <td>{p.pos}</td>
+                        <td>{posLabel(p)}</td>
                         <td className="num">{overall(p)}</td>
                         <td className="num"><Cond p={p} /></td>
                         <td className="num">
@@ -371,9 +371,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                   </thead>
                   <tbody>
                     {[...team.roster]
-                      .sort((a, b) => overall(b) * posFit(b.pos, pickSlot) - overall(a) * posFit(a.pos, pickSlot))
+                      .sort((a, b) => overall(b) * playerFit(b, pickSlot) - overall(a) * playerFit(a, pickSlot))
                       .map((rp) => {
-                        const fit = posFit(rp.pos, pickSlot);
+                        const fit = playerFit(rp, pickSlot);
                         const eff = Math.round(overall(rp) * fit);
                         const startsAt = POSITIONS.find((q) => lineup.starters[q].id === rp.id);
                         const benchIdx = lineup.bench.findIndex((b) => b.id === rp.id);
@@ -393,7 +393,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                             }}
                           >
                             <td>{rp.name}{injured ? ' 🩹' : ''}</td>
-                            <td>{rp.pos}</td>
+                            <td>{posLabel(rp)}</td>
                             <td style={{ color: 'var(--muted)' }}>
                               {startsAt === pickSlot ? <b style={{ color: 'var(--accent)' }}>current</b>
                                 : startsAt ? `Starts at ${startsAt}`
@@ -452,7 +452,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 <td><Ovr p={p} league={league} fogged={!isUser} /></td>
                 <td><Pot p={p} league={league} fogged={!isUser} /></td>
                 <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
-                <td>{p.pos}</td>
+                <td>{posLabel(p)}</td>
                 <td className="num">{p.age}</td>
                 <td className="num"><Sta p={p} league={league} fogged={!isUser} /></td>
                 <td className="num"><Cond p={p} /></td>
