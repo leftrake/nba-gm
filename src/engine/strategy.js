@@ -1,6 +1,8 @@
 import { overall } from './players.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from './trade.js';
 import { getTeamPicks, violatesStepien } from './draftPicks.js';
+import { payroll, payrollTarget } from './league.js';
+import { SALARY_CAP, LUXURY_TAX, ROSTER_MAX } from '../data/teams.js';
 
 // Front-office strategies. Every team is tagged 'contending' (top ~10 by
 // record and roster strength), 'rebuilding' (bottom ~8), or 'retooling'
@@ -91,5 +93,45 @@ export function maybeAiTrade(league, rng) {
       executeTrade(league, buyer.id, pkgIds, seller.id, [vet.id], sweetenerIds, []);
       return;
     }
+  }
+}
+
+// A few times a season, a team that's run well past its comfort zone (over
+// the tax, or over its own strategy's spending plan) dumps an expensive,
+// non-core contract on a rebuilder with cap room — often sweetened with a
+// future 2nd. The rebuilder takes on a player for free (and a future asset),
+// which costs them nothing since they're under the cap; the over-extended
+// team frees up money. Real-NBA shorthand for "expiring/bad contract + pick
+// for nothing," one of the most common offseason trade types.
+export function maybeAiSalaryDump(league, rng) {
+  if (rng() >= 0.02) return;
+  const ai = league.teams.filter((t) => t.id !== league.userTeamId);
+  // dumpers: spending well beyond what their strategy calls for
+  const dumpers = ai.filter((t) => payroll(t) > Math.max(LUXURY_TAX, payrollTarget(t)));
+  const takers = ai.filter((t) => t.strategy === 'rebuilding');
+  if (!dumpers.length || !takers.length) return;
+  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const dumper = pick(dumpers);
+    const taker = pick(takers);
+    if (dumper.id === taker.id) continue;
+    if (taker.roster.length >= ROSTER_MAX || dumper.roster.length <= 8) continue;
+    // a "bad contract": expensive, but not a core piece worth keeping
+    const badContracts = dumper.roster
+      .filter((p) => p.contract && p.contract.salary >= 10_000_000 && overall(p) < 74)
+      .sort((a, b) => b.contract.salary - a.contract.salary);
+    if (!badContracts.length) continue;
+    const vet = badContracts[0];
+    const capRoom = SALARY_CAP - payroll(taker);
+    if (vet.contract.salary > capRoom) continue; // taker can't absorb without matching
+    // sweeten with a spare future 2nd if the dumper has one (2nds never
+    // trip the Stepien rule, so no extra check needed)
+    const dumperSeconds = getTeamPicks(league, dumper.id).filter((p) => p.round === 2);
+    const sweetener = dumperSeconds.length ? [dumperSeconds[0]] : [];
+    const sweetenerIds = sweetener.map((p) => p.id);
+    if (!validateTrade(league, dumper.id, [vet.id], taker.id, [], sweetenerIds, []).ok) continue;
+    if (!aiEvaluateTrade(league, taker.id, [vet], [], sweetener, []).accept) continue;
+    executeTrade(league, dumper.id, [vet.id], taker.id, [], sweetenerIds, []);
+    return;
   }
 }

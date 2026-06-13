@@ -192,5 +192,9 @@ export function finishDraft(league) {
   league.phase = 'freeagency';
   league.faDaysLeft = 5;
   league.negotiations = {};
+  // fresh market: every team gets its mid-level exception back, and asking
+  // prices reset to full value at the start of the new offseason
+  for (const team of league.teams) team.usedMLE = false;
+  for (const p of league.freeAgents) p.faRoundsUnsigned = 0;
   pushNews(league, { day: 0, category: 'league', text: `The draft is complete. Free agency is open for 5 rounds of signings.` });
 }

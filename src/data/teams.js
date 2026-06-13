@@ -38,3 +38,6 @@ export const MIN_SALARY = 1_200_000;
 export const MAX_SALARY = 49_000_000;
 export const ROSTER_MIN = 13;
 export const ROSTER_MAX = 15;
+// Mid-level exception: once per offseason, a team already over the cap can
+// still sign one free agent using this much room (real-NBA non-taxpayer MLE).
+export const MLE_AMOUNT = 12_000_000;

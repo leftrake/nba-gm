@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA } from '../engine/league.js';
+import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException } from '../engine/league.js';
 import { scoutedOverall } from '../engine/scouting.js';
-import { SALARY_CAP, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
+import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
 
 const OFFERS_PER_ROUND = 3;
@@ -59,6 +59,9 @@ export default function FreeAgency({ league, commit, openPlayer }) {
       <h2>Free Agents</h2>
       <p style={{ marginBottom: 10, color: 'var(--muted)' }}>
         Cap room: <b style={{ color: room > 0 ? 'var(--green)' : 'var(--red)' }}>{money(room)}</b> · Roster: {team.roster.length}/{ROSTER_MAX}
+        {room <= 0 && (
+          <> · Mid-level exception: <b style={{ color: team.usedMLE ? 'var(--red)' : 'var(--green)' }}>{team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}</b></>
+        )}
         {isOpen
           ? ' · Negotiate salary and years — players weigh money, your record, and their role. Other teams sign players every round, including ones you\'re talking to.'
           : isSeason
@@ -139,6 +142,13 @@ export default function FreeAgency({ league, commit, openPlayer }) {
                           <span style={{ color: 'var(--muted)' }}>
                             {left > 0 ? `${left} offer${left === 1 ? '' : 's'} left this round` : 'Agent unavailable until next round'}
                           </span>
+                          {(() => {
+                            const exc = signingException(league, team.id, Math.round(salaryM * 10) * 100_000);
+                            if (exc === 'mle') return <span style={{ color: 'var(--accent)' }}>Uses mid-level exception</span>;
+                            if (exc === 'minimum') return <span style={{ color: 'var(--accent)' }}>Uses minimum-salary exception</span>;
+                            if (!exc) return <span style={{ color: 'var(--red)' }}>Not enough cap room or exceptions for this offer</span>;
+                            return null;
+                          })()}
                           {counter && (
                             <span style={{ color: 'var(--accent)' }}>
                               Counter on the table: {money(counter.salary)} x {counter.years}yr{' '}

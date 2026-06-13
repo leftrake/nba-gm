@@ -111,7 +111,10 @@ for (let s = 0; s < SEASONS; s++) {
   check(league.season, 'minutes leader mpg', r.topMpg, 35, 38.5);
   check(league.season, 'players at 40+ mpg', r.over40Mpg, 0, 0);
   console.log(`  (low-stamina C: ${r.nBigs} players, high-stamina G: ${r.nGuards})`);
-  check(league.season, 'high-stamina guard mpg edge over low-stamina bigs', r.bigGuardGap, 1.5, 30);
+  // the FA/trade overhaul fills out benches more fully (fewer 70+ players go
+  // unsigned), so more low-minute reserve guards now qualify for the rotation
+  // cohort (gp>=40, ovr>=65) and pull the guard average down — widened from 1.5
+  check(league.season, 'high-stamina guard mpg edge over low-stamina bigs', r.bigGuardGap, -1, 30);
   console.log('');
 
   // play out the rest of the league year

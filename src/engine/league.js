@@ -1,4 +1,4 @@
-import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, ROSTER_MAX } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
@@ -6,7 +6,7 @@ import { simGame, applyBoxToStats, encodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
 import { ensureDraftPicks } from './draftPicks.js';
 import { computeAwards, honorsSummary } from './awards.js';
-import { evaluateStrategies, maybeAiTrade } from './strategy.js';
+import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump } from './strategy.js';
 import { autoLineup } from './lineup.js';
 import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
 import {
@@ -375,6 +375,7 @@ export function simDay(league) {
   updateTradeDemands(league);
   maybeShopDisgruntled(league, rng);
   maybeAiTrade(league, rng);
+  maybeAiSalaryDump(league, rng);
   aiExtensions(league, rng);
   maybeAiMidSeasonSigning(league, rng);
   expireTradeOffers(league);
@@ -644,7 +645,9 @@ export function advanceOffseason(league) {
         Math.round((askingPrice(p) * (1.0 + rng() * 0.25)) / 100_000) * 100_000,
         MIN_SALARY, MAX_SALARY,
       );
-      if (payroll(team) + salary <= LUXURY_TAX) {
+      // contenders push past the tax line a bit to keep their core together
+      const ceiling = team.strategy === 'contending' ? LUXURY_TAX + 15_000_000 : LUXURY_TAX;
+      if (payroll(team) + salary <= ceiling) {
         p.contract = { salary, years: preferredYears(p) };
         if (overall(p) >= 70) {
           pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name} re-signs with the ${team.city} ${team.name} (${fmtM(salary)} x ${p.contract.years}yr).` });
@@ -704,6 +707,9 @@ function resignChance(team, p) {
   chance += (winPct - 0.5) * 0.4; // stars stay with winners, drift from losers
   if (p.draftTeam === team.id) chance += 0.1;
   if (p.age >= 34) chance -= 0.15; // aging vets get let go
+  // rebuilders actively shed salary: expensive vets who aren't core pieces
+  // hit the market instead of getting Bird-rights renewals
+  if (team.strategy === 'rebuilding' && (p.contract?.salary || 0) > 8_000_000 && ovr < 80) chance -= 0.35;
   return clamp(chance, 0.05, 0.95);
 }
 
@@ -720,7 +726,15 @@ export function simFreeAgencyDay(league) {
     .sort((a, b) => payroll(a) - payroll(b));
   for (const team of order) {
     if (team.roster.length >= ROSTER_MAX) continue;
-    const room = SALARY_CAP - payroll(team);
+    // Plan room respects each team's strategy-driven payroll target.
+    // Contenders are willing to spend into the luxury tax for win-now
+    // pieces, so their hard limit is the tax line; everyone else is bound by
+    // the salary cap (the minimum/MLE exceptions below cover the rest, and
+    // can push a contender just past the tax "occasionally").
+    const capRoom = SALARY_CAP - payroll(team);
+    const planRoom = payrollTarget(team) - payroll(team);
+    const hardLimit = team.strategy === 'contending' ? LUXURY_TAX - payroll(team) : capRoom;
+    const room = Math.min(hardLimit, planRoom);
     // capped-out teams with a playable roster sit out rather than hoover
     // up every minimum guy on the market
     if (team.roster.length >= 13 && room < 5_000_000) continue;
@@ -730,23 +744,92 @@ export function simFreeAgencyDay(league) {
     for (let i = 0; i < league.freeAgents.length && tried < 12; i++) {
       const target = league.freeAgents[i]; // pool is sorted best-first
       const ask = askingPrice(target);
-      if (ask > room && ask > MIN_SALARY) continue; // out of their price range
+      let exception = null;
+      if (ask > room) {
+        if (ask <= MIN_SALARY * 1.05) exception = 'minimum';
+        else if (capRoom <= 0 && !team.usedMLE && ask <= MLE_AMOUNT * 1.1) exception = 'mle';
+        else continue; // out of their price range
+      }
       tried++;
       const years = preferredYears(target);
-      const demand = offerDemand(league, team.id, target, years);
+      let demand = offerDemand(league, team.id, target, years);
       if (demand === null) continue; // wants a bigger role than this roster offers
-      if (demand > ask * stretch) continue; // demanding more than this office will pay
-      if (demand > room && demand > MIN_SALARY) continue;
+      if (exception === 'mle') demand = Math.min(demand, MLE_AMOUNT);
+      if (!exception && demand > ask * stretch) continue; // demanding more than this office will pay
+      if (!exception && demand > room) continue;
+      if (exception === 'minimum' && demand > MIN_SALARY * 1.05) continue;
       signFreeAgent(league, team.id, target.id, demand, years);
+      if (exception === 'mle') team.usedMLE = true;
       break;
     }
   }
+  // Market clearing: every player still unsigned gets less demanding next
+  // round, so the board doesn't stay frozen on day-one asking prices.
+  for (const fa of league.freeAgents) fa.faRoundsUnsigned = (fa.faRoundsUnsigned || 0) + 1;
+
   league.faDaysLeft -= 1;
-  if (league.faDaysLeft <= 0) startNewSeason(league);
+  if (league.faDaysLeft <= 0) {
+    finalizeFreeAgency(league);
+    startNewSeason(league);
+  }
 }
 
+// Free agency mop-up: by the time the market closes, virtually no player
+// worth starting (70+ overall) should still be unsigned. Quality vets who
+// got no offers settle for short, cheap deals — minimum salary if a team is
+// already over the cap and out of exceptions, market rate otherwise.
+function finalizeFreeAgency(league) {
+  let guard = 0;
+  while (guard++ < 200) {
+    const p = league.freeAgents.find((x) => overall(x) >= 70);
+    if (!p) break;
+    const teams = league.teams
+      .filter((t) => t.id !== league.userTeamId && t.roster.length < ROSTER_MAX)
+      .sort((a, b) => payroll(a) - payroll(b));
+    if (!teams.length) break; // every roster is full; he stays unsigned
+    // mop-up deals are settle-for-less: a quality vet who got no real offers
+    // takes a short, cheap deal rather than sit out the season
+    const team = teams[0];
+    const capRoom = SALARY_CAP - payroll(team);
+    const ask = askingPrice(p);
+    let salary, years;
+    if (capRoom <= 0 && !team.usedMLE && ask <= MLE_AMOUNT) {
+      salary = Math.min(ask, MLE_AMOUNT); years = preferredYears(p); team.usedMLE = true;
+    } else { salary = MIN_SALARY; years = 1; } // minimum exception: short, cheap deal
+    signFreeAgent(league, team.id, p.id, salary, years);
+  }
+}
+
+// A player's asking price falls the longer he sits unsigned in free agency
+// (see faRoundsUnsigned, bumped once per FA round in simFreeAgencyDay) —
+// roughly 12% per round, so a star who's gone unsigned for a few rounds
+// becomes affordable to teams that passed on him at full price.
 export function askingPrice(p) {
-  return salaryFor(overall(p), p.age);
+  const base = salaryFor(overall(p), p.age);
+  const discount = Math.pow(0.875, p.faRoundsUnsigned || 0);
+  return clamp(Math.round((base * discount) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
+}
+
+// Deterministic per-team noise in [0,1), independent of the rng sequence so
+// it can be sampled repeatedly without perturbing other random draws.
+function teamNoise(teamId, salt) {
+  let h = 0;
+  for (let i = 0; i < teamId.length; i++) h = (Math.imul(h ^ teamId.charCodeAt(i), 2654435761) >>> 0);
+  h = Math.imul(h ^ salt, 668265263) >>> 0;
+  h = (h ^ (h >>> 13)) >>> 0;
+  return h / 4294967296;
+}
+
+// How much a front office plans to spend this offseason, by strategy:
+// rebuilders hoard cap room well under the cap, retoolers sit close to it,
+// and contenders plan into the luxury tax (and sometimes past it). This is a
+// soft planning target, not a hard limit — see simFreeAgencyDay/MLE_AMOUNT
+// for how teams already over the cap can still add players.
+export function payrollTarget(team) {
+  const n = teamNoise(team.id, 17);
+  if (team.strategy === 'rebuilding') return 100_000_000 + n * 25_000_000; // $100-125M
+  if (team.strategy === 'contending') return SALARY_CAP + n * (LUXURY_TAX - SALARY_CAP + 15_000_000); // cap..tax+$15M
+  return Math.round(SALARY_CAP * (0.92 + n * 0.10)); // retooling: 92-102% of cap
 }
 
 // ---------- Mid-season free agency ----------
@@ -992,6 +1075,19 @@ export function evaluateOffer(league, teamId, p, salary, years) {
   return { decision: 'reject', reason };
 }
 
+// Which cap mechanism would cover a contract of this salary for this team,
+// or null if none does. 'cap-room' covers it outright; 'mle' is the
+// once-per-offseason mid-level exception (over-cap teams only, up to
+// MLE_AMOUNT, ~$12M); 'minimum' is the always-available roster-fill exception.
+export function signingException(league, teamId, salary) {
+  const team = getTeam(league, teamId);
+  const capRoom = SALARY_CAP - payroll(team);
+  if (salary <= capRoom) return 'cap-room';
+  if (salary <= MIN_SALARY * 1.05) return 'minimum';
+  if (capRoom <= 0 && !team.usedMLE && salary <= MLE_AMOUNT) return 'mle';
+  return null;
+}
+
 // User-facing offer. Validates cap/roster, enforces per-round patience
 // (three failed offers and the agent stops talking until the next round),
 // and signs the player on acceptance. Counter-offers persist on
@@ -1003,9 +1099,13 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   const p = league.freeAgents.find((x) => x.id === playerId);
   if (!p) return { ok: false, error: 'That player is no longer a free agent.' };
   if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
-  const room = SALARY_CAP - payroll(team);
-  if (salary > room && salary > MIN_SALARY) {
-    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available). Minimum contracts can always be offered.` };
+  const exception = signingException(league, teamId, salary);
+  if (!exception) {
+    const room = SALARY_CAP - payroll(team);
+    const mleNote = team.usedMLE
+      ? "you've already used this offseason's mid-level exception"
+      : `the mid-level exception only covers up to ${fmtM(MLE_AMOUNT)}`;
+    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}. Minimum contracts can always be offered.` };
   }
   league.negotiations = league.negotiations || {};
   const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
@@ -1021,7 +1121,8 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   if (res.decision === 'accept') {
     delete league.negotiations[playerId];
     signFreeAgent(league, teamId, playerId, salary, years);
-    return { ok: true, decision: 'accept', reason: `${p.name} accepts: ${fmtM(salary)} x ${years}yr!` };
+    if (exception === 'mle') team.usedMLE = true;
+    return { ok: true, decision: 'accept', exception, reason: `${p.name} accepts: ${fmtM(salary)} x ${years}yr!` };
   }
   if (res.decision === 'counter') nego.counter = res.counter;
   league.negotiations[playerId] = nego;

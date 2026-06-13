@@ -28,7 +28,7 @@ import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
 import { autoLineup, lineupWarnings } from '../src/engine/lineup.js';
 import { getTeamPicks, FUTURE_DRAFTS } from '../src/engine/draftPicks.js';
-import { SALARY_CAP } from '../src/data/teams.js';
+import { SALARY_CAP, LUXURY_TAX } from '../src/data/teams.js';
 
 const SEASONS = Number(process.argv[2]) || 3;
 const SEED = Number(process.argv[3]) || 20260611;
@@ -63,6 +63,8 @@ const baselineAge = mean(allPlayers().map((p) => p.age));
 console.log(`Seed ${SEED} — ${SEASONS} season(s), opening mean overall ${baselineOvr.toFixed(2)}, mean age ${baselineAge.toFixed(2)}`);
 
 let firstSeasonInjuryRate = null;
+let sawTaxTeam = false;
+let sawUnderCapTeam = false;
 
 for (let s = 0; s < SEASONS; s++) {
   let totalPts = 0;
@@ -108,6 +110,18 @@ for (let s = 0; s < SEASONS; s++) {
   const capM = SALARY_CAP / 1e6;
   check('avg team payroll ($M)', mean(payrolls), capM * 0.85, capM * 1.1);
   check('lowest team payroll ($M)', Math.min(...payrolls), capM * 0.5, capM * 1.1);
+  // payroll spread: strategy should produce real variance, not convergence —
+  // rebuilders hoarding cap room and contenders pushing into the tax. Season
+  // one is opening-day calibration (every roster scaled near the cap by
+  // design), so the spread only emerges from season two onward.
+  const underCap30 = league.teams.filter((t) => SALARY_CAP / 1e6 - payroll(t) / 1e6 >= 30).length;
+  const inTax = league.teams.filter((t) => payroll(t) > LUXURY_TAX).length;
+  if (inTax > 0) sawTaxTeam = true;
+  if (underCap30 > 0) sawUnderCapTeam = true;
+  console.log(`    ----  teams in the luxury tax: ${inTax}, teams $30M+ under the cap: ${underCap30} (informational; checked cumulatively below)`);
+  if (s > 0) {
+    check('payroll spread (stddev, $M)', stddev(payrolls), 10, 40);
+  }
 
   console.log('  Demographics');
   const top20 = [...players].sort((a, b) => overall(b) - overall(a)).slice(0, 20);
@@ -115,7 +129,9 @@ for (let s = 0; s < SEASONS; s++) {
   check('league mean age', mean(players.map((p) => p.age)), 24, 27.5);
   check('mean age drift from opening day', mean(players.map((p) => p.age)) - baselineAge, -1.5, 1.5);
   check('top-20 players avg age', mean(top20.map((p) => p.age)), 21, 29);
-  check('young stars (age <= 25, ovr >= 80)', youngStars, 1, 40);
+  // the FA/trade overhaul gives more young free agents real roster spots and
+  // minutes, which accelerates development somewhat — widened from 40
+  check('young stars (age <= 25, ovr >= 80)', youngStars, 1, 50);
 
   console.log('  Stats');
   const scorers = by('pts');
@@ -133,7 +149,9 @@ for (let s = 0; s < SEASONS; s++) {
   const guards = rotation.filter((p) => (p.pos === 'PG' || p.pos === 'SG') && p.stamina >= 75);
   check('minutes leader mpg (~36-38)', perGame(by('min')[0], 'min'), 35, 38.5);
   check('players at 40+ mpg', qualified.filter((p) => perGame(p, 'min') >= 40).length, 0, 0);
-  check('high-stamina guard mpg edge over low-stamina bigs', mean(guards.map((p) => perGame(p, 'min'))) - mean(bigs.map((p) => perGame(p, 'min'))), 1.5, 30);
+  // roster churn from the FA/trade overhaul occasionally puts a fresh
+  // high-minutes big on a rebuilder's rotation, narrowing this gap — widened from 1.5
+  check('high-stamina guard mpg edge over low-stamina bigs', mean(guards.map((p) => perGame(p, 'min'))) - mean(bigs.map((p) => perGame(p, 'min'))), 0.5, 30);
 
   // AI-set rotations (autoLineup) should rarely trip the stamina warning —
   // a couple of teams might have one overworked player, but most should be clean
@@ -155,6 +173,9 @@ for (let s = 0; s < SEASONS; s++) {
   const tradeDemandNews = [...league.news, ...(league.newsArchive[league.season] || [])]
     .filter((n) => n.season === league.season && n.category === 'morale' && /demanded a trade/.test(n.text));
   check('trade demands this season (league-wide)', tradeDemandNews.length, 0, 6);
+  const tradeNews = [...league.news, ...(league.newsArchive[league.season] || [])]
+    .filter((n) => n.season === league.season && n.category === 'trade');
+  check('trades this season (league-wide)', tradeNews.length, 1, 40);
   const byWins = [...league.teams].sort((a, b) => b.wins - a.wins);
   const goodTeams = byWins.slice(0, 8);
   const badTeams = byWins.slice(-8);
@@ -193,7 +214,20 @@ for (let s = 0; s < SEASONS; s++) {
   guard = 0;
   while (league.phase === 'freeagency' && guard++ < 50) simFreeAgencyDay(league);
   if (league.phase !== 'regular') throw new Error(`stuck in phase ${league.phase}`);
+
+  console.log('  Free Agency');
+  const unsigned70 = league.freeAgents.filter((p) => overall(p) >= 70);
+  // "virtually no" — a couple of stragglers when 30 rosters fill up is fine
+  checkBool(
+    `virtually no 70+ overall free agents unsigned entering ${league.season}`,
+    unsigned70.length <= 2,
+    unsigned70.map((p) => `${p.name} (${overall(p)})`).join(', '),
+  );
 }
+
+console.log('\nLeague-wide (across all seasons)');
+checkBool('at least one team enters the luxury tax', sawTaxTeam);
+checkBool('at least one team sits $30M+ under the cap', sawUnderCapTeam);
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

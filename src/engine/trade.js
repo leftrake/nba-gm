@@ -76,7 +76,7 @@ export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds
 export function aiEvaluateTrade(league, teamBId, incoming, outgoing, incomingPicks = [], outgoingPicks = []) {
   const team = getTeam(league, teamBId);
   const strategy = team.strategy || 'retooling';
-  const veto = strategyVeto(team, strategy, incoming, outgoing);
+  const veto = strategyVeto(team, strategy, incoming, outgoing, incomingPicks);
   if (veto) return { accept: false, ratio: 0, reason: veto };
   if (violatesStepien(league, teamBId, outgoingPicks.map((p) => p.id))) {
     return { accept: false, ratio: 0, reason: `The ${team.name} won't trade away first-round picks in consecutive years.` };
@@ -93,7 +93,7 @@ export function aiEvaluateTrade(league, teamBId, incoming, outgoing, incomingPic
 }
 
 // Deals a front office won't make at any price.
-function strategyVeto(team, strategy, incoming, outgoing) {
+function strategyVeto(team, strategy, incoming, outgoing, incomingPicks = []) {
   if (strategy === 'contending') {
     const bestIn = Math.max(0, ...incoming.map((p) => overall(p)));
     const star = outgoing.find((p) => overall(p) >= 76 && overall(p) > bestIn + 2);
@@ -101,7 +101,12 @@ function strategyVeto(team, strategy, incoming, outgoing) {
   }
   if (strategy === 'rebuilding') {
     const vet = incoming.find((p) => p.age >= 29 && (p.contract?.salary || 0) > 10_000_000);
-    if (vet) return `The ${team.name} are rebuilding and won't take on ${vet.name}'s veteran contract.`;
+    // ...unless they're giving up little or nothing for him — a salary dump
+    // with cap room costs a rebuilder nothing, and often comes with a pick.
+    const outgoingValue = outgoing.reduce((s, p) => s + tradeValue(p, strategy), 0);
+    if (vet && outgoingValue > 0 && !incomingPicks.length) {
+      return `The ${team.name} are rebuilding and won't take on ${vet.name}'s veteran contract.`;
+    }
     const bestYoungIn = Math.max(0, ...incoming.filter((p) => p.age <= 25).map((p) => p.potential));
     const keeper = outgoing.find((p) => p.age <= 23 && p.potential >= 76 && p.potential > bestYoungIn + 2);
     if (keeper) return `The ${team.name} are rebuilding around ${keeper.name} and won't move him.`;
