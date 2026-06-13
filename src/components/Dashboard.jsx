@@ -3,7 +3,8 @@ import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engi
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
-import { LineScore, TopPerformers } from './BoxScore.jsx';
+import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
+import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
 import TradeOffers from './TradeOffers.jsx';
 
@@ -49,6 +50,7 @@ function InjuryReport({ league, openTeam, openPlayer }) {
 // score, top performers from both teams, and a link to the full game page.
 function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   const me = league.userTeamId;
+  const byId = usePlayerIndex(league);
   const won = fg.home === me ? fg.homePts > fg.awayPts : fg.awayPts > fg.homePts;
   const title = fmtDate(dateForDay(league, fg.day));
   return (
@@ -66,6 +68,21 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
       </p>
       <LineScore league={league} game={fg} />
       <TopPerformers league={league} game={fg} openPlayer={openPlayer} />
+      {fg.injuryReport?.length > 0 && (
+        <p style={{ color: 'var(--red)', fontSize: 12, marginTop: 10 }}>
+          🩹 Injury report: {fg.injuryReport.map((e, i) => {
+            const p = byId.get(e.playerId);
+            const onAway = asLines(fg.awayBox || []).some((l) => l.playerId === e.playerId);
+            const teamId = onAway ? fg.away : fg.home;
+            return (
+              <React.Fragment key={e.playerId}>
+                {i > 0 && ', '}
+                {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'} ({teamId}) — {e.type} ({injuryTimeline(e)})
+              </React.Fragment>
+            );
+          })}
+        </p>
+      )}
       <p style={{ marginTop: 10 }}>
         <a className="team-link" style={{ color: 'var(--accent)' }} onClick={() => openGame(fg, title)}>
           Full box score &amp; game flow ▸

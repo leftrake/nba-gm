@@ -26,6 +26,11 @@ player development/aging/stamina in `players.js`, draft-class generation,
 rotation logic in `lineup.js`, or roster generation: the league's stat
 distributions are an equilibrium of all of those.
 
+Skip `npm test` / `npm run test:stats` for UI-only changes, display logic,
+new screens, and cosmetic updates — only run them when a change touches
+`src/engine/` (sim, player generation, ratings, development, salaries,
+fatigue).
+
 ## Architecture
 
 The hard split is **engine vs. UI**:

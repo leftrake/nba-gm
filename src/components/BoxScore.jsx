@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { getTeam } from '../engine/league.js';
 import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
+import { injuryTimeline } from '../engine/injuries.js';
 import { TeamLink, PlayerLink } from './shared.jsx';
 
 // Players move teams (or get waived) mid-season, so box-score names resolve
@@ -18,11 +19,24 @@ export function usePlayerIndex(league) {
 // (loaded from the save) — see BOX_COLS in sim.js.
 export const asLines = (box) => (box.length > 0 && Array.isArray(box[0]) ? decodeBox(box) : box);
 
-export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer }) {
+// Small red injury icon with a tooltip showing the injury type and the
+// expected return timeline, for a player who left this specific game hurt.
+function BoxInjuryIcon({ entry }) {
+  if (!entry) return null;
+  return (
+    <span style={{ color: 'var(--red)', marginLeft: 4 }} title={`${entry.type} — ${injuryTimeline(entry)}`}>
+      🩹
+    </span>
+  );
+}
+
+export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injuryReport }) {
   const byId = usePlayerIndex(league);
   const team = getTeam(league, teamId);
   const lines = asLines(box).filter((l) => l.min > 0);
   const total = (k) => lines.reduce((s, l) => s + l[k], 0);
+  const injuryById = new Map((injuryReport || []).map((e) => [e.playerId, e]));
+  const hurtHere = (injuryReport || []).filter((e) => lines.some((l) => l.playerId === e.playerId));
   return (
     <div>
       <h3><TeamLink team={team} openTeam={openTeam} />{pts != null && <> · {pts}</>}</h3>
@@ -39,7 +53,10 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer }) {
             const p = byId.get(line.playerId);
             return (
               <tr key={line.playerId}>
-                <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}</td>
+                <td>
+                  {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
+                  <BoxInjuryIcon entry={injuryById.get(line.playerId)} />
+                </td>
                 <td className="num">{line.min}</td>
                 <td className="num"><b>{line.pts}</b></td>
                 <td className="num">{line.reb}</td>
@@ -73,6 +90,19 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer }) {
           </tr>
         </tbody>
       </table>
+      {hurtHere.length > 0 && (
+        <p style={{ color: 'var(--red)', fontSize: 12, marginTop: 4 }}>
+          🩹 Injury report: {hurtHere.map((e, i) => {
+            const p = byId.get(e.playerId);
+            return (
+              <React.Fragment key={e.playerId}>
+                {i > 0 && ', '}
+                {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'} — {e.type} ({injuryTimeline(e)})
+              </React.Fragment>
+            );
+          })}
+        </p>
+      )}
     </div>
   );
 }
@@ -185,8 +215,8 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
           <TopPerformers league={league} game={game} openPlayer={openPlayer} />
           {fullBox ? (
             <div className="grid2">
-              <BoxTable league={league} teamId={game.away} pts={game.awayPts} box={game.awayBox} openTeam={openTeam} openPlayer={openPlayer} />
-              <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} />
+              <BoxTable league={league} teamId={game.away} pts={game.awayPts} box={game.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
+              <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
             </div>
           ) : (
             <p style={{ color: 'var(--muted)', fontSize: 12 }}>

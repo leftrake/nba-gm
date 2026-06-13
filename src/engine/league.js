@@ -334,22 +334,25 @@ export function simDay(league) {
     const home = getTeam(league, g.home);
     const away = getTeam(league, g.away);
     const r = simGame(home, away, rng);
-    applyBoxToStats(home.roster, r.homeBox);
-    applyBoxToStats(away.roster, r.awayBox);
     // injured players sat out tonight (tick), then anyone who played risks
     // getting hurt (roll) — order matters so fresh casualties don't tick
+    // the game they just played. Roll injuries before tallying stats so a
+    // player hurt mid-game banks only the minutes he actually played.
     tickInjuries(league, home);
     tickInjuries(league, away);
     const hurt = [
       ...rollGameInjuries(league, home, r.homeBox, rng),
       ...rollGameInjuries(league, away, r.awayBox, rng),
     ];
+    applyBoxToStats(home.roster, r.homeBox);
+    applyBoxToStats(away.roster, r.awayBox);
+    const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, gamesLeft: p.injury.gamesLeft }));
     for (const p of hurt) {
       r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
     }
     if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
-    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events });
+    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, injuryReport });
   }
   // unsigned players heal on the calendar — no games to count down
   if (league.dayIndex % 2 === 0) {
@@ -364,7 +367,7 @@ export function simDay(league) {
   // each side's top performers, so a season of results stays well under
   // ~1MB of localStorage. Boxes store in compact array form (see BOX_COLS).
   league.resultsByDay[league.dayIndex] = results.map((r) => {
-    const slim = { home: r.home, away: r.away, homePts: r.homePts, awayPts: r.awayPts, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs };
+    const slim = { home: r.home, away: r.away, homePts: r.homePts, awayPts: r.awayPts, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, injuryReport: r.injuryReport };
     if (r.home === league.userTeamId || r.away === league.userTeamId) {
       return { ...slim, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox), events: r.events };
     }
@@ -454,11 +457,13 @@ export function simPlayoffGame(league) {
     const homeId = seriesHomeTeam(m, m.highWins + m.lowWins);
     const awayId = homeId === m.high ? m.low : m.high;
     const r = simGame(getTeam(league, homeId), getTeam(league, awayId), rng);
+    const hurt = [];
     for (const [id, box] of [[homeId, r.homeBox], [awayId, r.awayBox]]) {
       const team = getTeam(league, id);
       playoffCondition(team, box);
       tickInjuries(league, team);
       for (const p of rollGameInjuries(league, team, box, rng)) {
+        hurt.push(p);
         r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
       }
     }
@@ -469,6 +474,7 @@ export function simPlayoffGame(league) {
       home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
       homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events,
       homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox),
+      injuryReport: hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, gamesLeft: p.injury.gamesLeft })),
     };
     m.games.push(game);
     played.push({ series: m, game, round: po.round });

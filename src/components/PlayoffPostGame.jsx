@@ -102,8 +102,8 @@ export default function PlayoffPostGame({ league, played, onBack, openTeam, open
         <LineScore league={league} game={g} />
         <TopPerformers league={league} game={g} openPlayer={openPlayer} />
         <div className="grid2">
-          <BoxTable league={league} teamId={g.away} pts={g.awayPts} box={g.awayBox} openTeam={openTeam} openPlayer={openPlayer} />
-          <BoxTable league={league} teamId={g.home} pts={g.homePts} box={g.homeBox} openTeam={openTeam} openPlayer={openPlayer} />
+          <BoxTable league={league} teamId={g.away} pts={g.awayPts} box={g.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />
+          <BoxTable league={league} teamId={g.home} pts={g.homePts} box={g.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />
         </div>
         <details style={{ marginTop: 6 }}>
           <summary className="stories-toggle">Play-by-play</summary>

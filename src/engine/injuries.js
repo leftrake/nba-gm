@@ -82,16 +82,43 @@ export function tickInjuries(league, team) {
   }
 }
 
+// A player hurt mid-game only banks the minutes (and stats) he racked up
+// before leaving — pick a cutoff before his final minute and scale his line
+// down to it. Makes/attempts stay consistent (fgm<=fga, tpm<=tpa<=fga,
+// ftm<=fta) and pts is rebuilt from the scaled makes (2/fgm + 1/tpm + 1/ftm).
+// `frac` (0-1) is derived from the injury roll itself rather than drawing a
+// fresh rng() call, so adding this doesn't shift the rng sequence for
+// everything simmed after tonight's injuries.
+function truncateForInjury(line, frac) {
+  const oldMin = line.min;
+  if (oldMin <= 1) return;
+  const newMin = 1 + Math.floor(frac * (oldMin - 1));
+  const ratio = newMin / oldMin;
+  line.min = newMin;
+  line.fga = Math.round(line.fga * ratio);
+  line.fta = Math.round(line.fta * ratio);
+  line.tpa = Math.min(line.fga, Math.round(line.tpa * ratio));
+  line.fgm = Math.min(line.fgm, line.fga, Math.round(line.fgm * ratio));
+  line.tpm = Math.min(line.tpm, line.tpa, line.fgm, Math.round(line.tpm * ratio));
+  line.ftm = Math.min(line.ftm, line.fta, Math.round(line.ftm * ratio));
+  line.pts = 2 * line.fgm + line.tpm + line.ftm;
+  for (const k of ['reb', 'ast', 'stl', 'blk', 'tov', 'pf']) line[k] = Math.round(line[k] * ratio);
+}
+
 // Roll tonight's injuries for everyone who logged minutes in this box.
-// Returns the players hurt tonight, so the game log can mention them.
+// Returns the players hurt tonight, so the game log can mention them and the
+// box score can flag their truncated line.
 export function rollGameInjuries(league, team, box, rng) {
   const injured = [];
   for (const line of box) {
     if (line.min === 0) continue;
     const p = team.roster.find((x) => x.id === line.playerId);
     if (!p || p.injury) continue;
-    if (rng() < injuryChance(p, line.min)) {
+    const chance = injuryChance(p, line.min);
+    const roll = rng();
+    if (roll < chance) {
       injurePlayer(league, team, p, rng);
+      truncateForInjury(line, chance > 0 ? roll / chance : 0);
       injured.push(p);
     }
   }
