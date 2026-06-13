@@ -8,6 +8,7 @@ import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
 import Standings from './components/Standings.jsx';
 import Leaders from './components/Leaders.jsx';
+import Stats from './components/Stats.jsx';
 import Schedule from './components/Schedule.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
@@ -270,6 +271,7 @@ export default function App() {
     ['roster', 'Roster'],
     ['standings', 'Standings'],
     ['leaders', 'Leaders'],
+    ['stats', 'Stats'],
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
     ['draft', 'Draft'],
@@ -401,6 +403,7 @@ export default function App() {
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+        {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} prefill={tradePrefill} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}

@@ -114,8 +114,8 @@ function gamePlayer({ p, min, slot }, rng) {
     out: false, // fouled out
     cool: 0, // stints benched after picking up the 5th foul
     line: {
-      playerId: p.id, min: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0,
-      fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0,
+      playerId: p.id, min: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0,
+      fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0, pm: 0,
     },
   };
 }
@@ -232,7 +232,12 @@ function offenseRebounds(off, def, rng) {
   const offensive = rng() < orbP;
   const side = offensive ? off.five : def.five;
   // ~7% of misses go out of bounds / become team rebounds — no credit
-  if (rng() < 0.93) weightedPick(side, (g) => Math.pow(g.reb, 2.7), rng).line.reb += 1;
+  if (rng() < 0.93) {
+    const gp = weightedPick(side, (g) => Math.pow(g.reb, 2.7), rng);
+    gp.line.reb += 1;
+    if (offensive) gp.line.oreb += 1;
+    else gp.line.dreb += 1;
+  }
   return offensive;
 }
 
@@ -468,6 +473,14 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     endPeriod();
   }
 
+  // Plus/minus approximation: the final score differential, weighted by each
+  // player's share of the game's total minutes — not a true possession-by-
+  // possession tally, but close for a season's worth of leaderboards.
+  const gameMinutes = 48 + Math.max(0, period - 4) * OT_MIN;
+  const diff = homeScore.pts - awayScore.pts;
+  for (const gp of homePlayers) gp.line.pm = Math.round((diff * gp.line.min / gameMinutes) * 10) / 10;
+  for (const gp of awayPlayers) gp.line.pm = Math.round((-diff * gp.line.min / gameMinutes) * 10) / 10;
+
   // post-game notes (q='' so the UI shows them unprefixed, after the action)
   if (run.side != null && run.pts >= 10) addEv(`The ${sideName(run.side)} closed the game on a ${run.pts}-0 run.`, '', '');
   if (leadChanges >= 12) addEv(`A back-and-forth battle: ${leadChanges} lead changes.`, '', '');
@@ -506,7 +519,7 @@ export function starLines(box, n = 3) {
 // Saves keep every game's box score, so lines are stored as flat number
 // arrays in this column order instead of objects (roughly 4x smaller in
 // localStorage). Decode before display.
-export const BOX_COLS = ['playerId', 'min', 'pts', 'reb', 'ast', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'tov', 'pf'];
+export const BOX_COLS = ['playerId', 'min', 'pts', 'reb', 'ast', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'tov', 'pf', 'oreb', 'dreb', 'pm'];
 
 export function encodeBox(box) {
   return box.map((line) => BOX_COLS.map((k) => line[k]));
@@ -529,5 +542,9 @@ export function applyBoxToStats(roster, box) {
     s.fta = (s.fta || 0) + line.fta;
     s.tov = (s.tov || 0) + line.tov;
     s.pf = (s.pf || 0) + line.pf;
+    // old saves' stats objects predate these three
+    s.oreb = (s.oreb || 0) + (line.oreb || 0);
+    s.dreb = (s.dreb || 0) + (line.dreb || 0);
+    s.pm = (s.pm || 0) + (line.pm || 0);
   }
 }

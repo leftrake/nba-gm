@@ -232,7 +232,7 @@ export function generatePlayer(rng = rand, opts = {}) {
 }
 
 export function emptyStats() {
-  return { gp: 0, min: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0 };
+  return { gp: 0, min: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0, pm: 0 };
 }
 
 // Market salary by overall, linear between the tier breakpoints below:

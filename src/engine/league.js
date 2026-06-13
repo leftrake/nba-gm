@@ -252,6 +252,8 @@ export function backfillPlayers(league) {
     // stats fields added with the possession sim
     if (p.stats && p.stats.ftm == null) { p.stats.ftm = 0; p.stats.fta = 0; p.stats.tov = 0; }
     if (p.stats && p.stats.pf == null) p.stats.pf = 0;
+    // stats fields added with rebound splits and plus/minus
+    if (p.stats && p.stats.oreb == null) { p.stats.oreb = 0; p.stats.dreb = 0; p.stats.pm = 0; }
     if (!p.awards) p.awards = []; // saves predating awards
     // saves predating the stamina/fatigue system
     if (p.stamina == null) p.stamina = generateStamina(p.pos, p.age, rng);

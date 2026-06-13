@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { getTeam } from '../engine/league.js';
 import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
 import { injuryTimeline } from '../engine/injuries.js';
+import { ddTd } from '../engine/stats.js';
 import { TeamLink, PlayerLink } from './shared.jsx';
 
 // Players move teams (or get waived) mid-season, so box-score names resolve
@@ -44,22 +45,31 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
         <thead>
           <tr>
             <th>Player</th><th className="num">MIN</th><th className="num">PTS</th><th className="num">REB</th>
+            <th className="num">OREB</th><th className="num">DREB</th>
             <th className="num">AST</th><th className="num">STL</th><th className="num">BLK</th><th className="num">TO</th>
-            <th className="num">PF</th><th className="num">FG</th><th className="num">3P</th><th className="num">FT</th>
+            <th className="num">PF</th><th className="num">+/-</th><th className="num">FG</th><th className="num">3P</th><th className="num">FT</th>
           </tr>
         </thead>
         <tbody>
           {[...lines].sort((a, b) => b.pts - a.pts).map((line) => {
             const p = byId.get(line.playerId);
+            const badge = ddTd(line);
             return (
               <tr key={line.playerId}>
                 <td>
                   {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
+                  {badge && (
+                    <span className="tag" style={{ marginLeft: 6, color: 'var(--accent)' }} title={badge === 'TD' ? 'Triple-double' : 'Double-double'}>
+                      {badge}
+                    </span>
+                  )}
                   <BoxInjuryIcon entry={injuryById.get(line.playerId)} />
                 </td>
                 <td className="num">{line.min}</td>
                 <td className="num"><b>{line.pts}</b></td>
                 <td className="num">{line.reb}</td>
+                <td className="num">{line.oreb}</td>
+                <td className="num">{line.dreb}</td>
                 <td className="num">{line.ast}</td>
                 <td className="num">{line.stl}</td>
                 <td className="num">{line.blk}</td>
@@ -68,6 +78,7 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
                     title={line.pf >= 6 ? 'Fouled out' : undefined}>
                   {line.pf}
                 </td>
+                <td className="num">{line.pm > 0 ? `+${line.pm}` : line.pm}</td>
                 <td className="num">{line.fgm}-{line.fga}</td>
                 <td className="num">{line.tpm}-{line.tpa}</td>
                 <td className="num">{line.ftm}-{line.fta}</td>
@@ -79,11 +90,14 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
             <td className="num" />
             <td className="num">{total('pts')}</td>
             <td className="num">{total('reb')}</td>
+            <td className="num">{total('oreb')}</td>
+            <td className="num">{total('dreb')}</td>
             <td className="num">{total('ast')}</td>
             <td className="num">{total('stl')}</td>
             <td className="num">{total('blk')}</td>
             <td className="num">{total('tov')}</td>
             <td className="num">{total('pf')}</td>
+            <td className="num" />
             <td className="num">{total('fgm')}-{total('fga')}</td>
             <td className="num">{total('tpm')}-{total('tpa')}</td>
             <td className="num">{total('ftm')}-{total('fta')}</td>
