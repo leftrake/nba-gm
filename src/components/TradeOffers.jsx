@@ -57,6 +57,7 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
               <b>{from.city} {from.name}</b> propose a trade
               <span style={{ color: 'var(--muted)' }}> · expires in {daysLeft} day{daysLeft === 1 ? '' : 's'}</span>
             </p>
+            {offer.why && <p style={{ color: 'var(--muted)', fontStyle: 'italic' }}>{offer.why}</p>}
             <div className="grid2">
               <div>
                 <h3>You send</h3>
