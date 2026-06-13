@@ -7,6 +7,7 @@ import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.js
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
 import TradeOffers from './TradeOffers.jsx';
+import { ROUND_NAMES } from './Playoffs.jsx';
 
 // League-wide injury report: every player currently out, the user's team
 // first, then alphabetical by team.
@@ -52,7 +53,7 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   const me = league.userTeamId;
   const byId = usePlayerIndex(league);
   const won = fg.home === me ? fg.homePts > fg.awayPts : fg.awayPts > fg.homePts;
-  const title = fmtDate(dateForDay(league, fg.day));
+  const title = fg.isPlayoff ? `${ROUND_NAMES[fg.round]} · Game ${fg.gameNo}` : fmtDate(dateForDay(league, fg.day));
   return (
     <div className="panel" style={{ borderLeft: `4px solid ${won ? 'var(--green)' : 'var(--red)'}` }}>
       <h2>Your Last Game · {title}</h2>

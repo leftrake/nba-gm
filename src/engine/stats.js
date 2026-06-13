@@ -31,6 +31,14 @@ export function possessions(s) {
 
 const TOTAL_KEYS = ['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pf', 'min', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'pm'];
 
+// a - b across every stat key (including gp), for splitting a season's
+// cumulative totals into per-team stints around a trade.
+export function diffStats(a, b) {
+  const out = { gp: a.gp - b.gp };
+  for (const k of TOTAL_KEYS) out[k] = (a[k] || 0) - (b[k] || 0);
+  return out;
+}
+
 // Sums every roster player's season stats into one team-level totals object.
 // `gp` is the team's games played (wins + losses), not a sum of player gp.
 export function teamStatTotals(team) {

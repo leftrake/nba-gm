@@ -196,6 +196,14 @@ export default function App() {
     return mine;
   };
 
+  // Same idea for the playoffs: `played` entries are { series, game, round }
+  // rather than flat results, and games have no schedule day.
+  const trackFeaturedPlayoff = (played) => {
+    const mine = [...played].reverse().find((e) => e.game.home === league.userTeamId || e.game.away === league.userTeamId);
+    if (mine) setFeaturedGame({ ...mine.game, round: mine.round, gameNo: mine.series.games.indexOf(mine.game) + 1, isPlayoff: true });
+    return mine;
+  };
+
   const handleSimDay = () => {
     const results = simDay(league);
     setLastResults(results);
@@ -245,6 +253,7 @@ export default function App() {
   // full, or the day's scoreboard); a round fast-forward goes to the bracket.
   const handleSimPlayoffGame = () => {
     const played = simPlayoffGame(league);
+    trackFeaturedPlayoff(played);
     commit();
     if (played.length > 0) {
       setPlayoffDay(played);
@@ -254,7 +263,8 @@ export default function App() {
     }
   };
   const handleSimPlayoffRound = () => {
-    simPlayoffRound(league);
+    const played = simPlayoffRound(league);
+    trackFeaturedPlayoff(played);
     setPlayoffDay(null);
     commit();
     setScreen('playoffs');

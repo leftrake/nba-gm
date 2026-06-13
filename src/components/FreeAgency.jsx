@@ -1,10 +1,23 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException } from '../engine/league.js';
-import { scoutedOverall } from '../engine/scouting.js';
+import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
+import { POSITIONS } from '../engine/lineup.js';
 import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
 
 const OFFERS_PER_ROUND = 3;
+const FILTERS_KEY = 'nba-gm-fa-filters';
+
+const DEFAULT_FILTERS = { sortKey: 'ovr', sortDir: 'desc', pos: 'all', minAge: '', maxAge: '', maxAskingM: '' };
+
+function loadFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY));
+    return saved ? { ...DEFAULT_FILTERS, ...saved } : DEFAULT_FILTERS;
+  } catch {
+    return DEFAULT_FILTERS;
+  }
+}
 
 export default function FreeAgency({ league, commit, openPlayer }) {
   const team = getTeam(league, league.userTeamId);
@@ -16,6 +29,15 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   const [years, setYears] = useState(2);
   const [responses, setResponses] = useState({}); // playerId -> last makeOffer result
   const [message, setMessage] = useState(null); // top-level note (signings)
+  const [filters, setFilters] = useState(loadFilters);
+
+  const setFilter = (patch) => {
+    setFilters((f) => {
+      const next = { ...f, ...patch };
+      try { localStorage.setItem(FILTERS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
 
   const negotiations = league.negotiations || {};
 
@@ -54,6 +76,28 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     commit();
   };
 
+  // ---- Filter & sort
+  const SORT_VALUE = {
+    ovr: (p) => scoutedOverall(p, league.season),
+    pot: (p) => scoutedPotential(p, league.season, true),
+    age: (p) => p.age,
+    asking: (p) => askingPrice(p),
+    pos: (p) => POSITIONS.indexOf(p.pos),
+  };
+  const dirMul = filters.sortDir === 'asc' ? 1 : -1;
+  const sortValue = SORT_VALUE[filters.sortKey] || SORT_VALUE.ovr;
+  const minAge = filters.minAge !== '' ? Number(filters.minAge) : -Infinity;
+  const maxAge = filters.maxAge !== '' ? Number(filters.maxAge) : Infinity;
+  const maxAsking = filters.maxAskingM !== '' ? Number(filters.maxAskingM) * 1e6 : Infinity;
+  const filtered = league.freeAgents.filter((p) =>
+    (filters.pos === 'all' || p.pos === filters.pos || p.pos2 === filters.pos)
+    && p.age >= minAge && p.age <= maxAge
+    && askingPrice(p) <= maxAsking
+  );
+  const shown = [...filtered]
+    .sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul)
+    .slice(0, 50);
+
   return (
     <div className="panel">
       <h2>Free Agents</h2>
@@ -69,15 +113,59 @@ export default function FreeAgency({ league, commit, openPlayer }) {
           : ' · Signings open during the Free Agency phase (after the offseason advance), but you can browse anytime.'}
       </p>
       {message && <p style={{ marginBottom: 10, color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{message.text}</p>}
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <label>
+          Position:{' '}
+          <select value={filters.pos} onChange={(e) => setFilter({ pos: e.target.value })}>
+            <option value="all">All</option>
+            {POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+          </select>
+        </label>
+        <label>
+          Age:{' '}
+          <input type="number" min={18} max={45} value={filters.minAge} placeholder="min"
+                 onChange={(e) => setFilter({ minAge: e.target.value })} style={{ width: 56 }} />
+          {' – '}
+          <input type="number" min={18} max={45} value={filters.maxAge} placeholder="max"
+                 onChange={(e) => setFilter({ maxAge: e.target.value })} style={{ width: 56 }} />
+        </label>
+        <label>
+          Max Asking ($M):{' '}
+          <input type="number" min={0} value={filters.maxAskingM} placeholder="any"
+                 onChange={(e) => setFilter({ maxAskingM: e.target.value })} style={{ width: 70 }} />
+        </label>
+        {(filters.pos !== 'all' || filters.minAge !== '' || filters.maxAge !== '' || filters.maxAskingM !== '') && (
+          <button className="btn secondary small" onClick={() => setFilter({ pos: 'all', minAge: '', maxAge: '', maxAskingM: '' })}>
+            Clear Filters
+          </button>
+        )}
+        <span className="meta" style={{ color: 'var(--muted)' }}>
+          {filtered.length}{filtered.length !== league.freeAgents.length ? ` of ${league.freeAgents.length}` : ''} free agents
+        </span>
+      </div>
+
       <table>
         <thead>
-          <tr><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Asking</th><th></th></tr>
+          <tr>
+            {[['ovr', 'Ovr'], ['pot', 'Pot'], [null, 'Player'], ['pos', 'Pos'], ['age', 'Age'], ['asking', 'Asking']].map(([key, label]) => (
+              <th
+                key={label}
+                className={key === 'age' || key === 'asking' || key === 'ovr' || key === 'pot' ? 'num' : undefined}
+                style={key ? { cursor: 'pointer' } : undefined}
+                onClick={key ? () => setFilter(filters.sortKey === key
+                  ? { sortDir: filters.sortDir === 'asc' ? 'desc' : 'asc' }
+                  : { sortKey: key, sortDir: 'desc' }) : undefined}
+                title={key ? 'Click to sort' : undefined}
+              >
+                {label}{filters.sortKey === key ? (filters.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+              </th>
+            ))}
+            <th></th>
+          </tr>
         </thead>
         <tbody>
-          {[...league.freeAgents]
-            .sort((a, b) => scoutedOverall(b, league.season) - scoutedOverall(a, league.season))
-            .slice(0, 50)
-            .map((p) => {
+          {shown.map((p) => {
               const res = responses[p.id];
               const counter = negotiations[p.id]?.counter;
               const left = OFFERS_PER_ROUND - offersUsed(p);

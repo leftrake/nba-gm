@@ -15,6 +15,7 @@ import {
   dailyMoraleUpdate, updateTradeDemands, maybeShopDisgruntled,
 } from './morale.js';
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
+import { diffStats } from './stats.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -547,10 +548,12 @@ function advanceRound(po, league) {
 // Fast-forward: sim game-by-game until the current round is done
 export function simPlayoffRound(league) {
   const po = league.playoffs;
-  if (!po || po.champion) return;
+  if (!po || po.champion) return [];
   const startRound = po.round;
   let guard = 0;
-  while (!po.champion && po.round === startRound && guard++ < 100) simPlayoffGame(league);
+  const played = [];
+  while (!po.champion && po.round === startRound && guard++ < 100) played.push(...simPlayoffGame(league));
+  return played;
 }
 
 // ---------- Offseason ----------
@@ -562,7 +565,7 @@ function announceRetirement(league, p, teamId = null) {
     { gp: 0, pts: 0, reb: 0, ast: 0 }
   );
   if (!tot.gp) return;
-  const seasons = p.careerStats.length;
+  const seasons = new Set((p.careerStats || []).map((s) => s.season)).size;
   const avg = (k) => (tot[k] / tot.gp).toFixed(1);
   let text = `${p.name} retires at age ${p.age} after ${seasons} season${seasons === 1 ? '' : 's'}: `
     + `${avg('pts')} ppg, ${avg('reb')} rpg, ${avg('ast')} apg across ${tot.gp} games.`;
@@ -589,8 +592,16 @@ export function advanceOffseason(league) {
   for (const team of league.teams) {
     const isUserTeam = team.id === league.userTeamId;
     for (const p of team.roster) {
-      // archive season stats
-      if (p.stats.gp > 0) p.careerStats.push({ season: league.season, ...p.stats });
+      // archive season stats, split into one row per team if traded mid-season
+      let prev = emptyStats();
+      for (const stint of p.seasonStints || []) {
+        const stintStats = diffStats(stint.stats, prev);
+        if (stintStats.gp > 0) p.careerStats.push({ season: league.season, team: stint.team, ...stintStats });
+        prev = stint.stats;
+      }
+      const finalStats = diffStats(p.stats, prev);
+      if (finalStats.gp > 0) p.careerStats.push({ season: league.season, team: team.id, ...finalStats });
+      p.seasonStints = [];
       p.stats = emptyStats();
       p.condition = 100; // a summer off heals everything
       p.injury = null; // ...including last spring's torn ACL
@@ -1163,11 +1174,21 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   return true;
 }
 
+// Snapshots a player's cumulative season stats against the team he's about
+// to leave, so advanceOffseason can split this season's careerStats row into
+// one entry per team. No-op if he hasn't played for this team yet.
+export function recordSeasonStint(p, teamId) {
+  if (!p.stats.gp) return;
+  if (!p.seasonStints) p.seasonStints = [];
+  p.seasonStints.push({ team: teamId, stats: { ...p.stats } });
+}
+
 export function releasePlayer(league, teamId, playerId) {
   const team = getTeam(league, teamId);
   const idx = team.roster.findIndex((p) => p.id === playerId);
   if (idx === -1) return false;
   const p = team.roster.splice(idx, 1)[0];
+  recordSeasonStint(p, teamId);
   bumpTurmoil(team);
   if (p.contract) {
     if (!team.deadMoney) team.deadMoney = []; // saves predating this field

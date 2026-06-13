@@ -1,5 +1,5 @@
 import { overall } from './players.js';
-import { getTeam, payroll } from './league.js';
+import { getTeam, payroll, recordSeasonStint } from './league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews } from './save.js';
 import { clamp } from './rng.js';
@@ -134,6 +134,8 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   const b = getTeam(league, teamBId);
   const outA = a.roster.filter((p) => playersAIds.includes(p.id));
   const outB = b.roster.filter((p) => playersBIds.includes(p.id));
+  for (const p of outA) recordSeasonStint(p, a.id);
+  for (const p of outB) recordSeasonStint(p, b.id);
   a.roster = a.roster.filter((p) => !playersAIds.includes(p.id)).concat(outB);
   b.roster = b.roster.filter((p) => !playersBIds.includes(p.id)).concat(outA);
   // failed extension talks don't follow a player to a new front office
@@ -260,6 +262,7 @@ export function aiEvaluateMultiTrade(league, teamIds, sends, userId, legs) {
 export function executeMultiTrade(league, teamIds, sends) {
   const legs = resolveMultiTradeLegs(league, teamIds, sends);
   for (const leg of legs) {
+    for (const p of leg.outPlayers) recordSeasonStint(p, leg.team.id);
     const outIds = new Set(leg.outPlayers.map((p) => p.id));
     leg.team.roster = leg.team.roster.filter((p) => !outIds.has(p.id));
   }

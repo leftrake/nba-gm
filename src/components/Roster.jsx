@@ -44,6 +44,8 @@ function MinInput({ value, onChange, disabled }) {
 
 export default function Roster({ league, commit, teamId, openTeam, openPlayer, onTradeFor }) {
   const [sortKey, setSortKey] = useState('ovr');
+  const [posFilter, setPosFilter] = useState('all');
+  const [dragIndex, setDragIndex] = useState(null);
   const [pickSlot, setPickSlot] = useState(null); // position whose starter is being chosen
   const [extendingId, setExtendingId] = useState(null); // player being offered an extension
   const [extSalaryM, setExtSalaryM] = useState(5);
@@ -121,11 +123,11 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     saveLineup(lu);
   };
 
-  const moveBench = (i, dir) => {
+  const reorderBench = (from, to) => {
+    if (from === to) return;
     const lu = normalizeLineup(team.lineup, team.roster);
-    const j = i + dir;
-    if (j < 0 || j >= lu.bench.length) return;
-    [lu.bench[i], lu.bench[j]] = [lu.bench[j], lu.bench[i]];
+    const [moved] = lu.bench.splice(from, 1);
+    lu.bench.splice(to, 0, moved);
     saveLineup(lu);
   };
 
@@ -154,7 +156,10 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   };
 
   const seenOvr = (p) => (isUser ? overall(p) : scoutedOverall(p, league.season));
-  const sorted = [...team.roster].sort((a, b) => {
+  const filtered = posFilter === 'all'
+    ? team.roster
+    : team.roster.filter((p) => p.pos === posFilter || p.pos2 === posFilter);
+  const sorted = [...filtered].sort((a, b) => {
     if (sortKey === 'ovr') return seenOvr(b) - seenOvr(a);
     if (sortKey === 'age') return a.age - b.age;
     if (sortKey === 'salary') return (b.contract?.salary || 0) - (a.contract?.salary || 0);
@@ -318,12 +323,16 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     const p = byId.get(b.id);
                     if (!p) return null;
                     return (
-                      <tr key={b.id} style={b.min === 0 ? { opacity: 0.55 } : undefined}>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <button className="btn secondary small" disabled={i === 0} onClick={() => moveBench(i, -1)}>▲</button>
-                          {' '}
-                          <button className="btn secondary small" disabled={i === lineup.bench.length - 1} onClick={() => moveBench(i, 1)}>▼</button>
-                        </td>
+                      <tr
+                        key={b.id}
+                        draggable
+                        onDragStart={() => setDragIndex(i)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); if (dragIndex != null) reorderBench(dragIndex, i); setDragIndex(null); }}
+                        onDragEnd={() => setDragIndex(null)}
+                        style={{ ...(b.min === 0 ? { opacity: 0.55 } : null), ...(dragIndex === i ? { opacity: 0.4 } : null) }}
+                      >
+                        <td style={{ whiteSpace: 'nowrap', cursor: 'grab', color: 'var(--muted)' }} title="Drag to reorder">⠿</td>
                         <td><PlayerLink p={p} openPlayer={openPlayer} />{isInjured(p) ? ' 🩹' : ''}</td>
                         <td>{posLabel(p)}</td>
                         <td className="num">{overall(p)}</td>
@@ -429,7 +438,13 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
             <option value="salary">Sort: Salary</option>
             <option value="pts">Sort: PPG</option>
           </select>
-          <span className="meta" style={{ color: 'var(--muted)' }}>{team.roster.length} players</span>
+          <select value={posFilter} onChange={(e) => setPosFilter(e.target.value)}>
+            <option value="all">All Positions</option>
+            {POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+          </select>
+          <span className="meta" style={{ color: 'var(--muted)' }}>
+            {filtered.length}{filtered.length !== team.roster.length ? ` of ${team.roster.length}` : ''} players
+          </span>
         </div>
         {extMessage && <p style={{ marginBottom: 10, color: 'var(--green)' }}>{extMessage}</p>}
         <table>

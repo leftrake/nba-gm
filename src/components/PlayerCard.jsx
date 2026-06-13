@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { askingPrice } from '../engine/league.js';
+import { askingPrice, getTeam } from '../engine/league.js';
 import { durabilityNote, ratingRow, posLabel } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
@@ -46,16 +46,6 @@ function StatLine({ stats }) {
   );
 }
 
-// Season-over-season change cell: green up-arrow, red down-arrow, dot for flat
-function Delta({ d }) {
-  if (!d) return <span style={{ color: 'var(--muted)' }}>·</span>;
-  return (
-    <span style={{ color: d > 0 ? 'var(--green)' : 'var(--red)' }}>
-      {d > 0 ? '▲' : '▼'}{Math.abs(d)}
-    </span>
-  );
-}
-
 // Overall by season as a small inline line chart. `points` is [season, ovr][].
 function OverallChart({ points }) {
   const w = 520, h = 130, padX = 26, padY = 22;
@@ -81,40 +71,16 @@ function OverallChart({ points }) {
   );
 }
 
-// Progression: overall-by-season chart plus a matrix of per-attribute
-// offseason changes. History rows are end-of-season snapshots, so the
-// current ratings supply the latest column.
+// Progression: overall-by-season chart. History rows are end-of-season
+// snapshots, so the current ratings supply the latest column.
 function Progression({ league, p }) {
   const history = p.ratingHistory ?? [];
   if (!history.length) return null;
   const rows = [...history, [league.season, ...ratingRow(p)]];
-  const labels = [['Overall'], ...RATINGS.map(([, l]) => [l]), ['Stamina']];
   return (
     <>
       <h3 style={{ marginTop: 14 }}>Progression</h3>
       <OverallChart points={rows.map((r) => [r[0], r[1]])} />
-      <div style={{ overflowX: 'auto', marginTop: 6 }}>
-        <table style={{ fontSize: 12 }}>
-          <thead>
-            <tr>
-              <th></th>
-              {rows.slice(1).map((r) => (
-                <th className="num" key={r[0]} title={`Offseason change heading into ${r[0]}`}>'{String(r[0]).slice(2)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {labels.map(([label], attr) => (
-              <tr key={label}>
-                <td style={attr === 0 ? { fontWeight: 700 } : { color: 'var(--muted)' }}>{label}</td>
-                {rows.slice(1).map((r, i) => (
-                  <td className="num" key={r[0]}><Delta d={r[attr + 1] - rows[i][attr + 1]} /></td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </>
   );
 }
@@ -150,6 +116,12 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, onTra
             ? <>Contract: <b>{money(p.contract.salary)}</b>/yr × <b>{p.contract.years}</b> {p.contract.years === 1 ? 'year' : 'years'}</>
             : <>Asking: <b>{money(askingPrice(p))}</b>/yr</>}
           {p.extension && <> · Extension: <b style={{ color: 'var(--green)' }}>{money(p.extension.salary)}</b>/yr × <b>{p.extension.years}</b> (starts next season)</>}
+        </p>
+
+        <p style={{ margin: '10px 0', color: 'var(--muted)' }}>
+          {p.draftYear
+            ? <>Draft: <b style={{ color: 'var(--text)' }}>{p.draftYear}</b>, Round {p.draftRound} (Pick {p.draftPick}) — <TeamLink team={getTeam(league, p.draftTeam)} openTeam={openTeam} /></>
+            : 'Draft: Undrafted'}
         </p>
 
         {p.injury && (
@@ -201,14 +173,15 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, onTra
           <table>
             <thead>
               <tr>
-                <th>Season</th><th className="num">GP</th><th className="num">MPG</th><th className="num">PPG</th>
+                <th>Season</th><th>Team</th><th className="num">GP</th><th className="num">MPG</th><th className="num">PPG</th>
                 <th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
               </tr>
             </thead>
             <tbody>
-              {[...p.careerStats].reverse().map((s) => (
-                <tr key={s.season}>
+              {[...p.careerStats].reverse().map((s, i) => (
+                <tr key={`${s.season}-${s.team ?? i}`}>
                   <td>{s.season}</td>
+                  <td>{s.team != null ? <TeamLink team={getTeam(league, s.team)} openTeam={openTeam} /> : '–'}</td>
                   <td className="num">{s.gp}</td>
                   <td className="num">{perGame(s, 'min')}</td>
                   <td className="num">{perGame(s, 'pts')}</td>
