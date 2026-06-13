@@ -1,62 +1,9 @@
 import { rand, randInt, pick, gauss, clamp } from './rng.js';
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { initMorale } from './morale.js';
-
-const FIRST_NAMES = [
-  'Jalen', 'Marcus', 'DeAndre', 'Tyrese', 'Cade', 'Darius', 'Malik', 'Jaylen', 'Zion', 'Trey',
-  'Anthony', 'Devin', 'Isaiah', 'Jordan', 'Kevin', 'Chris', 'Mike', 'Aaron', 'Brandon', 'Cameron',
-  'Damian', 'Elijah', 'Franz', 'Gary', 'Hassan', 'Ivan', 'Jamal', 'Keon', 'Lonnie', 'Miles',
-  'Nikola', 'Omari', 'Paolo', 'Quentin', 'Rashad', 'Scottie', 'Terrence', 'Victor', 'Wendell', 'Xavier',
-  'Zach', 'Andre', 'Bol', 'Caleb', 'Dejounte', 'Evan', 'Fred', 'Goga', 'Herb', 'Immanuel',
-  'Josh', 'Kyle', 'Luka', 'Markelle', 'Nassir', 'Obi', 'Precious', 'Quinn', 'RJ', 'Saddiq',
-  'Talen', 'Usman', 'Vince', 'Wesley', 'Yuta', 'Ziaire', 'Amir', 'Bones', 'Cole', 'Day\'Ron',
-  'Emoni', 'Jaden', 'Keegan', 'Lamar', 'Moses', 'Nigel', 'Ousmane', 'Patrick', 'Reggie', 'Shai',
-];
-
-const LAST_NAMES = [
-  'Williams', 'Johnson', 'Smith', 'Brown', 'Jones', 'Davis', 'Carter', 'Mitchell', 'Turner', 'Brooks',
-  'Anderson', 'Bridges', 'Coleman', 'Diallo', 'Edwards', 'Fontaine', 'Green', 'Harris', 'Ingram', 'Jackson',
-  'Knox', 'Lewis', 'Murray', 'Nwora', 'Okafor', 'Porter', 'Quickley', 'Robinson', 'Sengun', 'Thompson',
-  'Vassell', 'Washington', 'Young', 'Allen', 'Banchero', 'Cunningham', 'Dosunmu', 'Eubanks', 'Fox', 'Gilgeous',
-  'Hayes', 'Ivey', 'Jovic', 'Kispert', 'Livers', 'Mathurin', 'Nesmith', 'Okoro', 'Primo', 'Reaves',
-  'Sharpe', 'Tate', 'Umude', 'Vincent', 'Wagner', 'Yabusele', 'Ziegler', 'Adebayo', 'Barnes', 'Castle',
-  'Duarte', 'Eason', 'Filipowski', 'Garland', 'Holmgren', 'Iverson', 'Jaquez', 'Kessler', 'Lively', 'Maxey',
-  'Nembhard', 'Oubre', 'Podziemski', 'Reed', 'Suggs', 'Topic', 'Ware', 'Watson', 'Wembanyama', 'Sochan',
-];
+import { NATIONALITIES, NATIONALITY_W } from './names.js';
 
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
-
-// Nationality distribution, loosely matching the real NBA (~3/4 American).
-// Americans come out of a college program; internationals played in their
-// home country before coming over.
-const COUNTRIES = [
-  { name: 'USA', flag: '🇺🇸', w: 300 },
-  { name: 'Canada', flag: '🇨🇦', w: 18 },
-  { name: 'France', flag: '🇫🇷', w: 14 },
-  { name: 'Australia', flag: '🇦🇺', w: 8 },
-  { name: 'Germany', flag: '🇩🇪', w: 8 },
-  { name: 'Serbia', flag: '🇷🇸', w: 6 },
-  { name: 'Spain', flag: '🇪🇸', w: 5 },
-  { name: 'Slovenia', flag: '🇸🇮', w: 4 },
-  { name: 'Greece', flag: '🇬🇷', w: 4 },
-  { name: 'Croatia', flag: '🇭🇷', w: 4 },
-  { name: 'Lithuania', flag: '🇱🇹', w: 4 },
-  { name: 'Turkey', flag: '🇹🇷', w: 3 },
-  { name: 'Italy', flag: '🇮🇹', w: 3 },
-  { name: 'Nigeria', flag: '🇳🇬', w: 3 },
-  { name: 'Cameroon', flag: '🇨🇲', w: 2 },
-  { name: 'Senegal', flag: '🇸🇳', w: 2 },
-  { name: 'Bahamas', flag: '🇧🇸', w: 2 },
-  { name: 'Dominican Republic', flag: '🇩🇴', w: 2 },
-  { name: 'Japan', flag: '🇯🇵', w: 2 },
-  { name: 'Latvia', flag: '🇱🇻', w: 2 },
-  { name: 'Finland', flag: '🇫🇮', w: 2 },
-  { name: 'Georgia', flag: '🇬🇪', w: 2 },
-  { name: 'Brazil', flag: '🇧🇷', w: 2 },
-  { name: 'Argentina', flag: '🇦🇷', w: 2 },
-  { name: 'United Kingdom', flag: '🇬🇧', w: 2 },
-];
-const COUNTRY_W = COUNTRIES.reduce((s, c) => s + c.w, 0);
 
 const COLLEGES = [
   'Duke', 'Kentucky', 'Kansas', 'North Carolina', 'UCLA', 'Gonzaga', 'Arizona', 'UConn', 'Villanova',
@@ -65,22 +12,23 @@ const COLLEGES = [
   'Virginia', 'Illinois', 'Wake Forest', 'Creighton', 'Marquette', 'Iowa', 'Stanford', 'Georgetown', 'Wisconsin',
 ];
 
-function pickCountry(rng) {
-  let roll = rng() * COUNTRY_W;
-  return COUNTRIES.find((c) => (roll -= c.w) < 0) ?? COUNTRIES[0];
+export function pickCountry(rng) {
+  let roll = rng() * NATIONALITY_W;
+  return NATIONALITIES.find((c) => (roll -= c.w) < 0) ?? NATIONALITIES[0];
 }
 
-// Sets nationality and pre-NBA origin (`from`: college for Americans, home
-// country for internationals). Also used to backfill saves that predate
-// these fields.
-export function assignOrigin(p, rng = rand) {
-  const country = pickCountry(rng);
+// Sets nationality, pre-NBA origin (`from`: college for Americans, home
+// country for internationals), and a flavor birthplace city. Also used to
+// backfill saves that predate these fields. `country`, if given, is reused
+// instead of being re-rolled (so name and origin come from the same pool).
+export function assignOrigin(p, rng = rand, country = pickCountry(rng)) {
   p.nationality = country.name;
   p.from = country.name === 'USA' ? pick(COLLEGES, rng) : country.name;
+  p.birthplace = pick(country.cities, rng);
 }
 
 export function flagFor(nationality) {
-  return COUNTRIES.find((c) => c.name === nationality)?.flag ?? '';
+  return NATIONALITIES.find((c) => c.name === nationality)?.flag ?? '';
 }
 
 const ARCHETYPES = {
@@ -174,9 +122,10 @@ export function generatePlayer(rng = rand, opts = {}) {
   const mk = (mod) => Math.round(clamp(base + mod + gauss(0, 7, rng), 25, 99));
 
   const id = nextPlayerId++;
+  const country = pickCountry(rng);
   const p = {
     id,
-    name: `${pick(FIRST_NAMES, rng)} ${pick(LAST_NAMES, rng)}`,
+    name: `${pick(country.firstNames, rng)} ${pick(country.lastNames, rng)}`,
     pos,
     age,
     // NBA seasons completed; veterans entered the league at 19–22
@@ -203,7 +152,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     careerStats: [],
     awards: [], // { season, award } — filled by engine/awards.js
   };
-  assignOrigin(p, rng);
+  assignOrigin(p, rng, country);
   const ovr = overall(p);
   if (opts.potential != null) {
     p.potential = clamp(Math.round(opts.potential), ovr, 99);

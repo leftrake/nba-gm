@@ -26,13 +26,14 @@ export function Pot({ p, league, fogged }) {
 }
 
 // Where a player is from: "🇺🇸 Duke" / "🇷🇸 Serbia", or the longer
-// "🇺🇸 USA · Duke" with `full`. Renders nothing for players from saves
-// that predate origins.
+// "🇺🇸 USA · Duke · born Chicago" with `full`. Renders nothing for players
+// from saves that predate origins.
 export function Origin({ p, full }) {
   if (!p.nationality) return null;
   const flag = flagFor(p.nationality);
-  if (full && p.from !== p.nationality) return <>{flag} {p.nationality} · {p.from}</>;
-  return <>{flag} {full ? p.nationality : p.from}</>;
+  const born = full && p.birthplace ? ` · born ${p.birthplace}` : '';
+  if (full && p.from !== p.nationality) return <>{flag} {p.nationality} · {p.from}{born}</>;
+  return <>{flag} {full ? p.nationality : p.from}{born}</>;
 }
 
 // Stamina: exact for the user's own players, a scouted range for everyone
