@@ -1,15 +1,19 @@
 import { overall } from './players.js';
 import { getTeam, payroll } from './league.js';
-import { SALARY_CAP } from '../data/teams.js';
+import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews } from './save.js';
 import { clamp } from './rng.js';
 import { bumpTurmoil } from './morale.js';
 import { pickValue, pickLabel, violatesStepien } from './draftPicks.js';
+import { teamNeeds } from './strategy.js';
 
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
 // to value the player through that team's lens; omit it for a neutral view.
-export function tradeValue(p, strategy) {
+// Pass `team` to additionally weight the player by how well their position
+// fits that team's roster: a plus at one of their two thinnest spots is
+// worth more, a third-stringer at an already-stacked spot is worth less.
+export function tradeValue(p, strategy, team) {
   const ovr = overall(p);
   let v = Math.pow(Math.max(ovr - 40, 1), 2.4);
   // youth premium / age discount
@@ -36,6 +40,15 @@ export function tradeValue(p, strategy) {
     else if (ovr >= 68) v *= 1.08;
     if (p.age <= 23 && ovr < 66) v *= 0.75;
     v /= 1 + upside * 0.008;
+  }
+  if (team) {
+    const { thin } = teamNeeds(team);
+    if (thin.some((x) => x.pos === p.pos)) {
+      v *= 1.15; // fills one of the team's two thinnest spots
+    } else {
+      const better = team.roster.filter((x) => x.pos === p.pos && overall(x) > ovr).length;
+      if (better >= 2) v *= 0.9; // already two deep at this position
+    }
   }
   return Math.round(v);
 }
@@ -81,9 +94,9 @@ export function aiEvaluateTrade(league, teamBId, incoming, outgoing, incomingPic
   if (violatesStepien(league, teamBId, outgoingPicks.map((p) => p.id))) {
     return { accept: false, ratio: 0, reason: `The ${team.name} won't trade away first-round picks in consecutive years.` };
   }
-  const valueIn = incoming.reduce((s, p) => s + tradeValue(p, strategy), 0)
+  const valueIn = incoming.reduce((s, p) => s + tradeValue(p, strategy, team), 0)
     + incomingPicks.reduce((s, p) => s + pickValue(league, p, strategy), 0);
-  const valueOut = outgoing.reduce((s, p) => s + tradeValue(p, strategy), 0)
+  const valueOut = outgoing.reduce((s, p) => s + tradeValue(p, strategy, team), 0)
     + outgoingPicks.reduce((s, p) => s + pickValue(league, p, strategy), 0);
   if (valueOut === 0) return { accept: valueIn > 0, ratio: Infinity };
   const ratio = valueIn / valueOut;
@@ -145,5 +158,139 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
     // a star changing hands makes it a blockbuster
     major: [...outA, ...outB].some((p) => overall(p) >= 80),
     text: `TRADE: ${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`,
+  });
+}
+
+// ---------- Multi-team trades (2-4 teams) ----------
+// `sends` describes who is giving what to whom:
+//   sends[teamId] = { players: { [playerId]: destTeamId }, picks: { [pickId]: destTeamId } }
+// Every entry must point at another team that's part of the trade (teamIds).
+// resolveMultiTradeLegs turns that into one leg per team with resolved
+// player/pick objects, ready for validation, AI evaluation, and execution.
+export function resolveMultiTradeLegs(league, teamIds, sends) {
+  const legs = teamIds.map((id) => ({
+    team: getTeam(league, id),
+    outPlayers: [], outPicks: [], inPlayers: [], inPicks: [],
+  }));
+  const byId = new Map(legs.map((l) => [l.team.id, l]));
+  for (const fromId of teamIds) {
+    const fromTeam = getTeam(league, fromId);
+    const s = sends[fromId] || {};
+    for (const [pid, destId] of Object.entries(s.players || {})) {
+      if (!byId.has(destId) || destId === fromId) continue;
+      // object keys are always strings, but player ids are numbers
+      const p = fromTeam.roster.find((pl) => String(pl.id) === pid);
+      if (!p) continue;
+      byId.get(fromId).outPlayers.push(p);
+      byId.get(destId).inPlayers.push(p);
+    }
+    for (const [pid, destId] of Object.entries(s.picks || {})) {
+      if (!byId.has(destId) || destId === fromId) continue;
+      const pick = league.draftPicks.find((dp) => String(dp.id) === pid);
+      if (!pick) continue;
+      byId.get(fromId).outPicks.push(pick);
+      byId.get(destId).inPicks.push(pick);
+    }
+  }
+  return legs;
+}
+
+// Validate an N-team trade: every team's roster size and salary-matching are
+// checked independently against their own cap situation, plus the Stepien
+// rule for any picks they're sending out. Returns per-team ok/reason so the
+// UI can say exactly who has the problem.
+export function validateMultiTrade(league, teamIds, sends) {
+  const legs = resolveMultiTradeLegs(league, teamIds, sends);
+  const totalAssets = legs.reduce((s, l) => s + l.outPlayers.length + l.outPicks.length, 0);
+  if (!totalAssets) return { ok: false, perTeam: {}, legs, reason: 'Empty trade.' };
+
+  const perTeam = {};
+  let ok = true;
+  for (const leg of legs) {
+    const { team, outPlayers, outPicks, inPlayers } = leg;
+    const newSize = team.roster.length - outPlayers.length + inPlayers.length;
+    if (newSize > ROSTER_MAX) {
+      perTeam[team.id] = { ok: false, reason: `${team.name} would exceed ${ROSTER_MAX} players.` };
+      ok = false;
+      continue;
+    }
+    if (newSize < 8) {
+      perTeam[team.id] = { ok: false, reason: `${team.name} would drop below 8 players.` };
+      ok = false;
+      continue;
+    }
+    const salOut = outPlayers.reduce((s, p) => s + p.contract.salary, 0);
+    const salIn = inPlayers.reduce((s, p) => s + p.contract.salary, 0);
+    const newPayroll = payroll(team) - salOut + salIn;
+    if (newPayroll > SALARY_CAP && salIn > salOut * 1.25 + 250_000) {
+      perTeam[team.id] = { ok: false, reason: `${team.name} fail salary matching (over the cap, taking back too much).` };
+      ok = false;
+      continue;
+    }
+    if (violatesStepien(league, team.id, outPicks.map((p) => p.id))) {
+      perTeam[team.id] = { ok: false, reason: `${team.name} can't trade away first-round picks in consecutive years.` };
+      ok = false;
+      continue;
+    }
+    perTeam[team.id] = { ok: true };
+  }
+  return { ok, perTeam, legs };
+}
+
+// AI evaluation for every non-user team in an N-team trade: each one
+// independently decides whether what they're getting is worth what they're
+// giving up, exactly as in a 2-team deal.
+export function aiEvaluateMultiTrade(league, teamIds, sends, userId, legs) {
+  legs = legs || resolveMultiTradeLegs(league, teamIds, sends);
+  const perTeam = {};
+  for (const leg of legs) {
+    if (leg.team.id === userId) continue;
+    // a team added to the trade but with nothing coming or going is a
+    // bystander — nothing to evaluate, so don't reject on their behalf
+    if (!leg.inPlayers.length && !leg.inPicks.length && !leg.outPlayers.length && !leg.outPicks.length) continue;
+    perTeam[leg.team.id] = aiEvaluateTrade(league, leg.team.id, leg.inPlayers, leg.outPlayers, leg.inPicks, leg.outPicks);
+  }
+  return perTeam;
+}
+
+// Execute an N-team trade: every outgoing player/pick moves to its
+// destination team in one shot.
+export function executeMultiTrade(league, teamIds, sends) {
+  const legs = resolveMultiTradeLegs(league, teamIds, sends);
+  for (const leg of legs) {
+    const outIds = new Set(leg.outPlayers.map((p) => p.id));
+    leg.team.roster = leg.team.roster.filter((p) => !outIds.has(p.id));
+  }
+  for (const leg of legs) {
+    leg.team.roster = leg.team.roster.concat(leg.inPlayers);
+  }
+  const allMoved = legs.flatMap((l) => l.outPlayers);
+  for (const p of allMoved) {
+    delete p.extTalksFailed;
+    p.tradeDemand = false;
+    p.tradeDemandTeam = null;
+    p.moraleLowStreak = 0;
+    p.morale = Math.round(clamp((p.morale ?? 50) * 0.6 + 20, 0, 100) * 10) / 10;
+  }
+  for (const leg of legs) {
+    for (const pick of leg.outPicks) {
+      const dest = legs.find((l) => l.inPicks.includes(pick));
+      if (dest) pick.teamId = dest.team.id;
+    }
+  }
+  for (const leg of legs) bumpTurmoil(leg.team);
+
+  const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
+  const major = legs.some((l) => l.outPlayers.some((p) => overall(p) >= 80));
+  const summary = legs
+    .filter((l) => l.outPlayers.length || l.outPicks.length)
+    .map((l) => `${l.team.name} send ${names(l.outPlayers, l.outPicks)}`)
+    .join('; ');
+  pushNews(league, {
+    day: league.dayIndex,
+    category: 'trade',
+    teamIds: legs.map((l) => l.team.id),
+    major,
+    text: legs.length > 2 ? `${legs.length}-TEAM TRADE: ${summary}.` : `TRADE: ${summary}.`,
   });
 }

@@ -72,6 +72,22 @@ export default function App() {
     setScreen('trade');
   }, []);
 
+  // "Trade" button from a player row/profile: opens a 2-team trade with the
+  // user's team and the player's team, with the player pre-loaded on the
+  // appropriate side (give for the user's own players, receive otherwise).
+  const proposeTradeFor = useCallback((p) => {
+    const userId = league.userTeamId;
+    const owner = league.teams.find((t) => t.roster.some((x) => x.id === p.id));
+    if (!owner || owner.id === userId) {
+      const otherId = league.teams.find((t) => t.id !== userId)?.id;
+      setTradePrefill({ otherId, give: [p.id], get: [], givePicks: [], getPicks: [], key: `give-${p.id}-${Date.now()}` });
+    } else {
+      setTradePrefill({ otherId: owner.id, give: [], get: [p.id], givePicks: [], getPicks: [], key: `get-${p.id}-${Date.now()}` });
+    }
+    setViewPlayer(null);
+    setScreen('trade');
+  }, [league]);
+
   // The engine mutates the league object; this forces a re-render + saves.
   const commit = useCallback(() => {
     setLeagueState((l) => {
@@ -382,7 +398,7 @@ export default function App() {
 
         {screen === 'dashboard' && <Dashboard league={league} commit={commit} lastResults={lastResults} featuredGame={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} openNews={() => setScreen('news')} onCounterTradeOffer={openTradeOffer} />}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
-        {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} />}
+        {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
@@ -397,7 +413,7 @@ export default function App() {
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
-        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} />}
+        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} onTradeFor={proposeTradeFor} />}
       </main>
     </div>
   );

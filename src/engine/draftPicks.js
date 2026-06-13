@@ -64,10 +64,19 @@ export function pickLabel(pick) {
 // Where the original team's pick projects to land in its draft, based on
 // in-progress record (or last season's, before the new season tips off).
 // Slot 1 = worst record (best pick), slot 30 = best record.
-export function projectedSlot(league, originalTeamId) {
+// For picks further out, the team's strategy nudges the projection: a
+// rebuilder is more likely to keep landing in the same range (or improve,
+// as the rebuild bears fruit), while a contender's win% is more likely to
+// regress as its roster ages — so the pick's value drifts accordingly the
+// further out it is.
+export function projectedSlot(league, originalTeamId, yearsOut = 0) {
   const team = getTeam(league, originalTeamId);
   const gp = team.wins + team.losses;
-  const winPct = gp > 0 ? team.wins / gp : (team.lastWins ?? 41) / 82;
+  let winPct = gp > 0 ? team.wins / gp : (team.lastWins ?? 41) / 82;
+  if (yearsOut > 0) {
+    const drift = team.strategy === 'rebuilding' ? 0.04 : team.strategy === 'contending' ? -0.04 : 0;
+    winPct = clamp(winPct + drift * yearsOut, 0.1, 0.9);
+  }
   return clamp(Math.round(1 + (1 - winPct) * 29), 1, 30);
 }
 
@@ -78,7 +87,9 @@ export function projectedSlot(league, originalTeamId) {
 // next year's pick is worth more than one three years out, which carries a
 // lot more uncertainty about where the original team will land.
 export function pickValue(league, pick, strategy) {
-  const slot = projectedSlot(league, pick.originalTeamId);
+  const nextDraftSeason = league.season + 1;
+  const yearsOut = Math.max(0, pick.season - nextDraftSeason);
+  const slot = projectedSlot(league, pick.originalTeamId, yearsOut);
   let base;
   if (pick.round === 1) {
     const expectedOvr = 75 - (slot - 1) * (15 / 29);
@@ -86,8 +97,6 @@ export function pickValue(league, pick, strategy) {
   } else {
     base = 40 + Math.max(0, 30 - slot) * 2;
   }
-  const nextDraftSeason = league.season + 1;
-  const yearsOut = Math.max(0, pick.season - nextDraftSeason);
   const discount = Math.max(0.35, 1 - yearsOut * 0.18);
   let v = base * discount;
   // rebuilders covet picks; contenders would rather have the player now

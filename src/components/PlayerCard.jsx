@@ -119,7 +119,7 @@ function Progression({ league, p }) {
   );
 }
 
-export default function PlayerCard({ league, player: p, onClose, openTeam }) {
+export default function PlayerCard({ league, player: p, onClose, openTeam, onTradeFor }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -137,7 +137,11 @@ export default function PlayerCard({ league, player: p, onClose, openTeam }) {
           <span style={{ color: 'var(--muted)' }}>
             {p.pos} · {p.age} yrs · {p.exp != null && <>{p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`} · </>}{p.nationality && <><Origin p={p} full /> · </>}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
           </span>
-          <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
+          <span style={{ flex: 1 }} />
+          {team && onTradeFor && (
+            <button className="btn small secondary" onClick={() => onTradeFor(p)}>Trade</button>
+          )}
+          <button className="btn small secondary" onClick={onClose}>✕</button>
         </div>
 
         <p style={{ margin: '10px 0' }}>

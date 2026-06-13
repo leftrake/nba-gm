@@ -1,162 +1,373 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam } from '../engine/league.js';
+import { getTeam, payroll } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
-import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from '../engine/trade.js';
+import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade, resolveMultiTradeLegs } from '../engine/trade.js';
 import { getTeamPicks, pickValue, pickLabel } from '../engine/draftPicks.js';
 import { applyShoppedPenalty } from '../engine/morale.js';
-import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
+import { teamNeeds } from '../engine/strategy.js';
+import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
+import { Ovr, Pot, StrategyTag, money, PlayerLink } from './shared.jsx';
 
-function PickList({ league, team, valueStrategy, selected, toggle }) {
+const YELLOW = '#d29922';
+
+function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, changeTeamAt, removeTeam, openPlayer, userId }) {
+  const leg = legs.find((l) => l.team.id === team.id);
+  const pay = payroll(team);
+  const salOut = leg.outPlayers.reduce((s, p) => s + p.contract.salary, 0);
+  const salIn = leg.inPlayers.reduce((s, p) => s + p.contract.salary, 0);
+  const projected = pay - salOut + salIn;
+  const capSpace = SALARY_CAP - pay;
+  const taxDistance = LUXURY_TAX - pay;
+  const projColor = projected <= SALARY_CAP ? 'var(--green)' : projected <= LUXURY_TAX ? YELLOW : 'var(--red)';
+  const teamSends = sends[team.id] || { players: {}, picks: {} };
+  const otherTeams = teamIds.filter((id) => id !== team.id).map((id) => getTeam(league, id));
   const picks = getTeamPicks(league, team.id);
-  if (!picks.length) return null;
-  return (
-    <table style={{ marginTop: 8 }}>
-      <thead>
-        <tr><th></th><th>Pick</th><th className="num">Value</th></tr>
-      </thead>
-      <tbody>
-        {picks.map((pick) => (
-          <tr key={pick.id} className="clickable" onClick={() => toggle(pick.id)}>
-            <td><input type="checkbox" readOnly checked={selected.includes(pick.id)} /></td>
-            <td>{pickLabel(pick)}</td>
-            <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, valueStrategy)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function TradeSide({ league, team, valueStrategy, fogged, selected, toggle, openPlayer }) {
+  const fogged = team.id !== userId;
   const seenOvr = (p) => (fogged ? scoutedOverall(p, league.season) : overall(p));
-  const sorted = [...team.roster].sort((a, b) => seenOvr(b) - seenOvr(a));
+  const sortedRoster = [...team.roster].sort((a, b) => seenOvr(b) - seenOvr(a));
+  const needs = team.id !== userId ? teamNeeds(team) : null;
+  // Value an outgoing asset from the perspective of whoever would receive
+  // it: a player who fills the destination's thin spot, or a pick the
+  // destination's strategy covets, is worth more to that team.
+  const destTeam = (assetId, kind) => {
+    const destId = teamSends[kind][assetId] ?? otherTeams[0]?.id;
+    return destId != null ? getTeam(league, destId) : null;
+  };
+
   return (
-    <table>
-      <thead>
-        <tr><th></th><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Salary</th><th className="num">Value</th></tr>
-      </thead>
-      <tbody>
-        {sorted.map((p) => (
-          <tr key={p.id} className="clickable" onClick={() => toggle(p.id)}>
-            <td><input type="checkbox" readOnly checked={selected.includes(p.id)} /></td>
-            <td><Ovr p={p} league={league} fogged={fogged} /></td>
-            <td><Pot p={p} league={league} fogged={fogged} /></td>
-            <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-            <td>{p.pos}</td>
-            <td className="num">{p.age}</td>
-            <td className="num">{money(p.contract.salary)}</td>
-            <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p, valueStrategy)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <h2 style={{ marginBottom: 0 }}>
+          {changeTeamAt ? (
+            <select value={team.id} onChange={(e) => changeTeamAt(e.target.value)}>
+              {league.teams.filter((t) => t.id === team.id || !teamIds.includes(t.id)).map((t) => {
+                const space = SALARY_CAP - payroll(t);
+                const spaceLabel = space >= 0 ? `${money(space)} cap space` : `${money(-space)} over cap`;
+                return (
+                  <option key={t.id} value={t.id}>{t.city} {t.name} ({t.strategy}, {spaceLabel})</option>
+                );
+              })}
+            </select>
+          ) : `${team.city} ${team.name}`}
+        </h2>
+        {removeTeam && <button className="btn secondary" onClick={removeTeam}>Remove</button>}
+      </div>
+      {team.id !== userId && <StrategyTag team={team} />}
+      <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>
+        Payroll {money(pay)} · {capSpace >= 0 ? `${money(capSpace)} cap space` : `${money(-capSpace)} over the cap`} · {taxDistance >= 0 ? `${money(taxDistance)} below tax` : `${money(-taxDistance)} into tax`}
+      </p>
+      <p style={{ fontWeight: 600 }}>Projected payroll: <span style={{ color: projColor }}>{money(projected)}</span></p>
+
+      <h3>Sends</h3>
+      <table>
+        <thead>
+          <tr><th></th><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Salary</th><th className="num">Value</th>{teamIds.length > 2 && <th>To</th>}</tr>
+        </thead>
+        <tbody>
+          {sortedRoster.map((p) => {
+            const checked = teamSends.players[p.id] != null;
+            return (
+              <tr key={p.id} className="clickable" onClick={() => toggleAsset(team.id, 'players', p.id)}>
+                <td><input type="checkbox" readOnly checked={checked} /></td>
+                <td><Ovr p={p} league={league} fogged={fogged} /></td>
+                <td><Pot p={p} league={league} fogged={fogged} /></td>
+                <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                <td>{p.pos}</td>
+                <td className="num">{p.age}</td>
+                <td className="num">{money(p.contract.salary)}</td>
+                <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p, undefined, destTeam(p.id, 'players'))}</td>
+                {teamIds.length > 2 && (
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {checked && (
+                      <select value={teamSends.players[p.id]} onChange={(e) => setDest(team.id, 'players', p.id, e.target.value)}>
+                        {otherTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {picks.length > 0 && (
+        <table style={{ marginTop: 8 }}>
+          <thead>
+            <tr><th></th><th>Pick</th><th className="num">Value</th>{teamIds.length > 2 && <th>To</th>}</tr>
+          </thead>
+          <tbody>
+            {picks.map((pick) => {
+              const checked = teamSends.picks[pick.id] != null;
+              return (
+                <tr key={pick.id} className="clickable" onClick={() => toggleAsset(team.id, 'picks', pick.id)}>
+                  <td><input type="checkbox" readOnly checked={checked} /></td>
+                  <td>{pickLabel(pick)}</td>
+                  <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, destTeam(pick.id, 'picks')?.strategy)}</td>
+                  {teamIds.length > 2 && (
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {checked && (
+                        <select value={teamSends.picks[pick.id]} onChange={(e) => setDest(team.id, 'picks', pick.id, e.target.value)}>
+                          {otherTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {(leg.inPlayers.length > 0 || leg.inPicks.length > 0) && (
+        <>
+          <h3>Receives</h3>
+          <table>
+            <thead>
+              <tr><th>Ovr</th><th>Pot</th><th>Player / Pick</th><th>Pos</th><th className="num">Age</th><th className="num">Salary</th><th className="num">Value</th><th>From</th></tr>
+            </thead>
+            <tbody>
+              {leg.inPlayers.map((p) => {
+                const owner = legs.find((l) => l.outPlayers.includes(p))?.team;
+                const pFogged = owner?.id !== userId;
+                return (
+                  <tr key={p.id}>
+                    <td><Ovr p={p} league={league} fogged={pFogged} /></td>
+                    <td><Pot p={p} league={league} fogged={pFogged} /></td>
+                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                    <td>{p.pos}</td>
+                    <td className="num">{p.age}</td>
+                    <td className="num">{money(p.contract.salary)}</td>
+                    <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p, undefined, team)}</td>
+                    <td>{owner?.name}</td>
+                  </tr>
+                );
+              })}
+              {leg.inPicks.map((pick) => {
+                const owner = legs.find((l) => l.outPicks.includes(pick))?.team;
+                return (
+                  <tr key={pick.id}>
+                    <td colSpan={6}>{pickLabel(pick)}</td>
+                    <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, team.strategy)}</td>
+                    <td>{owner?.name}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {needs && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+          <h3>Needs</h3>
+          <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+            Thin at {needs.thin.map((x) => `${x.pos} (${x.rating})`).join(', ')}
+          </p>
+          <p style={{ fontStyle: 'italic', fontSize: 13, color: 'var(--muted)' }}>{needs.note}</p>
+        </div>
+      )}
+    </div>
   );
 }
 
 export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   const userId = league.userTeamId;
   const others = league.teams.filter((t) => t.id !== userId);
-  const [otherId, setOtherId] = useState(prefill?.otherId ?? others[0].id);
-  const [give, setGive] = useState(prefill?.give ?? []);
-  const [get, setGet] = useState(prefill?.get ?? []);
-  const [givePicks, setGivePicks] = useState(prefill?.givePicks ?? []);
-  const [getPicks, setGetPicks] = useState(prefill?.getPicks ?? []);
+  const [teamIds, setTeamIds] = useState([userId, others[0].id]);
+  const [sends, setSends] = useState({});
   const [message, setMessage] = useState(null);
 
-  // A "Counter in Trade Machine" click from an incoming offer seeds the
-  // partner and both sides of the deal so the user can tweak it.
+  // A "Counter in Trade Machine" click from an incoming offer seeds a
+  // 2-team deal so the user can tweak it.
   useEffect(() => {
     if (!prefill) return;
-    setOtherId(prefill.otherId);
-    setGive(prefill.give);
-    setGet(prefill.get);
-    setGivePicks(prefill.givePicks ?? []);
-    setGetPicks(prefill.getPicks ?? []);
+    if (prefill.otherId) {
+      const s = {
+        [userId]: { players: {}, picks: {} },
+        [prefill.otherId]: { players: {}, picks: {} },
+      };
+      for (const id of prefill.give || []) s[userId].players[id] = prefill.otherId;
+      for (const id of prefill.givePicks || []) s[userId].picks[id] = prefill.otherId;
+      for (const id of prefill.get || []) s[prefill.otherId].players[id] = userId;
+      for (const id of prefill.getPicks || []) s[prefill.otherId].picks[id] = userId;
+      setTeamIds([userId, prefill.otherId]);
+      setSends(s);
+    }
     setMessage(null);
   }, [prefill?.key]);
 
-  const userTeam = getTeam(league, userId);
-  const otherTeam = getTeam(league, otherId);
+  const legs = resolveMultiTradeLegs(league, teamIds, sends);
+  const hasAnyAsset = legs.some((l) => l.outPlayers.length || l.outPicks.length);
 
-  const toggle = (list, setList) => (id) => {
-    setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  const toggleAsset = (teamId, kind, id) => {
+    setSends((prev) => {
+      const next = { ...prev };
+      const teamSends = { players: { ...(next[teamId]?.players || {}) }, picks: { ...(next[teamId]?.picks || {}) } };
+      if (teamSends[kind][id] != null) {
+        delete teamSends[kind][id];
+      } else {
+        teamSends[kind][id] = teamIds.find((id2) => id2 !== teamId);
+      }
+      next[teamId] = teamSends;
+      return next;
+    });
     setMessage(null);
   };
 
-  const changeOther = (id) => {
-    setOtherId(id);
-    setGet([]);
-    setGetPicks([]);
+  const setDest = (teamId, kind, id, destId) => {
+    setSends((prev) => {
+      const next = { ...prev };
+      const teamSends = { players: { ...(next[teamId]?.players || {}) }, picks: { ...(next[teamId]?.picks || {}) } };
+      teamSends[kind][id] = destId;
+      next[teamId] = teamSends;
+      return next;
+    });
+    setMessage(null);
+  };
+
+  // Drop any sends pointing at `goneId` (a removed/swapped team) and that
+  // team's own sends entirely.
+  const dropTeam = (prevSends, goneId) => {
+    const next = {};
+    for (const [tid, s] of Object.entries(prevSends)) {
+      if (tid === goneId) continue;
+      const players = {};
+      for (const [pid, dest] of Object.entries(s.players || {})) if (dest !== goneId) players[pid] = dest;
+      const picks = {};
+      for (const [pid, dest] of Object.entries(s.picks || {})) if (dest !== goneId) picks[pid] = dest;
+      next[tid] = { players, picks };
+    }
+    return next;
+  };
+
+  const addTeam = () => {
+    if (teamIds.length >= 4) return;
+    const avail = league.teams.find((t) => !teamIds.includes(t.id));
+    if (!avail) return;
+    setTeamIds([...teamIds, avail.id]);
+    setMessage(null);
+  };
+
+  const removeTeam = (id) => {
+    if (id === userId || teamIds.length <= 2) return;
+    setTeamIds(teamIds.filter((t) => t !== id));
+    setSends((prev) => dropTeam(prev, id));
+    setMessage(null);
+  };
+
+  const changeTeamAt = (index, newId) => {
+    const oldId = teamIds[index];
+    if (newId === oldId) return;
+    const newTeamIds = [...teamIds];
+    newTeamIds[index] = newId;
+    setTeamIds(newTeamIds);
+    setSends((prev) => dropTeam(prev, oldId));
     setMessage(null);
   };
 
   const propose = () => {
-    const valid = validateTrade(league, userId, give, otherId, get, givePicks, getPicks);
-    if (!valid.ok) {
-      setMessage({ type: 'error', text: `Invalid trade: ${valid.reason}` });
+    if (!hasAnyAsset) return;
+    const validation = validateMultiTrade(league, teamIds, sends);
+    if (!validation.ok) {
+      const lines = Object.entries(validation.perTeam)
+        .filter(([, v]) => !v.ok)
+        .map(([tid, v]) => v.reason);
+      setMessage({ type: 'error', lines: lines.length ? lines : [validation.reason || 'Invalid trade.'] });
       return;
     }
-    const incoming = userTeam.roster.filter((p) => give.includes(p.id));
-    const outgoing = otherTeam.roster.filter((p) => get.includes(p.id));
-    const incomingPicks = league.draftPicks.filter((p) => givePicks.includes(p.id));
-    const outgoingPicks = league.draftPicks.filter((p) => getPicks.includes(p.id));
-    const evaln = aiEvaluateTrade(league, otherId, incoming, outgoing, incomingPicks, outgoingPicks);
-    if (evaln.accept) {
-      executeTrade(league, userId, give, otherId, get, givePicks, getPicks);
-      setGive([]); setGet([]); setGivePicks([]); setGetPicks([]);
-      setMessage({ type: 'ok', text: `Trade accepted! The ${otherTeam.name} agree to the deal.` });
+    const evalns = aiEvaluateMultiTrade(league, teamIds, sends, userId, validation.legs);
+    const rejections = Object.entries(evalns).filter(([, e]) => !e.accept);
+    if (!rejections.length) {
+      executeMultiTrade(league, teamIds, sends);
+      setSends({});
+      const partners = validation.legs
+        .filter((l) => l.team.id !== userId && (l.inPlayers.length || l.inPicks.length || l.outPlayers.length || l.outPicks.length))
+        .map((l) => l.team.name);
+      setMessage({ type: 'ok', lines: [`Trade accepted by the ${partners.join(' and ')}!`] });
       commit();
-    } else if (evaln.reason) {
-      applyShoppedPenalty(incoming);
-      setMessage({ type: 'error', text: `The ${otherTeam.name} reject the offer. ${evaln.reason}` });
-      commit();
-    } else {
-      const pct = Math.round(evaln.ratio * 100);
-      applyShoppedPenalty(incoming);
-      setMessage({
-        type: 'error',
-        text: `The ${otherTeam.name} reject the offer. They value your package at ~${pct}% of what they're giving up. ${pct < 70 ? 'Not even close.' : pct < 90 ? 'Add more value.' : 'You\'re close — sweeten it slightly.'}`,
-      });
-      commit();
+      return;
     }
+    const lines = rejections.map(([tid, e]) => {
+      const team = getTeam(league, tid);
+      if (e.reason) return `The ${team.name} reject the deal: ${e.reason}`;
+      const pct = Math.round(e.ratio * 100);
+      const note = pct < 70 ? 'Not even close.' : pct < 90 ? 'Add more value.' : "They're close — sweeten it slightly.";
+      return `The ${team.name} reject the deal: they value what they'd receive at ~${pct}% of what they'd give up. ${note}`;
+    });
+    for (const [tid] of rejections) {
+      const leg = validation.legs.find((l) => l.team.id === tid);
+      applyShoppedPenalty(leg.inPlayers);
+    }
+    setMessage({ type: 'error', lines });
+    commit();
   };
-
-  // values shown through the partner's strategy lens, matching how they judge the deal
-  const giveVal = userTeam.roster.filter((p) => give.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0)
-    + league.draftPicks.filter((p) => givePicks.includes(p.id)).reduce((s, p) => s + pickValue(league, p, otherTeam.strategy), 0);
-  const getVal = otherTeam.roster.filter((p) => get.includes(p.id)).reduce((s, p) => s + tradeValue(p, otherTeam.strategy), 0)
-    + league.draftPicks.filter((p) => getPicks.includes(p.id)).reduce((s, p) => s + pickValue(league, p, otherTeam.strategy), 0);
 
   return (
     <div>
       <div className="panel">
         <h2>Trade Machine</h2>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span>Trade partner:</span>
-          <select value={otherId} onChange={(e) => changeOther(e.target.value)}>
-            {others.map((t) => (
-              <option key={t.id} value={t.id}>{t.city} {t.name} ({t.wins}-{t.losses}, {t.strategy})</option>
-            ))}
-          </select>
-          <button className="btn" onClick={propose} disabled={!give.length && !get.length && !givePicks.length && !getPicks.length}>Propose Trade</button>
-          <span style={{ color: 'var(--muted)' }}>You send value {giveVal} · You receive value {getVal} (as the {otherTeam.name} see it)</span>
+          <button className="btn" onClick={propose} disabled={!hasAnyAsset}>Propose Trade</button>
+          {teamIds.length < 4 && (
+            <button className="btn secondary" onClick={addTeam}>Add Team</button>
+          )}
         </div>
         {message && (
-          <p style={{ marginTop: 10, color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{message.text}</p>
+          <div style={{ marginTop: 10 }}>
+            {message.lines.map((line, i) => (
+              <p key={i} style={{ color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{line}</p>
+            ))}
+          </div>
         )}
       </div>
-      <div className="grid2">
-        <div className="panel">
-          <h2>You Send ({userTeam.name})</h2>
-          <TradeSide league={league} team={userTeam} valueStrategy={otherTeam.strategy} fogged={false} selected={give} toggle={toggle(give, setGive)} openPlayer={openPlayer} />
-          <PickList league={league} team={userTeam} valueStrategy={otherTeam.strategy} selected={givePicks} toggle={toggle(givePicks, setGivePicks)} />
-        </div>
-        <div className="panel">
-          <h2>You Receive ({otherTeam.name})</h2>
-          <TradeSide league={league} team={otherTeam} valueStrategy={otherTeam.strategy} fogged selected={get} toggle={toggle(get, setGet)} openPlayer={openPlayer} />
-          <PickList league={league} team={otherTeam} valueStrategy={otherTeam.strategy} selected={getPicks} toggle={toggle(getPicks, setGetPicks)} />
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(300px, 1fr))`, gap: 16 }}>
+        {teamIds.map((id, i) => (
+          <TeamPanel
+            key={id}
+            league={league}
+            team={getTeam(league, id)}
+            teamIds={teamIds}
+            legs={legs}
+            sends={sends}
+            toggleAsset={toggleAsset}
+            setDest={setDest}
+            changeTeamAt={i > 0 ? (newId) => changeTeamAt(i, newId) : null}
+            removeTeam={teamIds.length > 2 && i > 0 ? () => removeTeam(id) : null}
+            openPlayer={openPlayer}
+            userId={userId}
+          />
+        ))}
+      </div>
+      <div className="panel">
+        <h2>Trade Value Summary</h2>
+        {legs.map((leg) => {
+          // Outgoing assets are valued from the receiving team's perspective
+          // (their needs and strategy); incoming assets from this team's own.
+          const giveVal = leg.outPlayers.reduce((s, p) => {
+            const dest = legs.find((l) => l.inPlayers.includes(p))?.team;
+            return s + tradeValue(p, undefined, dest);
+          }, 0) + leg.outPicks.reduce((s, p) => {
+            const dest = legs.find((l) => l.inPicks.includes(p))?.team;
+            return s + pickValue(league, p, dest?.strategy);
+          }, 0);
+          const getVal = leg.inPlayers.reduce((s, p) => s + tradeValue(p, undefined, leg.team), 0)
+            + leg.inPicks.reduce((s, p) => s + pickValue(league, p, leg.team.strategy), 0);
+          if (!giveVal && !getVal) return null;
+          const lopsided = giveVal > 0 && getVal < giveVal * 0.85;
+          return (
+            <p className="result-row" key={leg.team.id}>
+              <span>{leg.team.name}</span>
+              <span>
+                Gives {giveVal} · Receives {getVal}
+                {lopsided && <span className="tag" style={{ color: 'var(--red)', marginLeft: 6 }}>GIVING UP MORE</span>}
+              </span>
+            </p>
+          );
+        })}
+        {!hasAnyAsset && <p style={{ color: 'var(--muted)' }}>Select players or picks to send to see trade value.</p>}
       </div>
     </div>
   );

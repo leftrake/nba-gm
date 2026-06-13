@@ -15,6 +15,27 @@ export function rosterStrength(team) {
   return top.reduce((s, o) => s + o, 0) / Math.max(top.length, 1);
 }
 
+const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
+const STRATEGY_NOTES = {
+  contending: 'contending — wants proven help for a title run',
+  rebuilding: 'rebuilding — prefers youth and draft picks',
+  retooling: 'retooling — open to value and roster fit',
+};
+
+// A quick read on what a team needs for the trade machine: its two weakest
+// positions by best-player rating, its front-office strategy, and a one-line
+// note on what they'd likely want back, derived from that strategy.
+export function teamNeeds(team) {
+  const byPos = POSITIONS.map((pos) => {
+    const players = team.roster.filter((p) => p.pos === pos);
+    const rating = players.length ? Math.max(...players.map(overall)) : 0;
+    return { pos, rating };
+  });
+  const thin = [...byPos].sort((a, b) => a.rating - b.rating).slice(0, 2);
+  const strategy = team.strategy || 'retooling';
+  return { thin, strategy, note: STRATEGY_NOTES[strategy] || STRATEGY_NOTES.retooling };
+}
+
 // Rank by the sum of record rank and roster-strength rank, so a stacked team
 // that started slow still reads as a contender. With no games played yet
 // (new league, fresh offseason) last season's record or pure roster

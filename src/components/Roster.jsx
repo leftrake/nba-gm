@@ -42,7 +42,7 @@ function MinInput({ value, onChange, disabled }) {
   );
 }
 
-export default function Roster({ league, commit, teamId, openTeam, openPlayer }) {
+export default function Roster({ league, commit, teamId, openTeam, openPlayer, onTradeFor }) {
   const [sortKey, setSortKey] = useState('ovr');
   const [pickSlot, setPickSlot] = useState(null); // position whose starter is being chosen
   const [extendingId, setExtendingId] = useState(null); // player being offered an extension
@@ -442,6 +442,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
               <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
               <th className="num">Salary</th><th className="num">Yrs</th><th></th>
               {isUser && <th></th>}
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -499,10 +500,15 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer })
                     </button>
                   </td>
                 )}
+                <td>
+                  {onTradeFor && (
+                    <button className="btn small secondary" onClick={() => onTradeFor(p)}>Trade</button>
+                  )}
+                </td>
               </tr>
               {extendingId === p.id && canExtend && (
                 <tr>
-                  <td colSpan={16} style={{ background: 'var(--bg)' }}>
+                  <td colSpan={17} style={{ background: 'var(--bg)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
                       <span style={{ color: 'var(--muted)' }}>Market rate: {money(askingPrice(p))}/yr</span>
                       <label>
