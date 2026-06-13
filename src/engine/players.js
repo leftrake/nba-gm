@@ -45,7 +45,7 @@ const ARCHETYPES = {
 const STAMINA_BASE = { PG: 74, SG: 71, SF: 67, PF: 62, C: 57 };
 
 export function generateStamina(pos, age, rng = rand) {
-  let st = gauss(STAMINA_BASE[pos] ?? 65, 18, rng);
+  let st = gauss(STAMINA_BASE[pos] ?? 65, 12, rng);
   if (age > 29) st -= (age - 29) * 1.4;
   return Math.round(clamp(st, 25, 99));
 }
@@ -108,8 +108,8 @@ export function ftRating(p) {
 export function overall(p) {
   const r = p.ratings;
   return Math.round(
-    r.inside * 0.2 + r.mid * 0.13 + r.three * 0.15 +
-    r.passing * 0.12 + r.rebounding * 0.13 + r.defense * 0.17 + r.athleticism * 0.1
+    r.inside * 0.2 + r.mid * 0.13 + r.three * 0.17 +
+    r.passing * 0.14 + r.rebounding * 0.13 + r.defense * 0.13 + r.athleticism * 0.1
   );
 }
 
@@ -164,7 +164,10 @@ export function generatePlayer(rng = rand, opts = {}) {
     // finished product, so true superstar ceilings come from the draft.
     let upside = (26 - age) * 2.4 + gauss(0, 5, rng);
     if (age <= 23 && rng() < 0.1) upside += 7 + rng() * 11;
-    upside *= clamp((97 - ovr) / 35, 0, 1);
+    // Damping only kicks in for prospects already in the superstar band
+    // (90+); below that, a young player rated in the 80s can still grow
+    // into a top-tier ceiling.
+    upside *= clamp((99 - ovr) / 10, 0, 1);
     p.potential = clamp(ovr + Math.max(0, Math.round(upside)), ovr, 99);
   }
   p.contract = opts.contract ?? generateContract(p, rng);
@@ -210,9 +213,10 @@ export function salaryFor(ovr, age) {
 
 export function generateContract(p, rng = rand) {
   const ovr = overall(p);
+  const years = ovr >= 80 ? randInt(3, 5, rng) : ovr >= 65 ? randInt(2, 3, rng) : randInt(1, 2, rng);
   return {
     salary: Math.max(MIN_SALARY, Math.round(salaryFor(ovr, p.age) * (0.85 + rng() * 0.3) / 100_000) * 100_000),
-    years: randInt(1, 4, rng),
+    years,
   };
 }
 
