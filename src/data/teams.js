@@ -35,6 +35,9 @@ export const TEAMS = [
 
 export const SALARY_CAP = 141_000_000;
 export const LUXURY_TAX = 172_000_000;
+// Second-apron-style hard cap: even a contender pushing into the tax via
+// extensions/exceptions shouldn't realistically land above this.
+export const APRON = LUXURY_TAX + 20_000_000;
 export const MIN_SALARY = 1_200_000;
 export const MAX_SALARY = 49_000_000;
 export const ROSTER_MIN = 13;

@@ -424,6 +424,32 @@ export function deadMoneyTotal(team) {
   return team.deadMoney.reduce((s, d) => s + d.salary, 0);
 }
 
+// Projects next season's payroll from the current roster: contracts with
+// more than one year left carry forward at the same salary, contracts
+// expiring this season drop off (unless an extension has already been
+// signed, which takes their place), and dead money follows the same
+// one-year decrement. Used to keep AI extension offers and free-agent
+// signings from double-spending cap space that's about to evaporate.
+export function projectedPayroll(team) {
+  const roster = team.roster.reduce((s, p) => {
+    if (!p.contract) return s;
+    if (p.contract.years > 1) return s + p.contract.salary;
+    return s + (p.extension ? p.extension.salary : 0);
+  }, 0);
+  const dead = team.deadMoney.reduce((s, d) => s + (d.years > 1 ? d.salary : 0), 0);
+  return roster + dead;
+}
+
+// How far into projected future payroll a front office is willing to
+// commit, by strategy: contenders can run it up to the tax line,
+// mid-tier (retooling) teams stay near the cap, and rebuilders keep
+// real room well under the cap for the next wave of free agency.
+export function projectedPayrollLimit(team) {
+  if (team.strategy === 'contending') return LUXURY_TAX;
+  if (team.strategy === 'rebuilding') return SALARY_CAP * 0.85;
+  return SALARY_CAP;
+}
+
 // ---------- Condition ----------
 // Day-to-day freshness (0–100), shown on the Roster screen and read by the
 // game sim as a flat rating penalty. Playing burns it: cheap minutes for
@@ -1128,6 +1154,11 @@ export function simFreeAgencyDay(league) {
       if (!exception && demand > ask * stretch) continue; // demanding more than this office will pay
       if (!exception && demand > room) continue;
       if (exception === 'minimum' && demand > MIN_SALARY * 1.05) continue;
+      // Multi-year deals carry into next season at full salary — make sure
+      // they don't stack on top of next season's already-committed payroll
+      // (expiring deals dropping off, pending extensions kicking in) and
+      // blow past what this team's strategy can support down the road.
+      if (years > 1 && projectedPayroll(team) + demand > projectedPayrollLimit(team)) continue;
       // A restricted free agent's former team holds the right to match —
       // signing him is an "offer sheet", not an immediate deal.
       if (target.restrictedFA) {
@@ -1480,7 +1511,14 @@ function aiExtensions(league, rng) {
       let demand = extensionDemand(league, team.id, p, years);
       if (demand === null) continue; // player won't extend now; his window may still resolve later
       demand = clamp(demand, range.min, range.max);
-      if (payroll(team) - p.contract.salary + demand > LUXURY_TAX) continue;
+      // Project payroll for the season this extension actually activates:
+      // start from next season's committed payroll (which already accounts
+      // for other expiring deals and previously-signed extensions), drop
+      // this player's own next-season contribution (his current deal if it
+      // carries over, or nothing if it's expiring), and add the extension.
+      const ownContribution = p.contract.years > 1 ? p.contract.salary : 0;
+      const projected = projectedPayroll(team) - ownContribution + demand;
+      if (projected > projectedPayrollLimit(team)) continue;
       p.extension = { salary: demand, years, type };
       adjustMorale(p, 6);
       if (overall(p) >= 70 || type === 'rookie') {

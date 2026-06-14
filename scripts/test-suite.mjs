@@ -22,13 +22,13 @@
 // stats/fatigue check, including the forced-44-minutes experiment.
 
 import {
-  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, payroll,
+  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, payroll, projectedPayroll,
 } from '../src/engine/league.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
 import { autoLineup, lineupWarnings } from '../src/engine/lineup.js';
 import { getTeamPicks, FUTURE_DRAFTS } from '../src/engine/draftPicks.js';
-import { SALARY_CAP, LUXURY_TAX } from '../src/data/teams.js';
+import { SALARY_CAP, LUXURY_TAX, APRON } from '../src/data/teams.js';
 import { issueDirectives, generateOwner, computeBudget, computeRevenue, processOwnerSeason, playoffRoundReached } from '../src/engine/owner.js';
 import { makeRng } from '../src/engine/rng.js';
 
@@ -124,6 +124,22 @@ for (let s = 0; s < SEASONS; s++) {
   if (s > 0) {
     check('payroll spread (stddev, $M)', stddev(payrolls), 10, 40);
   }
+  // Forward-looking cap discipline: AI extensions/signings must not
+  // double-spend cap space that's about to evaporate (see projectedPayroll).
+  // Current payroll can still carry legacy deals from a team's pre-rebuild
+  // era (those expire naturally), so the rebuilder check looks at where
+  // payroll is *headed* rather than where it sits this instant.
+  check('teams in the luxury tax', inTax, 0, 4);
+  const rebuilders = league.teams.filter((t) => t.strategy === 'rebuilding');
+  if (rebuilders.length) {
+    const rebuilderProjected = rebuilders.map((t) => projectedPayroll(t) / 1e6);
+    check('rebuilding teams avg projected payroll ($M)', mean(rebuilderProjected), 0, capM);
+    const overTax = rebuilderProjected.filter((p) => p > LUXURY_TAX / 1e6).length;
+    checkBool('no rebuilding team projects into the luxury tax', overTax === 0, `${overTax} rebuilding team(s)`);
+  }
+  const maxPayroll = Math.max(...payrolls) * 1e6;
+  checkBool('no team exceeds the apron', maxPayroll <= APRON,
+    `highest payroll $${(maxPayroll / 1e6).toFixed(1)}M (apron $${(APRON / 1e6).toFixed(1)}M)`);
 
   console.log('  Demographics');
   const top20 = [...players].sort((a, b) => overall(b) - overall(a)).slice(0, 20);
