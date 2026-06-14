@@ -1,6 +1,6 @@
 import React from 'react';
 import { LEADER_CATS, LEADER_MIN_GP, leaderMinGp, statLeaders } from '../engine/awards.js';
-import { PlayerLink, TeamLink } from './shared.jsx';
+import { PlayerLink, TeamLink, TeamBadge } from './shared.jsx';
 
 function LeaderTable({ league, statKey, label, unit, openPlayer, openTeam }) {
   const rows = statLeaders(league, statKey);
@@ -18,7 +18,7 @@ function LeaderTable({ league, statKey, label, unit, openPlayer, openTeam }) {
               <tr key={r.p.id} style={r.team.id === league.userTeamId ? { background: 'var(--panel2)' } : {}}>
                 <td>{i + 1}</td>
                 <td><PlayerLink p={r.p} openPlayer={openPlayer} /></td>
-                <td><TeamLink team={r.team} openTeam={openTeam}>{r.team.name}</TeamLink></td>
+                <td><TeamBadge team={r.team} size="small" /> <TeamLink team={r.team} openTeam={openTeam}>{r.team.name}</TeamLink></td>
                 <td className="num">{r.value.toFixed(1)}</td>
               </tr>
             ))}

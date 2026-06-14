@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getTeam, dateForDay } from '../engine/league.js';
-import { fmtDate, TeamLink } from './shared.jsx';
+import { fmtDate, TeamLink, TeamBadge } from './shared.jsx';
 
 export default function Schedule({ league, openTeam, openGame }) {
   const me = league.userTeamId;
@@ -61,7 +61,7 @@ export default function Schedule({ league, openTeam, openGame }) {
                     return (
                       <tr key={di} className={di === league.dayIndex ? 'today' : ''}>
                         <td>{fmtDate(dateForDay(league, di))}</td>
-                        <td>{g.home === me ? 'vs' : '@'} <TeamLink team={opp} openTeam={openTeam} /></td>
+                        <td>{g.home === me ? 'vs' : '@'} <TeamBadge team={opp} size="small" /> <TeamLink team={opp} openTeam={openTeam} /></td>
                         <td className="num">{opp.wins}-{opp.losses}</td>
                       </tr>
                     );
@@ -85,7 +85,7 @@ export default function Schedule({ league, openTeam, openGame }) {
                     return (
                       <tr key={di}>
                         <td>{fmtDate(dateForDay(league, di))}</td>
-                        <td>{g.home === me ? 'vs' : '@'} <TeamLink team={opp} openTeam={openTeam} /></td>
+                        <td>{g.home === me ? 'vs' : '@'} <TeamBadge team={opp} size="small" /> <TeamLink team={opp} openTeam={openTeam} /></td>
                         <ScoreCells g={g} r={r} di={di} />
                       </tr>
                     );
@@ -116,11 +116,11 @@ export default function Schedule({ league, openTeam, openGame }) {
               {r ? (
                 <>
                   <span className={r.awayPts > r.homePts ? 'winner' : ''}>
-                    <TeamLink team={getTeam(league, g.away)} openTeam={openTeam}>{g.away}</TeamLink> {r.awayPts}
+                    <TeamBadge team={getTeam(league, g.away)} size="small" /> <TeamLink team={getTeam(league, g.away)} openTeam={openTeam}>{g.away}</TeamLink> {r.awayPts}
                   </span>
                   <span style={{ color: 'var(--muted)' }}>@</span>
                   <span className={r.homePts > r.awayPts ? 'winner' : ''}>
-                    <TeamLink team={getTeam(league, g.home)} openTeam={openTeam}>{g.home}</TeamLink> {r.homePts}
+                    <TeamBadge team={getTeam(league, g.home)} size="small" /> <TeamLink team={getTeam(league, g.home)} openTeam={openTeam}>{g.home}</TeamLink> {r.homePts}
                   </span>
                   {viewable(r) && (
                     <a className="team-link" style={{ color: 'var(--muted)', fontSize: 12 }}
@@ -131,9 +131,9 @@ export default function Schedule({ league, openTeam, openGame }) {
                 </>
               ) : (
                 <>
-                  <span><TeamLink team={getTeam(league, g.away)} openTeam={openTeam}>{g.away}</TeamLink></span>
+                  <span><TeamBadge team={getTeam(league, g.away)} size="small" /> <TeamLink team={getTeam(league, g.away)} openTeam={openTeam}>{g.away}</TeamLink></span>
                   <span style={{ color: 'var(--muted)' }}>@</span>
-                  <span><TeamLink team={getTeam(league, g.home)} openTeam={openTeam}>{g.home}</TeamLink></span>
+                  <span><TeamBadge team={getTeam(league, g.home)} size="small" /> <TeamLink team={getTeam(league, g.home)} openTeam={openTeam}>{g.home}</TeamLink></span>
                 </>
               )}
             </div>

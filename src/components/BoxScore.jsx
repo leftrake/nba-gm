@@ -3,7 +3,7 @@ import { getTeam } from '../engine/league.js';
 import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { ddTd } from '../engine/stats.js';
-import { TeamLink, PlayerLink } from './shared.jsx';
+import { TeamLink, TeamBadge, PlayerLink } from './shared.jsx';
 
 // Players move teams (or get waived) mid-season, so box-score names resolve
 // against the whole league, not just the current roster of the team shown.
@@ -40,7 +40,7 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
   const hurtHere = (injuryReport || []).filter((e) => lines.some((l) => l.playerId === e.playerId));
   return (
     <div>
-      <h3><TeamLink team={team} openTeam={openTeam} />{pts != null && <> · {pts}</>}</h3>
+      <h3><TeamBadge team={team} size="small" /> <TeamLink team={team} openTeam={openTeam} />{pts != null && <> · {pts}</>}</h3>
       <table>
         <thead>
           <tr>
@@ -128,7 +128,7 @@ export function LineScore({ league, game }) {
   const cols = game.homeQtrs.map((_, i) => periodLabel(i));
   const row = (teamId, qtrs, oppQtrs, pts, winner) => (
     <tr style={winner ? { fontWeight: 700 } : undefined}>
-      <td>{getTeam(league, teamId).name}</td>
+      <td><TeamBadge team={getTeam(league, teamId)} size="small" /> {getTeam(league, teamId).name}</td>
       {qtrs.map((q, i) => <td className="num" key={i} style={q > oppQtrs[i] ? { fontWeight: 700 } : undefined}>{q}</td>)}
       <td className="num"><b>{pts}</b></td>
     </tr>
@@ -164,7 +164,7 @@ export function TopPerformers({ league, game, openPlayer }) {
         return (
           <div key={l.playerId} className="result-row" style={{ justifyContent: 'flex-start', gap: 8 }}>
             <span>★ {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
-              <span style={{ color: 'var(--muted)' }}> ({getTeam(league, teamId).name})</span>
+              <span style={{ color: 'var(--muted)' }}> (<TeamBadge team={getTeam(league, teamId)} size="small" /> {getTeam(league, teamId).name})</span>
             </span>
             <span style={{ marginLeft: 'auto' }}>
               <b>{l.pts}</b> PTS · {l.reb} REB · {l.ast} AST
@@ -218,9 +218,9 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <h2 style={{ marginBottom: 0 }}>
             {title ? `${title} · ` : ''}
-            <span className={game.awayPts > game.homePts ? 'winner' : ''}>{away.name} {game.awayPts}</span>
+            <span className={game.awayPts > game.homePts ? 'winner' : ''}><TeamBadge team={away} size="small" /> {away.name} {game.awayPts}</span>
             {' @ '}
-            <span className={game.homePts > game.awayPts ? 'winner' : ''}>{home.name} {game.homePts}</span>
+            <span className={game.homePts > game.awayPts ? 'winner' : ''}><TeamBadge team={home} size="small" /> {home.name} {game.homePts}</span>
           </h2>
           <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
         </div>

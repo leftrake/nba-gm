@@ -3,7 +3,7 @@ import { getTeam } from '../engine/league.js';
 import { acceptTradeOffer, declineTradeOffer } from '../engine/tradeOffers.js';
 import { pickLabel } from '../engine/draftPicks.js';
 import { isRosterFrozen } from '../engine/owner.js';
-import { Ovr, Pot, PlayerLink, money } from './shared.jsx';
+import { Ovr, Pot, PlayerLink, TeamBadge, money } from './shared.jsx';
 
 function OfferSide({ league, players, fogged, openPlayer }) {
   return (
@@ -58,7 +58,7 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
         return (
           <div key={offer.id} style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
             <p>
-              <b>{from.city} {from.name}</b> propose a trade
+              <TeamBadge team={from} size="small" /> <b>{from.city} {from.name}</b> propose a trade
               <span style={{ color: 'var(--muted)' }}> · expires in {daysLeft} day{daysLeft === 1 ? '' : 's'}</span>
             </p>
             {offer.why && <p style={{ color: 'var(--muted)', fontStyle: 'italic' }}>{offer.why}</p>}

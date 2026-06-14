@@ -2,7 +2,7 @@ import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROST
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
-import { simGame, applyBoxToStats, encodeBox, starLines } from './sim.js';
+import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
 import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -32,6 +32,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     wins: 0,
     losses: 0,
     tradesThisSeason: 0,
+    streak: { result: null, count: 0 },
   }));
 
   const league = {
@@ -324,6 +325,7 @@ export function backfillPlayers(league) {
   for (const team of league.teams) team.roster.forEach(fill);
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
   for (const team of league.teams) {
+    if (!team.streak) team.streak = { result: null, count: 0 };
     if (team.tradesThisSeason == null) team.tradesThisSeason = 0;
     if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
     // saves predating dead-money tracking from waived contracts
@@ -417,6 +419,123 @@ function updateConditions(league, results) {
   for (const p of league.freeAgents) setCond(p, (p.condition ?? 100) + 5 + (100 - (p.condition ?? 100)) * 0.2);
 }
 
+// ---------- Per-game news ----------
+
+// Win/loss streaks: every 5th game of a streak (5, 10, 15, …) gets a
+// callout, highlighted once it reaches double digits.
+function updateStreak(league, team, won) {
+  const kind = won ? 'W' : 'L';
+  if (team.streak?.result === kind) team.streak.count += 1;
+  else team.streak = { result: kind, count: 1 };
+  if (team.streak.count >= 5 && team.streak.count % 5 === 0) {
+    pushNews(league, {
+      day: league.dayIndex, category: 'league', major: team.id === league.userTeamId,
+      teamIds: [team.id],
+      text: kind === 'W'
+        ? `🔥 The ${team.city} ${team.name} have won ${team.streak.count} straight.`
+        : `❄️ The ${team.city} ${team.name} have lost ${team.streak.count} in a row.`,
+    });
+  }
+}
+
+// One-line narrative for the user's game: a notable run or clutch moment
+// pulled from the game log, or failing that, the top performer's line.
+function gameNarrative(r, home, away) {
+  const run = (r.events || []).find((e) => /ripped off a|closed the game on a/.test(e.text));
+  if (run) return run.text;
+  const clutch = (r.events || []).find((e) => /ties it|puts the .+ up/.test(e.text));
+  if (clutch) return clutch.text;
+  const top = starLines([...r.homeBox, ...r.awayBox], 1)[0];
+  if (top) {
+    const p = home.roster.find((x) => x.id === top.playerId) || away.roster.find((x) => x.id === top.playerId);
+    if (p) return `${p.name} led the way with ${top.pts} pts, ${top.reb} reb, ${top.ast} ast.`;
+  }
+  return null;
+}
+
+// Pushes news for one finished game: a compact line score for everyone, a
+// highlighted recap with a one-line narrative for the user's own game,
+// milestone call-outs (40+ points, triple-doubles, 20+ rebounds), and
+// injury reports.
+function pushGameNews(league, r, home, away, hurt) {
+  pushNews(league, {
+    day: league.dayIndex, category: 'game',
+    teamIds: [home.id, away.id],
+    text: `${away.id} ${r.awayPts} @ ${home.id} ${r.homePts}`,
+  });
+
+  if (home.id === league.userTeamId || away.id === league.userTeamId) {
+    const winner = r.homePts > r.awayPts ? home : away;
+    const loser = r.homePts > r.awayPts ? away : home;
+    const winPts = Math.max(r.homePts, r.awayPts);
+    const losePts = Math.min(r.homePts, r.awayPts);
+    let text = `${winner.city} ${winner.name} beat ${loser.city} ${loser.name} ${winPts}-${losePts}.`;
+    const narrative = gameNarrative(r, home, away);
+    if (narrative) text += ` ${narrative}`;
+    pushNews(league, { day: league.dayIndex, category: 'game', major: true, teamIds: [home.id, away.id], text });
+  }
+
+  for (const [team, box] of [[home, r.homeBox], [away, r.awayBox]]) {
+    for (const l of box) {
+      if (l.min === 0) continue;
+      const p = team.roster.find((x) => x.id === l.playerId);
+      if (!p) continue;
+      const major = team.id === league.userTeamId;
+      if (l.pts >= 40) {
+        pushNews(league, { day: league.dayIndex, category: 'milestone', major, teamIds: [team.id], text: `🌟 ${p.name} (${team.id}) erupted for ${l.pts} points.` });
+      }
+      if (l.pts >= 10 && l.reb >= 10 && l.ast >= 10) {
+        pushNews(league, { day: league.dayIndex, category: 'milestone', major, teamIds: [team.id], text: `🌟 ${p.name} (${team.id}) recorded a triple-double: ${l.pts} pts, ${l.reb} reb, ${l.ast} ast.` });
+      }
+      if (l.reb >= 20) {
+        pushNews(league, { day: league.dayIndex, category: 'milestone', major, teamIds: [team.id], text: `🌟 ${p.name} (${team.id}) hauled in ${l.reb} rebounds.` });
+      }
+    }
+  }
+
+  for (const p of hurt) {
+    const team = home.roster.includes(p) ? home : away;
+    pushNews(league, {
+      day: league.dayIndex, category: 'injury', major: team.id === league.userTeamId,
+      teamIds: [team.id],
+      text: `🩹 ${p.name} (${team.id}) left the game with a ${p.injury.type} — ${injuryTimeline(p.injury)}.`,
+    });
+  }
+}
+
+// Summarizes the user's games over [startDay, league.dayIndex) into one
+// news item: record and the week's standout performer. Called after a
+// multi-day "Sim Week".
+export function weeklyRecapNews(league, startDay) {
+  const userTeamId = league.userTeamId;
+  if (!userTeamId) return;
+  const user = getTeam(league, userTeamId);
+  const games = [];
+  for (let di = startDay; di < league.dayIndex; di++) {
+    const day = league.resultsByDay[di];
+    const r = day?.find((x) => x.home === userTeamId || x.away === userTeamId);
+    if (r) games.push(r);
+  }
+  if (games.length === 0) return;
+  let wins = 0, losses = 0, best = null;
+  for (const r of games) {
+    const isHome = r.home === userTeamId;
+    const won = isHome ? r.homePts > r.awayPts : r.awayPts > r.homePts;
+    if (won) wins++; else losses++;
+    const box = isHome ? r.homeBox : r.awayBox;
+    if (!box) continue;
+    for (const l of decodeBox(box).filter((x) => x.min > 0)) {
+      const score = l.pts + 0.7 * (l.reb + l.ast) + l.stl + l.blk - 0.7 * l.tov;
+      if (!best || score > best.score) best = { line: l, score };
+    }
+  }
+  let text = `📅 Weekly recap: the ${user.city} ${user.name} went ${wins}-${losses}`;
+  const p = best && user.roster.find((x) => x.id === best.line.playerId);
+  if (p) text += `, led by ${p.name} (${best.line.pts} pts, ${best.line.reb} reb, ${best.line.ast} ast).`;
+  else text += '.';
+  pushNews(league, { day: league.dayIndex, category: 'league', major: true, teamIds: [userTeamId], text });
+}
+
 // Simulate one day of games. Returns results.
 export function simDay(league) {
   if (league.phase !== 'regular' || league.dayIndex >= league.schedule.length) return [];
@@ -444,6 +563,9 @@ export function simDay(league) {
     }
     if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
+    updateStreak(league, home, r.homePts > r.awayPts);
+    updateStreak(league, away, r.awayPts > r.homePts);
+    pushGameNews(league, r, home, away, hurt);
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, injuryReport });
   }
   // unsigned players heal on the calendar — no games to count down

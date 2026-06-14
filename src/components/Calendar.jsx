@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents,
+  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews,
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
-import { fmtDate, TeamLink, NewsText } from './shared.jsx';
+import { fmtDate, TeamLink, TeamBadge, NewsText } from './shared.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -48,7 +48,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
 
   // Sim day-by-day toward `target` (exclusive), or indefinitely if null —
   // flashing each cell as it's simmed, fast enough that a week takes ~1-2s.
-  const animatedSimTo = async (target, { stopAtGame = false } = {}) => {
+  const animatedSimTo = async (target, { stopAtGame = false, weeklyRecap = false } = {}) => {
     if (animatingRef.current) return;
     animatingRef.current = true;
     setAnimating(true);
@@ -70,7 +70,13 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
       if (leagueRef.current.tradeOffers.length > offersBefore) break;
       if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
       if (leagueRef.current.dayIndex >= leagueRef.current.schedule.length) break;
-      if (!skipRef.current) await delay(stepDelay);
+      // pause a little longer on a day with one of the user's games, so the
+      // FeaturedGame card has time to register before sliding on
+      if (!skipRef.current) await delay(mine ? Math.max(stepDelay, 700) : stepDelay);
+    }
+    if (weeklyRecap && leagueRef.current.dayIndex > startDay) {
+      weeklyRecapNews(leagueRef.current, startDay);
+      commit();
     }
     setLastResults(results);
     setFlashDay(null);
@@ -114,7 +120,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
           </button>
           <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
           <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
-          <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length))}>Sim Week</button>
+          <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
           {animating && <button className="btn secondary" onClick={() => { skipRef.current = true; }}>Skip ▸▸</button>}
         </div>
       )}
@@ -198,7 +204,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                   ) : userGame ? (
                     result ? (
                       <a className="team-link calendar-game" onClick={(e) => { e.stopPropagation(); openGame(result, fmtDate(d)); }}>
-                        {userGame.home === me ? 'vs' : '@'} {userGame.home === me ? userGame.away : userGame.home}{' '}
+                        {userGame.home === me ? 'vs' : '@'}{' '}
+                        <TeamBadge team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} size="small" />{' '}
+                        {userGame.home === me ? userGame.away : userGame.home}{' '}
                         <span style={{ color: (userGame.home === me ? result.homePts > result.awayPts : result.awayPts > result.homePts) ? 'var(--green)' : 'var(--red)' }}>
                           {userGame.home === me ? result.homePts : result.awayPts}-{userGame.home === me ? result.awayPts : result.homePts}
                         </span>
@@ -206,6 +214,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                     ) : (
                       <span className="calendar-game">
                         {userGame.home === me ? 'vs' : '@'}{' '}
+                        <TeamBadge team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} size="small" />{' '}
                         <TeamLink team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} openTeam={(id) => { if (!animating) openTeam(id); }}>
                           {userGame.home === me ? userGame.away : userGame.home}
                         </TeamLink>

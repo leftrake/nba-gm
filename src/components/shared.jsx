@@ -174,6 +174,23 @@ export function PlayerLink({ p, openPlayer, children }) {
   );
 }
 
+// Small colored circle with the team's abbreviation, matching the bracket
+// chips on the Playoffs screen. `size` controls the chip's diameter/font.
+const TEAM_BADGE_SIZES = {
+  small: { size: 18, fontSize: 9 },
+  medium: { size: 26, fontSize: 11 },
+  large: { size: 56, fontSize: 20 },
+};
+
+export function TeamBadge({ team, size = 'medium' }) {
+  const { size: px, fontSize } = TEAM_BADGE_SIZES[size] || TEAM_BADGE_SIZES.medium;
+  return (
+    <span className="team-logo" style={{ width: px, height: px, fontSize, background: team.color }}>
+      {team.id}
+    </span>
+  );
+}
+
 export function TeamLink({ team, openTeam, children }) {
   const label = children ?? `${team.city} ${team.name}`;
   if (!openTeam) return <>{label}</>;

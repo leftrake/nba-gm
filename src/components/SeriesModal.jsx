@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { getTeam } from '../engine/league.js';
-import { TeamLink, PlayerLink } from './shared.jsx';
+import { TeamLink, TeamBadge, PlayerLink } from './shared.jsx';
 import { asLines, usePlayerIndex } from './BoxScore.jsx';
 
 // Per-player totals across every stored box in the series, best scorers
@@ -43,11 +43,11 @@ export default function SeriesModal({ league, series, roundName, onClose, openGa
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <h2 style={{ marginBottom: 0 }}>
             {roundName}:{' '}
-            <span className={series.winner === series.high ? 'winner' : ''}>{high.name} {series.highWins}</span>
+            <span className={series.winner === series.high ? 'winner' : ''}><TeamBadge team={high} size="small" /> {high.name} {series.highWins}</span>
             {' – '}
-            <span className={series.winner === series.low ? 'winner' : ''}>{series.lowWins} {low.name}</span>
+            <span className={series.winner === series.low ? 'winner' : ''}>{series.lowWins} {low.name} <TeamBadge team={low} size="small" /></span>
             {series.winner && <span className="tag" style={{ marginLeft: 8, color: 'var(--green)' }}>
-              {getTeam(league, series.winner).name} win
+              <TeamBadge team={getTeam(league, series.winner)} size="small" /> {getTeam(league, series.winner).name} win
             </span>}
           </h2>
           <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
@@ -63,11 +63,11 @@ export default function SeriesModal({ league, series, roundName, onClose, openGa
                 <div className="result-row" key={i}>
                   <span style={{ color: 'var(--muted)' }}>G{i + 1}</span>
                   <span className={g.awayPts > g.homePts ? 'winner' : ''}>
-                    {getTeam(league, g.away).name} {g.awayPts}
+                    <TeamBadge team={getTeam(league, g.away)} size="small" /> {getTeam(league, g.away).name} {g.awayPts}
                   </span>
                   <span style={{ color: 'var(--muted)' }}>@</span>
                   <span className={g.homePts > g.awayPts ? 'winner' : ''}>
-                    {getTeam(league, g.home).name} {g.homePts}
+                    <TeamBadge team={getTeam(league, g.home)} size="small" /> {getTeam(league, g.home).name} {g.homePts}
                   </span>
                   {g.homeBox
                     ? <a className="team-link" style={{ color: 'var(--accent)', fontSize: 12 }} onClick={open}>view ▸</a>
@@ -90,7 +90,7 @@ export default function SeriesModal({ league, series, roundName, onClose, openGa
                     return (
                       <tr key={t.playerId}>
                         <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}</td>
-                        <td><TeamLink team={getTeam(league, t.teamId)} openTeam={openTeam}>{t.teamId}</TeamLink></td>
+                        <td><TeamBadge team={getTeam(league, t.teamId)} size="small" /> <TeamLink team={getTeam(league, t.teamId)} openTeam={openTeam}>{t.teamId}</TeamLink></td>
                         <td className="num">{t.gp}</td>
                         <td className="num"><b>{per(t, 'pts')}</b></td>
                         <td className="num">{per(t, 'reb')}</td>
