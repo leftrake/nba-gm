@@ -17,6 +17,7 @@ import {
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
+import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives } from './owner.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -29,6 +30,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     deadMoney: [], // { playerName, salary, years } — cap hits from waived contracts
     wins: 0,
     losses: 0,
+    tradesThisSeason: 0,
   }));
 
   const league = {
@@ -61,6 +63,11 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
     evaluateStrategies(league);
     ensureDraftPicks(league);
+  }
+  if (userTeamId) {
+    const userTeam = getTeam(league, userTeamId);
+    userTeam.owner = generateOwner(rng, userTeam);
+    issueDirectives(league, userTeam, rng);
   }
   return league;
 }
@@ -290,6 +297,18 @@ export function backfillPlayers(league) {
   };
   for (const team of league.teams) team.roster.forEach(fill);
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
+  for (const team of league.teams) {
+    if (team.tradesThisSeason == null) team.tradesThisSeason = 0;
+    if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
+  }
+  // Saves predating the ownership system: generate an owner for the user's team
+  if (league.userTeamId) {
+    const userTeam = getTeam(league, league.userTeamId);
+    if (userTeam && !userTeam.owner) {
+      userTeam.owner = generateOwner(rng, userTeam);
+      issueDirectives(league, userTeam, rng);
+    }
+  }
   league.freeAgents.forEach(fill);
   league.draft?.prospects?.forEach(fill);
   // Saves predating front-office strategies
@@ -421,6 +440,11 @@ export function simDay(league) {
   maybeAiMidSeasonSigning(league, rng);
   expireTradeOffers(league);
   maybeGenerateTradeOffer(league, rng);
+  const userTeam = league.userTeamId ? getTeam(league, league.userTeamId) : null;
+  if (userTeam) {
+    dailyApprovalUpdate(userTeam);
+    maybeOwnerInterference(league, userTeam, rng);
+  }
   league.dayIndex += 1;
   if (league.dayIndex === TRADE_DEADLINE_DAY + 1) {
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '🔒 The trade deadline has passed. All trades are locked until the offseason.' });
@@ -622,6 +646,13 @@ export function advanceOffseason(league) {
   });
   league.seasonAwards = null;
 
+  // Captured before per-team wins/losses reset below, for the ownership system
+  const ownerResult = userTeam ? {
+    wins: userTeam.wins,
+    playoffRound: playoffRoundReached(league, userTeam.id),
+    champion: league.playoffs?.champion === userTeam.id,
+  } : null;
+
   const expiring = [];
   const retiring = [];
   const devEntries = []; // the user team's development report rows
@@ -746,6 +777,10 @@ export function advanceOffseason(league) {
   for (const { team, to } of evaluateStrategies(league)) {
     if (team.id === league.userTeamId) continue;
     pushNews(league, { day: 0, category: 'league', teamIds: [team.id], text: `The ${team.name} front office shifts to ${labels[to]}.` });
+  }
+
+  if (userTeam && ownerResult) {
+    processOwnerSeason(league, userTeam, rng, ownerResult);
   }
 
   league.season += 1;
@@ -1142,7 +1177,13 @@ export function evaluateOffer(league, teamId, p, salary, years) {
 // MLE_AMOUNT, ~$12M); 'minimum' is the always-available roster-fill exception.
 export function signingException(league, teamId, salary) {
   const team = getTeam(league, teamId);
-  const capRoom = SALARY_CAP - payroll(team);
+  let capLimit = SALARY_CAP;
+  if (team.owner) {
+    let budgetCap = team.owner.budget;
+    if (team.owner.approval < 25) budgetCap = Math.min(budgetCap, payroll(team)); // payroll freeze
+    capLimit = Math.min(capLimit, budgetCap);
+  }
+  const capRoom = capLimit - payroll(team);
   if (salary <= capRoom) return 'cap-room';
   if (salary <= MIN_SALARY * 1.05) return 'minimum';
   if (capRoom <= 0 && !team.usedMLE && salary <= MLE_AMOUNT) return 'mle';

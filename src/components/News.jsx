@@ -10,6 +10,7 @@ const CATS = [
   ['morale', 'Morale'],
   ['award', 'Awards'],
   ['milestone', 'Milestones'],
+  ['owner', 'Ownership'],
   ['league', 'League'],
 ];
 

@@ -6,6 +6,7 @@ import { clamp } from './rng.js';
 import { bumpTurmoil } from './morale.js';
 import { pickValue, pickLabel, violatesStepien } from './draftPicks.js';
 import { teamNeeds } from './strategy.js';
+import { applyTradeApprovalEffect } from './owner.js';
 
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
@@ -157,6 +158,18 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   for (const pick of picksB) pick.teamId = teamAId;
   bumpTurmoil(a);
   bumpTurmoil(b);
+  a.tradesThisSeason = (a.tradesThisSeason || 0) + 1;
+  b.tradesThisSeason = (b.tradesThisSeason || 0) + 1;
+  if (a.owner) {
+    const give = outA.reduce((s, p) => s + tradeValue(p, undefined, b), 0) + picksA.reduce((s, p) => s + pickValue(league, p, b.strategy), 0);
+    const get = outB.reduce((s, p) => s + tradeValue(p, undefined, a), 0) + picksB.reduce((s, p) => s + pickValue(league, p, a.strategy), 0);
+    applyTradeApprovalEffect(a, give, get);
+  }
+  if (b.owner) {
+    const give = outB.reduce((s, p) => s + tradeValue(p, undefined, a), 0) + picksB.reduce((s, p) => s + pickValue(league, p, a.strategy), 0);
+    const get = outA.reduce((s, p) => s + tradeValue(p, undefined, b), 0) + picksA.reduce((s, p) => s + pickValue(league, p, b.strategy), 0);
+    applyTradeApprovalEffect(b, give, get);
+  }
   const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
   pushNews(league, {
     day: league.dayIndex,
@@ -286,7 +299,24 @@ export function executeMultiTrade(league, teamIds, sends) {
       if (dest) pick.teamId = dest.team.id;
     }
   }
-  for (const leg of legs) bumpTurmoil(leg.team);
+  for (const leg of legs) {
+    bumpTurmoil(leg.team);
+    if (leg.outPlayers.length || leg.outPicks.length || leg.inPlayers.length || leg.inPicks.length) {
+      leg.team.tradesThisSeason = (leg.team.tradesThisSeason || 0) + 1;
+    }
+    if (leg.team.owner) {
+      const give = leg.outPlayers.reduce((s, p) => {
+        const dest = legs.find((l) => l.inPlayers.includes(p))?.team;
+        return s + tradeValue(p, undefined, dest);
+      }, 0) + leg.outPicks.reduce((s, p) => {
+        const dest = legs.find((l) => l.inPicks.includes(p))?.team;
+        return s + pickValue(league, p, dest?.strategy);
+      }, 0);
+      const get = leg.inPlayers.reduce((s, p) => s + tradeValue(p, undefined, leg.team), 0)
+        + leg.inPicks.reduce((s, p) => s + pickValue(league, p, leg.team.strategy), 0);
+      applyTradeApprovalEffect(leg.team, give, get);
+    }
+  }
 
   const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
   const major = legs.some((l) => l.outPlayers.some((p) => overall(p) >= 80));

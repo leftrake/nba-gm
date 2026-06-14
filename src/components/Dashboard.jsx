@@ -2,7 +2,8 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './shared.jsx';
+import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor } from './shared.jsx';
+import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus } from '../engine/owner.js';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -174,6 +175,51 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   );
 }
 
+// Owner profile card: who they are, their current stance/approval, and any
+// active directives with deadlines. Shows the projected next-season budget
+// once the season is in the books.
+function OwnerCard({ league, team }) {
+  const owner = team.owner;
+  if (!owner) return null;
+  const showProjected = league.phase !== 'regular' && league.phase !== 'playoffs' && owner.projectedBudget !== owner.budget;
+  return (
+    <div className="panel">
+      <h2>Ownership</h2>
+      <p style={{ marginTop: 8 }}><b>{owner.name}</b>, Owner</p>
+      <p style={{ color: 'var(--muted)' }}>{personalitySummary(owner)}</p>
+      <p style={{ marginTop: 8 }}>
+        {ownerStance(owner)} · <span style={{ color: approvalColor(owner.approval) }}>{seatStatus(owner)}</span>
+      </p>
+      <ApprovalMeter value={owner.approval} />
+      <p style={{ color: 'var(--muted)', fontSize: 12 }}>Approval {Math.round(owner.approval)}/100</p>
+      <p style={{ marginTop: 8 }}>Budget: <b>{money(owner.budget)}</b>{showProjected && <span style={{ color: 'var(--muted)' }}> (projected next season: {money(owner.projectedBudget)})</span>}</p>
+      {isRosterFrozen(league, team) && (
+        <p style={{ color: 'var(--red)' }}>🔒 Roster frozen by ownership.</p>
+      )}
+      {owner.directives?.length > 0 && (
+        <>
+          <h3 style={{ marginTop: 14 }}>Owner Directives</h3>
+          {owner.directives.map((d, i) => {
+            const status = directiveStatus(league, team, d);
+            const icon = status === 'done' ? '✅' : status === 'on-track' ? '🟡' : '📋';
+            return (
+              <p key={i} style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 8 }}>
+                {icon} {d.text}
+                <br />
+                <span style={{ color: 'var(--muted)', fontSize: 12 }}>
+                  {d.deadline}
+                  {status === 'done' && ' · on track to satisfy ownership'}
+                  {status === 'on-track' && ' · progress made, but not there yet'}
+                </span>
+              </p>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard({ league, leagueRef, commit, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews, onCounterTradeOffer, setScreen, trackFeatured, setLastResults }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
@@ -190,6 +236,8 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
       <NewsTicker league={league} openTeam={openTeam} />
 
       <Banner league={league} team={team} seed={seed} openTeam={openTeam} />
+
+      <OwnerCard league={league} team={team} />
 
       {featuredGame && (
         <FeaturedGame league={league} fg={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />

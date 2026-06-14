@@ -6,6 +6,7 @@ import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade
 import { getTeamPicks, pickValue, pickLabel } from '../engine/draftPicks.js';
 import { applyShoppedPenalty } from '../engine/morale.js';
 import { teamNeeds } from '../engine/strategy.js';
+import { ownerSignoffRequired, ownerBlocksTrade, isRosterFrozen, ownerStance } from '../engine/owner.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { Ovr, Pot, StrategyTag, money, PlayerLink } from './shared.jsx';
 
@@ -292,6 +293,11 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
 
   const propose = () => {
     if (!hasAnyAsset) return;
+    const userTeam = getTeam(league, userId);
+    if (isRosterFrozen(league, userTeam)) {
+      setMessage({ type: 'error', lines: ["Ownership has frozen the roster — no trades until the freeze lifts."] });
+      return;
+    }
     const validation = validateMultiTrade(league, teamIds, sends);
     if (!validation.ok) {
       const lines = Object.entries(validation.perTeam)
@@ -299,6 +305,19 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
         .map(([tid, v]) => v.reason);
       setMessage({ type: 'error', lines: lines.length ? lines : [validation.reason || 'Invalid trade.'] });
       return;
+    }
+    if (ownerBlocksTrade(userTeam, myGive, myGet, Math.random)) {
+      setMessage({ type: 'error', lines: ["Ownership sources say this deal doesn't fit our direction — the front office pulls it back."] });
+      return;
+    }
+    if (ownerSignoffRequired(userTeam, myGive, myGet)) {
+      const ok = window.confirm(
+        `${ownerStance(userTeam.owner)}. Ownership wants to sign off on a deal this size — proceed anyway?`
+      );
+      if (!ok) {
+        setMessage({ type: 'error', lines: ['Trade not submitted — ownership sign-off declined.'] });
+        return;
+      }
     }
     const evalns = aiEvaluateMultiTrade(league, teamIds, sends, userId, validation.legs);
     const rejections = Object.entries(evalns).filter(([, e]) => !e.accept);

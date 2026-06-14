@@ -280,6 +280,10 @@ button.slot-pick:hover { border-color: var(--accent); }
 .cap-bar > div { height: 100%; background: var(--green); }
 .cap-bar > div.over { background: var(--red); }
 
+/* ---------- Owner approval meter ---------- */
+.approval-bar { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; margin: 6px 0; }
+.approval-bar > div { height: 100%; transition: width 200ms ease; }
+
 .result-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 .winner { font-weight: 700; }
 

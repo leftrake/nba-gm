@@ -108,6 +108,19 @@ export function StrategyTag({ team }) {
   return <span className="tag" style={{ color: STRATEGY_COLORS[team.strategy] }}>{team.strategy}</span>;
 }
 
+// 0-100 owner approval meter, colored the same thresholds as ownerStance/seatStatus.
+export function approvalColor(a) {
+  return a >= 60 ? 'var(--green)' : a >= 40 ? 'var(--accent)' : a >= 25 ? '#d29922' : 'var(--red)';
+}
+
+export function ApprovalMeter({ value }) {
+  return (
+    <div className="approval-bar">
+      <div style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: approvalColor(value) }} />
+    </div>
+  );
+}
+
 export function money(n) {
   return `$${(n / 1e6).toFixed(1)}M`;
 }

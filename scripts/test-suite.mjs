@@ -29,6 +29,8 @@ import { overall } from '../src/engine/players.js';
 import { autoLineup, lineupWarnings } from '../src/engine/lineup.js';
 import { getTeamPicks, FUTURE_DRAFTS } from '../src/engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../src/data/teams.js';
+import { issueDirectives, generateOwner, computeBudget, computeRevenue, processOwnerSeason, playoffRoundReached } from '../src/engine/owner.js';
+import { makeRng } from '../src/engine/rng.js';
 
 const SEASONS = Number(process.argv[2]) || 3;
 const SEED = Number(process.argv[3]) || 20260611;
@@ -223,6 +225,96 @@ for (let s = 0; s < SEASONS; s++) {
     unsigned70.length <= 2,
     unsigned70.map((p) => `${p.name} (${overall(p)})`).join(', '),
   );
+}
+
+console.log('\nOwnership system (6 seasons, small-market low-patience vs large-market high-patience owner)');
+{
+  const OWN_SEASONS = 6;
+  const OWN_SEED = SEED + 555;
+
+  // Headless, all-AI league (like the main suite above) so both tracked
+  // teams' rosters/free agency are managed normally — only the owner
+  // bookkeeping is bolted on for OKC and LAL.
+  const lg = createLeague('LAL', OWN_SEED);
+  lg.userTeamId = null;
+  for (const t of lg.teams) delete t.lineup;
+  const ownerRng = makeRng(lg.seed + 31_337);
+
+  function attachOwner(teamId, patience, budgetTolerance) {
+    const team = lg.teams.find((t) => t.id === teamId);
+    team.owner = generateOwner(ownerRng, team);
+    team.owner.patience = patience;
+    team.owner.budgetTolerance = budgetTolerance;
+    team.owner.budget = computeBudget(team, team.owner, computeRevenue(team.owner, { wins: 41, playoffRound: 0, champion: false }));
+    team.owner.projectedBudget = team.owner.budget;
+    team.owner.directives = [];
+    issueDirectives(lg, team, ownerRng);
+    return team;
+  }
+
+  // OKC (small market) + low patience: should drift toward a tighter budget
+  // if results sour. LAL (large market) + high patience: should hold a
+  // much larger ceiling regardless of results.
+  const smallTeam = attachOwner('OKC', 10, 10);
+  const largeTeam = attachOwner('LAL', 90, 90);
+
+  function runSeason() {
+    while (lg.phase === 'regular') simDay(lg);
+    let guard = 0;
+    while (lg.phase === 'playoffs' && guard++ < 500) simPlayoffGame(lg);
+
+    for (const team of [smallTeam, largeTeam]) {
+      const result = {
+        wins: team.wins,
+        playoffRound: playoffRoundReached(lg, team.id),
+        champion: lg.playoffs?.champion === team.id,
+      };
+      processOwnerSeason(lg, team, ownerRng, result);
+    }
+
+    advanceOffseason(lg);
+    simDraftToUser(lg);
+    finishDraft(lg);
+    guard = 0;
+    while (lg.phase === 'freeagency' && guard++ < 50) simFreeAgencyDay(lg);
+    if (lg.phase !== 'regular') throw new Error(`ownership sim: stuck in phase ${lg.phase}`);
+  }
+
+  const small = { budgets: [], approvals: [], directiveCounts: [] };
+  const large = { budgets: [], approvals: [], directiveCounts: [] };
+  for (let s = 0; s < OWN_SEASONS; s++) {
+    runSeason();
+    small.budgets.push(smallTeam.owner.budget);
+    small.approvals.push(smallTeam.owner.approval);
+    small.directiveCounts.push(smallTeam.owner.directives.length);
+    large.budgets.push(largeTeam.owner.budget);
+    large.approvals.push(largeTeam.owner.approval);
+    large.directiveCounts.push(largeTeam.owner.directives.length);
+  }
+
+  console.log(`    ----  small-market budgets ($M): ${small.budgets.map((b) => (b / 1e6).toFixed(1)).join(', ')}`);
+  console.log(`    ----  large-market budgets ($M): ${large.budgets.map((b) => (b / 1e6).toFixed(1)).join(', ')}`);
+  console.log(`    ----  small-market approval: ${small.approvals.map((a) => a.toFixed(0)).join(', ')}`);
+  console.log(`    ----  large-market approval: ${large.approvals.map((a) => a.toFixed(0)).join(', ')}`);
+  console.log(`    ----  small-market directives/season: ${small.directiveCounts.join(', ')}`);
+  console.log(`    ----  large-market directives/season: ${large.directiveCounts.join(', ')}`);
+
+  // Budget trajectories diverge realistically: the large-market,
+  // high-tolerance owner sustains a meaningfully bigger budget than the
+  // small-market, low-tolerance owner across the run.
+  const meanBudget = (arr) => mean(arr) / 1e6;
+  check('large-market avg budget exceeds small-market ($M gap)', meanBudget(large.budgets) - meanBudget(small.budgets), 20, 200);
+
+  // Directives fire at the spec'd 1-3/season cadence for both owners.
+  for (const counts of [small.directiveCounts, large.directiveCounts]) {
+    for (const c of counts) check('directives issued this season', c, 1, 3);
+  }
+
+  // Approval ratings stay distributed rather than collapsing to 0/100 for
+  // every team every season.
+  const allApprovals = [...small.approvals, ...large.approvals];
+  checkBool('approval ratings not all clamped at extremes', allApprovals.some((a) => a > 2 && a < 98), allApprovals.map((a) => a.toFixed(0)).join(', '));
+  check('approval spread across both owners (stddev)', stddev(allApprovals), 2, 50);
 }
 
 console.log('\nLeague-wide (across all seasons)');
