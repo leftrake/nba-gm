@@ -6,7 +6,7 @@ import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade
 import { getTeamPicks, pickValue, pickLabel } from '../engine/draftPicks.js';
 import { applyShoppedPenalty } from '../engine/morale.js';
 import { teamNeeds } from '../engine/strategy.js';
-import { ownerSignoffRequired, ownerBlocksTrade, isRosterFrozen, ownerStance } from '../engine/owner.js';
+import { ownerSignoffRequired, ownerBlocksTrade, ownerStance } from '../engine/owner.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { Ovr, Pot, StrategyTag, money, PlayerLink } from './shared.jsx';
 
@@ -294,10 +294,6 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   const propose = () => {
     if (!hasAnyAsset) return;
     const userTeam = getTeam(league, userId);
-    if (isRosterFrozen(league, userTeam)) {
-      setMessage({ type: 'error', lines: ["Ownership has frozen the roster — no trades until the freeze lifts."] });
-      return;
-    }
     const validation = validateMultiTrade(league, teamIds, sends);
     if (!validation.ok) {
       const lines = Object.entries(validation.perTeam)

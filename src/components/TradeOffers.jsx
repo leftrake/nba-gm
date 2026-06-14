@@ -2,7 +2,6 @@ import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { acceptTradeOffer, declineTradeOffer } from '../engine/tradeOffers.js';
 import { pickLabel } from '../engine/draftPicks.js';
-import { isRosterFrozen } from '../engine/owner.js';
 import { Ovr, Pot, PlayerLink, TeamBadge, money } from './shared.jsx';
 
 function OfferSide({ league, players, fogged, openPlayer }) {
@@ -32,10 +31,7 @@ function OfferSide({ league, players, fogged, openPlayer }) {
 export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
   if (!league.tradeOffers?.length) return null;
   const user = getTeam(league, league.userTeamId);
-  const frozen = isRosterFrozen(league, user);
-
   const handleAccept = (offer) => {
-    if (frozen) return;
     acceptTradeOffer(league, offer.id);
     commit();
   };
@@ -47,7 +43,6 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
   return (
     <div className="panel">
       <h2>📨 Trade Offers ({league.tradeOffers.length})</h2>
-      {frozen && <p style={{ color: 'var(--red)' }}>🔒 Ownership has frozen the roster — incoming offers can't be accepted until the freeze lifts.</p>}
       {league.tradeOffers.map((offer) => {
         const from = getTeam(league, offer.fromTeamId);
         const give = user.roster.filter((p) => offer.give.includes(p.id));
@@ -75,7 +70,7 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button className="btn" onClick={() => handleAccept(offer)} disabled={frozen}>Accept</button>
+              <button className="btn" onClick={() => handleAccept(offer)}>Accept</button>
               <button className="btn secondary" onClick={() => handleDecline(offer)}>Decline</button>
               <button className="btn secondary" onClick={() => onCounter(offer)}>Counter in Trade Machine</button>
             </div>

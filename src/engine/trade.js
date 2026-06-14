@@ -250,6 +250,9 @@ export function resolveMultiTradeLegs(league, teamIds, sends) {
 // UI can say exactly who has the problem.
 export function validateMultiTrade(league, teamIds, sends) {
   const legs = resolveMultiTradeLegs(league, teamIds, sends);
+  if (league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY) {
+    return { ok: false, perTeam: {}, legs, reason: 'The trade deadline has passed.' };
+  }
   const totalAssets = legs.reduce((s, l) => s + l.outPlayers.length + l.outPicks.length, 0);
   if (!totalAssets) return { ok: false, perTeam: {}, legs, reason: 'Empty trade.' };
 
