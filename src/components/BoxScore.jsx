@@ -126,10 +126,10 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
 export function LineScore({ league, game }) {
   if (!game.homeQtrs?.length) return null;
   const cols = game.homeQtrs.map((_, i) => periodLabel(i));
-  const row = (teamId, qtrs, pts, winner) => (
+  const row = (teamId, qtrs, oppQtrs, pts, winner) => (
     <tr style={winner ? { fontWeight: 700 } : undefined}>
       <td>{getTeam(league, teamId).name}</td>
-      {qtrs.map((q, i) => <td className="num" key={i}>{q}</td>)}
+      {qtrs.map((q, i) => <td className="num" key={i} style={q > oppQtrs[i] ? { fontWeight: 700 } : undefined}>{q}</td>)}
       <td className="num"><b>{pts}</b></td>
     </tr>
   );
@@ -139,8 +139,8 @@ export function LineScore({ league, game }) {
         <tr><th />{cols.map((c) => <th className="num" key={c}>{c}</th>)}<th className="num">T</th></tr>
       </thead>
       <tbody>
-        {row(game.away, game.awayQtrs, game.awayPts, game.awayPts > game.homePts)}
-        {row(game.home, game.homeQtrs, game.homePts, game.homePts > game.awayPts)}
+        {row(game.away, game.awayQtrs, game.homeQtrs, game.awayPts, game.awayPts > game.homePts)}
+        {row(game.home, game.homeQtrs, game.awayQtrs, game.homePts, game.homePts > game.awayPts)}
       </tbody>
     </table>
   );
