@@ -139,6 +139,26 @@ export function maybeOwnerInterference(league, team, rng) {
   }
 }
 
+// ---------- Signing budget ----------
+
+// Whether a contract's salary would push payroll above what the owner has
+// budgeted this season. This is advisory only: a cap-legal signing always
+// goes through, but exceeding budget costs approval (see below).
+export function exceedsOwnerBudget(team, salary) {
+  const owner = team.owner;
+  if (!owner) return false;
+  let budgetCap = owner.budget;
+  if (owner.approval < 25) budgetCap = Math.min(budgetCap, payroll(team)); // payroll freeze
+  return payroll(team) + salary > budgetCap;
+}
+
+// Approval hit for signing a player whose salary exceeds the owner's budget.
+export function applyBudgetOverageEffect(team) {
+  const owner = team.owner;
+  if (!owner) return;
+  owner.approval = clamp(owner.approval - 4, 0, 100);
+}
+
 export function isRosterFrozen(league, team) {
   const owner = team.owner;
   return !!(owner && owner.freezeUntilDay && league.dayIndex < owner.freezeUntilDay);

@@ -18,7 +18,7 @@ import { extensionType, extensionSalaryRange, rookieMax } from './extensions.js'
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
-import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives } from './owner.js';
+import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives, exceedsOwnerBudget, applyBudgetOverageEffect } from './owner.js';
 import {
   snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace,
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
@@ -1562,13 +1562,7 @@ export function evaluateOffer(league, teamId, p, salary, years) {
 // MLE_AMOUNT, ~$12M); 'minimum' is the always-available roster-fill exception.
 export function signingException(league, teamId, salary) {
   const team = getTeam(league, teamId);
-  let capLimit = SALARY_CAP;
-  if (team.owner) {
-    let budgetCap = team.owner.budget;
-    if (team.owner.approval < 25) budgetCap = Math.min(budgetCap, payroll(team)); // payroll freeze
-    capLimit = Math.min(capLimit, budgetCap);
-  }
-  const capRoom = capLimit - payroll(team);
+  const capRoom = SALARY_CAP - payroll(team);
   if (salary <= capRoom) return 'cap-room';
   if (salary <= MIN_SALARY * 1.05) return 'minimum';
   if (capRoom <= 0 && !team.usedMLE && salary <= MLE_AMOUNT) return 'mle';
@@ -1610,9 +1604,15 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   const res = meetsCounter ? { decision: 'accept' } : evaluateOffer(league, teamId, p, salary, years);
   if (res.decision === 'accept') {
     delete league.negotiations[playerId];
+    const overBudget = exceedsOwnerBudget(team, salary);
     signFreeAgent(league, teamId, playerId, salary, years);
     if (exception === 'mle') team.usedMLE = true;
-    return { ok: true, decision: 'accept', exception, reason: `${p.name} accepts: ${fmtM(salary)} x ${years}yr!` };
+    let reason = `${p.name} accepts: ${fmtM(salary)} x ${years}yr!`;
+    if (overBudget) {
+      applyBudgetOverageEffect(team);
+      reason += ` This signing exceeds your owner's budget — approval rating will drop.`;
+    }
+    return { ok: true, decision: 'accept', exception, reason };
   }
   if (res.decision === 'counter') nego.counter = res.counter;
   league.negotiations[playerId] = nego;
