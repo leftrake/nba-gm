@@ -116,7 +116,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
             ? <>Contract: <b>{money(p.contract.salary)}</b>/yr × <b>{p.contract.years}</b> {p.contract.years === 1 ? 'year' : 'years'}</>
             : <>Asking: <b>{money(askingPrice(p))}</b>/yr</>}
           {p.extension && (
-            <> · Extension: <b style={{ color: 'var(--green)' }}>{money(p.extension.salary)}</b>/yr × <b>{p.extension.years}</b> (starts in {p.contract.years === 1 ? '1 season' : `${p.contract.years} seasons`})</>
+            <> · Extension: <b style={{ color: 'var(--green)' }}>{money(p.extension.salary)}</b>/yr × <b>{p.extension.years}</b> (starts in {p.contract?.years === 1 ? '1 season' : `${p.contract?.years} seasons`})</>
           )}
         </p>
 

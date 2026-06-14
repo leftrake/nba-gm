@@ -2,9 +2,20 @@
 // format and a hard cap on the news feed so the localStorage save doesn't
 // grow without bound or break silently when the format changes.
 
-// Bump this whenever the league/team/player shape changes in a way old
-// builds (or old saves) can't handle; checkSave refuses any version it
-// can't migrate instead of loading it broken.
+// The day-to-day migration path for new fields is backfillPlayers()
+// (league.js): any new league/team/player field gets a default there, keyed
+// off `== null`/`!field` checks, so old saves are patched in place on load.
+// That covers the overwhelming majority of schema growth — new optional
+// fields, renamed-with-fallback fields, new sub-objects with sensible
+// defaults — and keeps every save loadable forever.
+//
+// SAVE_VERSION exists only for the rare case backfillPlayers can't recover
+// the old shape at all (e.g. a field's *meaning* changed, or data was
+// restructured in a way no default can reconstruct). Only bump this, and
+// only after adding real migration logic to the `version < SAVE_VERSION`
+// branch below — bumping it without a migration permanently bricks every
+// existing save (checkSave rejects anything it can't migrate rather than
+// loading it broken).
 export const SAVE_VERSION = 1;
 
 // Per-season cap on the live feed (league.news); when a new season starts,
@@ -76,7 +87,9 @@ export function checkSave(data) {
     return { error: `This save is from a newer version of the game (save format v${version}; this build reads v${SAVE_VERSION}).` };
   }
   if (version < SAVE_VERSION) {
-    // future format migrations go here; any version left unmigrated is incompatible
+    // Real migrations for unrecoverable shape changes go here, one `if
+    // (version < N)` block per bump, each falling through to the next.
+    // Any version left unhandled by a block below is incompatible.
     return { error: `This save uses an old data format (v${version}) that this version of the game can no longer read.` };
   }
   data.saveVersion = SAVE_VERSION;

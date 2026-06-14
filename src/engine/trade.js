@@ -8,6 +8,12 @@ import { pickValue, pickLabel, violatesStepien } from './draftPicks.js';
 import { teamNeeds } from './strategy.js';
 import { applyTradeApprovalEffect } from './owner.js';
 
+// Discount applied to tradeValue for a player currently injured, by
+// injury.tier (injuries.js) — used by tradeValue itself, so every AI trade
+// path (strategy.js, tradeOffers.js) and the Trade Machine's own valuation
+// automatically discount hurt players without needing their own checks.
+const INJURY_VALUE_MULT = { dtd: 0.95, minor: 0.85, significant: 0.65, season: 0.4 };
+
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
 // to value the player through that team's lens; omit it for a neutral view.
@@ -29,6 +35,9 @@ export function tradeValue(p, strategy, team) {
   if (p.contract && p.contract.salary > 30_000_000 && ovr < 75) v *= 0.7;
   // a player who has publicly demanded a trade has sharply reduced value
   if (p.tradeDemand) v *= 0.5;
+  // an injured player is worth less the longer they'll be out — nobody
+  // trades for a guy who can't play, full stop for a season-ender
+  if (p.injury) v *= INJURY_VALUE_MULT[p.injury.tier] ?? 1;
   // a useful secondary position is worth a little extra — versatility
   if (p.pos2) v *= 1.05;
   if (strategy === 'rebuilding') {

@@ -312,6 +312,8 @@ export function backfillPlayers(league) {
   }
   league.freeAgents.forEach(fill);
   league.draft?.prospects?.forEach(fill);
+  // Saves predating draft-pick trading
+  ensureDraftPicks(league);
   // Saves predating front-office strategies
   if (league.teams.some((t) => !t.strategy)) evaluateStrategies(league);
   // Saves predating lineups
