@@ -6,6 +6,7 @@ import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, auto
 import Dashboard from './components/Dashboard.jsx';
 import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
+import FuturePayroll from './components/FuturePayroll.jsx';
 import Standings from './components/Standings.jsx';
 import Leaders from './components/Leaders.jsx';
 import Stats from './components/Stats.jsx';
@@ -245,6 +246,7 @@ export default function App() {
     ['dashboard', 'Dashboard'],
     ['news', 'News'],
     ['roster', 'Roster'],
+    ['futurecap', 'Cap Projection'],
     ['standings', 'Standings'],
     ['leaders', 'Leaders'],
     ['stats', 'Stats'],
@@ -386,6 +388,7 @@ export default function App() {
         )}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
+        {screen === 'futurecap' && <FuturePayroll league={league} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}

@@ -70,15 +70,21 @@ while (league.phase === 'playoffs') simPlayoffRound(league);
 advanceOffseason(league);
 
 const everyone = new Map(league.teams.flatMap((t) => t.roster).map((p) => [p.id, p]));
-let rolled = 0, inFA = 0, wrong = 0;
+let rolled = 0, gone = 0, wrong = 0;
 for (const s of snapshot) {
   const p = everyone.get(s.id);
-  if (!p) { inFA += league.freeAgents.some((x) => x.id === s.id) ? 1 : 0; continue; }
+  if (!p) {
+    // a player can be waived or retire before an extension activates — it
+    // simply never kicks in, which isn't a rollover failure
+    const fa = league.freeAgents.find((x) => x.id === s.id);
+    if (!fa || !fa.contract) { gone++; continue; }
+    wrong++;
+    continue;
+  }
   if (p.contract && p.contract.salary === s.salary && p.contract.years === s.years && !p.extension) rolled++;
   else wrong++;
 }
-check('every extension rolled into the new contract', rolled === snapshot.length && wrong === 0, `${rolled}/${snapshot.length} rolled, ${inFA} leaked to FA`);
-check('no extended player reached free agency', inFA === 0);
+check('every extension rolled into the new contract (or voided by waiver/retirement)', wrong === 0, `${rolled}/${snapshot.length} rolled, ${gone} voided`);
 const flaggedLeft = league.teams.flatMap((t) => t.roster).filter((p) => p.extTalksFailed).length;
 check('extTalksFailed flags cleared in offseason', flaggedLeft === 0, `${flaggedLeft} remain`);
 

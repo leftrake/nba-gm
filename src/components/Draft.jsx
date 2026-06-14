@@ -1,6 +1,6 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
-import { makeDraftPick, onTheClock, rookieSalary, ROOKIE_YEARS } from '../engine/draft.js';
+import { makeDraftPick, onTheClock, rookieSalary, rookieContractYears } from '../engine/draft.js';
 import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
 import { Ovr, Pot, money, PlayerLink, TeamLink, Origin } from './shared.jsx';
 
@@ -52,7 +52,7 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
           <p style={{ marginBottom: 6 }}>
             Round {pickNo <= 30 ? 1 : 2} · Pick {pickNo}/{d.order.length} · On the clock:{' '}
             <b><TeamLink team={getTeam(league, clockTeamId)} openTeam={openTeam} /></b>
-            {myTurn && <span style={{ color: 'var(--green)' }}> — your pick! Slot contract: {money(rookieSalary(pickNo))} × {ROOKIE_YEARS}yr</span>}
+            {myTurn && <span style={{ color: 'var(--green)' }}> — your pick! Slot contract: {money(rookieSalary(pickNo))} × {rookieContractYears(pickNo)}yr</span>}
           </p>
         )}
         {live && clockTeamId && (

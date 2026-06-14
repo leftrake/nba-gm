@@ -51,6 +51,12 @@ export function moraleSalaryMult(p) {
 
 const setMorale = (p, v) => { p.morale = Math.round(clamp(v, 0, 100) * 10) / 10; };
 
+// Apply a flat morale delta to one player — extension outcomes, RFA window
+// closing unsigned, etc.
+export function adjustMorale(p, delta) {
+  setMorale(p, (p.morale ?? 50) + delta);
+}
+
 // Win/loss bump for an entire roster — used after every regular-season and
 // playoff game. `scale` lets playoff results (and the eventual title) swing
 // morale harder than a single regular-season result.

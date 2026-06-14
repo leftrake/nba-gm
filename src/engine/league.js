@@ -12,8 +12,9 @@ import { autoLineup } from './lineup.js';
 import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
 import {
   initMorale, moraleSalaryMult, applyResultMorale, bumpRosterMorale, bumpTurmoil,
-  dailyMoraleUpdate, updateTradeDemands, maybeShopDisgruntled,
+  dailyMoraleUpdate, updateTradeDemands, maybeShopDisgruntled, adjustMorale,
 } from './morale.js';
+import { extensionType, extensionSalaryRange, rookieMax } from './extensions.js';
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
@@ -693,10 +694,27 @@ export function advanceOffseason(league) {
             // the extension signed during the season kicks in seamlessly
             p.contract = p.extension;
             p.extension = null;
+            delete p.extOfferMade;
           } else {
+            // a 1st-round rookie-scale deal that just ran out unextended
+            // sends the player to restricted free agency instead of the
+            // normal Bird-rights re-sign window
+            const wasRookieScale = p.draftPick && p.draftPick <= 30 && (p.exp ?? 0) === 4;
+            if (isUserTeam && !p.extOfferMade) {
+              // he notices the front office never even tried to extend him
+              adjustMorale(p, -8);
+            }
             p.contract = null;
-            expiring.push({ team, p });
+            if (wasRookieScale) {
+              p.restrictedFA = true;
+              p.formerTeamId = team.id;
+            }
+            expiring.push({ team, p, wasRookieScale });
           }
+        } else {
+          // extension talks are a once-a-season affair; give him a fresh
+          // shot next season if his deal didn't expire
+          delete p.extTalksFailed;
         }
       }
     }
@@ -725,11 +743,18 @@ export function advanceOffseason(league) {
   // quality starters reach the open market each summer. The user's
   // expiring players always hit free agency — re-signing them is the
   // user's job.
-  for (const { team, p } of expiring) {
+  for (const { team, p, wasRookieScale } of expiring) {
     // If the front office already passed on extending him mid-season, that
     // was the retention decision — he tests the market (no second roll).
     const triedMidSeason = p.extTalksFailed;
     delete p.extTalksFailed;
+    if (wasRookieScale) {
+      // restrictedFA/formerTeamId already set when his rookie deal expired
+      team.roster = team.roster.filter((x) => x.id !== p.id);
+      league.freeAgents.push(p);
+      pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name}'s rookie-scale contract expires without an extension — he enters restricted free agency.` });
+      continue;
+    }
     if (team.id !== league.userTeamId && !triedMidSeason && rng() < resignChance(team, p)) {
       // Bird-rights premium: incumbents pay a little over market to keep
       // their own players off the open market
@@ -741,6 +766,7 @@ export function advanceOffseason(league) {
       const ceiling = team.strategy === 'contending' ? LUXURY_TAX + 15_000_000 : LUXURY_TAX;
       if (payroll(team) + salary <= ceiling) {
         p.contract = { salary, years: preferredYears(p) };
+        delete p.extOfferMade;
         if (overall(p) >= 70) {
           pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name} re-signs with the ${team.city} ${team.name} (${fmtM(salary)} x ${p.contract.years}yr).` });
         }
@@ -816,6 +842,7 @@ function resignChance(team, p) {
 // shopping, the top of the market is usually picked clean after round one.
 export function simFreeAgencyDay(league) {
   const rng = makeRng(league.seed + league.season * 31 + league.faDaysLeft);
+  league.offerSheets = league.offerSheets || [];
   // Deepest cap room shops first — those are the teams that can land stars
   const order = league.teams
     .filter((t) => t.id !== league.userTeamId)
@@ -839,6 +866,7 @@ export function simFreeAgencyDay(league) {
     let tried = 0;
     for (let i = 0; i < league.freeAgents.length && tried < 12; i++) {
       const target = league.freeAgents[i]; // pool is sorted best-first
+      if (target.offerSheetPending) continue; // already under an offer sheet this round
       const ask = askingPrice(target);
       let exception = null;
       if (ask > room) {
@@ -854,6 +882,39 @@ export function simFreeAgencyDay(league) {
       if (!exception && demand > ask * stretch) continue; // demanding more than this office will pay
       if (!exception && demand > room) continue;
       if (exception === 'minimum' && demand > MIN_SALARY * 1.05) continue;
+      // A restricted free agent's former team holds the right to match —
+      // signing him is an "offer sheet", not an immediate deal.
+      if (target.restrictedFA) {
+        if (target.formerTeamId === league.userTeamId) {
+          const deadlineRound = Math.max(0, league.faDaysLeft - 3);
+          league.offerSheets.push({ playerId: target.id, fromTeamId: team.id, formerTeamId: target.formerTeamId, salary: demand, years, deadlineRound });
+          target.offerSheetPending = true;
+          const roundsLeft = league.faDaysLeft - deadlineRound;
+          pushNews(league, {
+            day: 0, category: 'signing', major: true, teamIds: [league.userTeamId, team.id],
+            text: `URGENT: the ${team.city} ${team.name} sign restricted free agent ${target.name} to an offer sheet (${fmtM(demand)}/yr x ${years}yr). Match it on the Free Agency screen within ${roundsLeft} round${roundsLeft === 1 ? '' : 's'} or lose his rights.`,
+          });
+          if (exception === 'mle') team.usedMLE = true;
+          break;
+        }
+        const formerTeam = getTeam(league, target.formerTeamId);
+        const formerMatches = formerTeam.strategy !== 'rebuilding' && overall(target) >= 75
+          && payroll(formerTeam) + demand <= LUXURY_TAX + 15_000_000;
+        if (formerMatches) {
+          // the original team matches immediately — this bidder leaves empty-handed
+          league.freeAgents.splice(i, 1);
+          i--;
+          target.restrictedFA = false;
+          delete target.formerTeamId;
+          target.contract = { salary: demand, years };
+          delete target.extOfferMade;
+          formerTeam.roster.push(target);
+          pushNews(league, { day: 0, category: 'signing', teamIds: [formerTeam.id], text: `The ${formerTeam.city} ${formerTeam.name} match an offer sheet to keep ${target.name} (${fmtM(demand)}/yr x ${years}yr).` });
+          continue;
+        }
+        target.restrictedFA = false;
+        delete target.formerTeamId;
+      }
       signFreeAgent(league, team.id, target.id, demand, years);
       if (exception === 'mle') team.usedMLE = true;
       break;
@@ -864,6 +925,25 @@ export function simFreeAgencyDay(league) {
   for (const fa of league.freeAgents) fa.faRoundsUnsigned = (fa.faRoundsUnsigned || 0) + 1;
 
   league.faDaysLeft -= 1;
+
+  // Resolve any offer sheet whose matching window has closed unmatched.
+  for (let i = league.offerSheets.length - 1; i >= 0; i--) {
+    const sheet = league.offerSheets[i];
+    if (league.faDaysLeft > sheet.deadlineRound) continue;
+    const target = league.freeAgents.find((p) => p.id === sheet.playerId);
+    league.offerSheets.splice(i, 1);
+    if (!target) continue; // already resolved (e.g. matched)
+    const fromTeam = getTeam(league, sheet.fromTeamId);
+    target.restrictedFA = false;
+    target.offerSheetPending = false;
+    delete target.formerTeamId;
+    signFreeAgent(league, sheet.fromTeamId, target.id, sheet.salary, sheet.years);
+    pushNews(league, {
+      day: 0, category: 'signing', major: true, teamIds: [league.userTeamId, sheet.fromTeamId],
+      text: `You missed the deadline to match — ${target.name} signs with the ${fromTeam.city} ${fromTeam.name} (${fmtM(sheet.salary)}/yr x ${sheet.years}yr).`,
+    });
+  }
+
   if (league.faDaysLeft <= 0) {
     finalizeFreeAgency(league);
     startNewSeason(league);
@@ -1043,12 +1123,13 @@ function currentWinPct(team) {
 }
 
 // ---------- Contract extensions ----------
-// During the regular season, a player entering the final year of his
-// contract can sign an extension that starts when the current deal ends.
-// Extended players never reach free agency.
+// Three windows — rookie-scale (RFX), veteran, and final-year — resolved by
+// extensionType() (extensions.js). Extended players never reach free
+// agency; a rookie-scale window that closes unsigned instead sends the
+// player to restricted free agency (advanceOffseason / simFreeAgencyDay).
 
 export function extensionEligible(p) {
-  return !!(p.contract && p.contract.years === 1 && !p.extension);
+  return extensionType(p) !== null;
 }
 
 // Salary at which this player extends for `years`, or null if he won't
@@ -1067,76 +1148,95 @@ export function extensionDemand(league, teamId, p, years) {
 // User-facing extension offer. The player evaluates it like a free-agency
 // offer (money, record, role, preferred length); a rejection sets a floor,
 // and he only re-opens talks for a strictly better salary — except a
-// standing counter, which is always honored.
+// standing counter, which is always honored. Salary is clamped to the
+// window's rules (rookie max, +/-20% of current for veterans, market rate
+// for final-year), and a lowball offer (<85% of demand) insults the player.
 export function offerExtension(league, teamId, playerId, salary, years) {
   if (league.phase !== 'regular') return { ok: false, error: 'Extensions can only be negotiated during the regular season.' };
   const team = getTeam(league, teamId);
   const p = team.roster.find((x) => x.id === playerId);
   if (!p) return { ok: false, error: 'That player is not on your roster.' };
   if (p.extension) return { ok: false, error: `${p.name} has already signed an extension.` };
-  if (!extensionEligible(p)) return { ok: false, error: 'Only players entering the final year of their contract can be extended.' };
+  const type = extensionType(p);
+  if (!type) return { ok: false, error: `${p.name} isn't extension-eligible right now.` };
   years = clamp(Math.round(years), 1, 4);
-  salary = clamp(Math.round(salary / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
+  const range = extensionSalaryRange(p, type);
+  salary = clamp(Math.round(salary / 100_000) * 100_000, range.min, range.max);
+  p.extOfferMade = true;
   league.extensionTalks = league.extensionTalks || {};
   const talks = league.extensionTalks[playerId];
   const meetsCounter = talks?.counter && years === talks.counter.years && salary >= talks.counter.salary;
   if (!meetsCounter && talks && salary <= talks.best) {
     return { ok: false, error: `${p.name} already turned down ${fmtM(talks.best)}/yr — he'll only re-open talks for a better number.` };
   }
-  const demand = meetsCounter ? salary : extensionDemand(league, teamId, p, years);
+  let demand = meetsCounter ? salary : extensionDemand(league, teamId, p, years);
   if (demand === null) {
     const reason = roleBlocked(team, p)
       ? `${p.name} wants a featured role, and you already have two better players at ${p.pos} — he won't commit long-term.`
       : `${p.name} won't discuss an extension while the team is losing — win more games, or risk him testing the market.`;
     return { ok: true, decision: 'reject', reason };
   }
+  demand = clamp(demand, range.min, range.max);
   if (salary >= demand) {
-    p.extension = { salary, years };
+    p.extension = { salary, years, type };
     delete p.extTalksFailed;
     delete league.extensionTalks[playerId];
-    p.morale = Math.round(clamp((p.morale ?? 50) + 6, 0, 100) * 10) / 10;
+    adjustMorale(p, 6);
     pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}.` });
     return { ok: true, decision: 'accept', reason: `${p.name} signs: ${fmtM(salary)}/yr x ${years}yr, starting next season.` };
   }
+  if (salary < demand * 0.85) {
+    adjustMorale(p, -3);
+    const entry = { best: Math.max(talks?.best ?? 0, salary) };
+    league.extensionTalks[playerId] = entry;
+    return { ok: true, decision: 'reject', reason: `${p.name}'s agent calls the offer insulting — that lowball won't be forgotten.` };
+  }
   const entry = { best: Math.max(talks?.best ?? 0, salary) };
   let reason;
-  if (salary >= demand * 0.85) {
-    const pref = preferredYears(p);
-    const counterSalary = extensionDemand(league, teamId, p, pref);
-    if (counterSalary !== null) {
-      entry.counter = { salary: counterSalary, years: pref };
-      reason = `${p.name} counters: ${fmtM(counterSalary)}/yr x ${pref}yr.`;
-    }
+  const pref = preferredYears(p);
+  const counterSalary = clamp(extensionDemand(league, teamId, p, pref) ?? demand, range.min, range.max);
+  if (extensionDemand(league, teamId, p, pref) !== null) {
+    entry.counter = { salary: counterSalary, years: pref };
+    reason = `${p.name} counters: ${fmtM(counterSalary)}/yr x ${pref}yr.`;
   }
   if (!reason) {
-    reason = years < preferredYears(p)
-      ? `${p.name} is looking for a longer commitment (${preferredYears(p)} years).`
+    reason = years < pref
+      ? `${p.name} is looking for a longer commitment (${pref} years).`
       : `${p.name} is holding out for more money.`;
   }
   league.extensionTalks[playerId] = entry;
   return { ok: true, decision: entry.counter ? 'counter' : 'reject', reason, counter: entry.counter };
 }
 
-// Each AI front office reviews its expiring contracts once a season, on a
-// team-specific day in the middle of the schedule (so extension news
-// trickles in rather than flooding a single day). Quality players mostly
-// extend — the same retention odds as the offseason re-sign window; when
-// the office passes instead, the player is flagged to test the market.
+// Each AI front office reviews its roster once a season, on a team-specific
+// day (so extension news trickles in rather than flooding a single day),
+// across all three extension windows. Rookie-scale extensions prioritize
+// high-potential youth; veteran extensions respect strategy (rebuilders
+// don't tie up cap in aging vets); final-year extensions use the existing
+// retention odds. When the office passes, the player is flagged to test the
+// market (and, for rookie-scale deals reaching their last year, restricted
+// free agency).
 function aiExtensions(league, rng) {
   for (const team of league.teams) {
     if (team.id === league.userTeamId) continue;
     const reviewDay = 40 + ((team.id.charCodeAt(0) * 5 + team.id.charCodeAt(1) * 11 + team.id.charCodeAt(2) * 23) % 60);
     if (league.dayIndex !== reviewDay) continue;
     for (const p of team.roster) {
-      if (!extensionEligible(p) || p.age >= 36) continue;
+      const type = extensionType(p);
+      if (!type || p.extOfferMade) continue;
+      if (p.age >= 36 && type !== 'rookie') continue;
+      if (type === 'veteran' && team.strategy === 'rebuilding' && p.age >= 28) continue;
+      if (type === 'rookie' && !(p.potential >= 68 || overall(p) >= 65)) continue;
       if (rng() >= resignChance(team, p)) { p.extTalksFailed = true; continue; }
-      const years = preferredYears(p);
-      const demand = extensionDemand(league, team.id, p, years);
-      if (demand === null) continue; // player won't extend now; the offseason window may still keep him
+      const years = type === 'rookie' ? 4 : preferredYears(p);
+      const range = extensionSalaryRange(p, type);
+      let demand = extensionDemand(league, team.id, p, years);
+      if (demand === null) continue; // player won't extend now; his window may still resolve later
+      demand = clamp(demand, range.min, range.max);
       if (payroll(team) - p.contract.salary + demand > LUXURY_TAX) continue;
-      p.extension = { salary: demand, years };
-      p.morale = Math.round(clamp((p.morale ?? 50) + 6, 0, 100) * 10) / 10;
-      if (overall(p) >= 70) {
+      p.extension = { salary: demand, years, type };
+      adjustMorale(p, 6);
+      if (overall(p) >= 70 || type === 'rookie') {
         pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} agrees to a ${years}-year, ${fmtM(demand)}/yr extension with the ${team.city} ${team.name}.` });
       }
     }
@@ -1200,6 +1300,10 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   const team = getTeam(league, teamId);
   const p = league.freeAgents.find((x) => x.id === playerId);
   if (!p) return { ok: false, error: 'That player is no longer a free agent.' };
+  if (p.restrictedFA && p.formerTeamId !== teamId) {
+    const formerTeam = getTeam(league, p.formerTeamId);
+    return { ok: false, error: `${p.name} is a restricted free agent — his rights remain with the ${formerTeam.city} ${formerTeam.name} unless they decline to match an offer sheet.` };
+  }
   if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
   const exception = signingException(league, teamId, salary);
   if (!exception) {
@@ -1240,6 +1344,10 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
     salary: salary ?? askingPrice(p),
     years: years ?? clamp(Math.round(gauss(2.5, 1)), 1, 4),
   };
+  delete p.extOfferMade;
+  p.restrictedFA = false;
+  p.offerSheetPending = false;
+  delete p.formerTeamId;
   league.freeAgents.splice(idx, 1);
   team.roster.push(p);
   if (league.negotiations?.[playerId] && teamId !== league.userTeamId) {
@@ -1249,6 +1357,28 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   // a star changing teams in free agency is a headline
   pushNews(league, { day: 0, category: 'signing', major: overall(p) >= 80, teamIds: [team.id], text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
   return true;
+}
+
+// User matches an offer sheet on his own restricted free agent, keeping him
+// at the offer's salary/years instead of losing him to the bidding team.
+export function matchOfferSheet(league, playerId) {
+  const idx = (league.offerSheets || []).findIndex((s) => s.playerId === playerId && s.formerTeamId === league.userTeamId);
+  if (idx === -1) return { ok: false, error: 'No offer sheet to match for that player.' };
+  const sheet = league.offerSheets[idx];
+  const team = getTeam(league, league.userTeamId);
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
+  const p = league.freeAgents.find((x) => x.id === playerId);
+  if (!p) return { ok: false, error: 'That player is no longer available.' };
+  p.contract = { salary: sheet.salary, years: sheet.years };
+  delete p.extOfferMade;
+  p.restrictedFA = false;
+  p.offerSheetPending = false;
+  delete p.formerTeamId;
+  league.freeAgents = league.freeAgents.filter((x) => x.id !== playerId);
+  team.roster.push(p);
+  league.offerSheets.splice(idx, 1);
+  pushNews(league, { day: 0, category: 'signing', major: true, teamIds: [team.id], text: `The ${team.city} ${team.name} match the offer sheet and retain ${p.name} (${fmtM(sheet.salary)}/yr x ${sheet.years}yr).` });
+  return { ok: true };
 }
 
 // Snapshots a player's cumulative season stats against the team he's about

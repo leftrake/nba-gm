@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, extensionEligible, offerExtension } from '../engine/league.js';
+import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, offerExtension } from '../engine/league.js';
+import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
-import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
+import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
 
 // Visual cap breakdown: each contract as a proportional block colored by
@@ -222,10 +223,16 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   const toggleExtend = (p) => {
     if (extendingId === p.id) { setExtendingId(null); return; }
     const counter = extTalks[p.id]?.counter;
+    const type = extensionType(p);
+    const range = extensionSalaryRange(p, type);
     setExtendingId(p.id);
-    setExtSalaryM((counter ? counter.salary : askingPrice(p)) / 1e6);
-    setExtYears(counter ? counter.years : 3);
+    const defaultSalary = counter ? counter.salary : type === 'rookie' ? range.max : askingPrice(p);
+    setExtSalaryM(clampM(defaultSalary, range) / 1e6);
+    setExtYears(counter ? counter.years : type === 'rookie' ? 4 : 3);
   };
+
+  // Clamp a salary (in dollars) into an extension type's allowed range.
+  const clampM = (salary, range) => Math.min(Math.max(salary, range.min), range.max);
 
   const offerExt = (p, salM, yrs) => {
     const res = offerExtension(league, teamId, p.id, Math.round(salM * 10) * 100_000, yrs);
@@ -577,6 +584,8 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                   </td>
                 </tr>
               )}
+              {(() => { const extType = extensionType(p); return (
+              <>
               <tr className={posStripe(p)}>
                 <td>{isUser ? <OvrArc value={overall(p)} /> : <Ovr p={p} league={league} fogged={!isUser} />}</td>
                 <td><Pot p={p} league={league} fogged={!isUser} /></td>
@@ -597,18 +606,31 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     <span className="tag" style={{ color: 'var(--green)' }} title={`Extension starts when the current deal ends: ${money(p.extension.salary)}/yr × ${p.extension.years}`}>
                       EXT ✓
                     </span>
-                  ) : p.contract?.years === 1 ? (
-                    <span className="tag" style={{ color: 'var(--accent)' }} title="Entering the final year of his contract — extension-eligible">
+                  ) : extType === 'rookie' ? (
+                    <span className="tag" style={{ color: 'var(--red)', fontWeight: 'bold' }} title={`Rookie-scale extension window — capped at ${money(rookieMax(p))}/yr. ${extensionWindowLabel('rookie')}`}>
+                      RFX ELIGIBLE
+                    </span>
+                  ) : extType === 'final' ? (
+                    <span className="tag" style={{ color: 'var(--accent)' }} title={extensionWindowLabel('final')}>
                       EXPIRING
+                    </span>
+                  ) : extType === 'veteran' ? (
+                    <span className="tag" title={extensionWindowLabel('veteran')}>
+                      EXT
                     </span>
                   ) : null}
                 </td>
                 {isUser && (
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {canExtend && extensionEligible(p) && (
+                    {canExtend && extType && (
                       <button className="btn small" onClick={() => toggleExtend(p)}>
                         {extendingId === p.id ? 'Close' : extTalks[p.id]?.counter ? 'Counter…' : 'Extend…'}
                       </button>
+                    )}
+                    {!canExtend && extType && (
+                      <span style={{ color: 'var(--muted)', fontSize: 11 }} title="Extensions can only be negotiated during the regular season">
+                        {extType === 'rookie' ? 'RFX' : extType === 'veteran' ? 'EXT' : 'EXP'} — offseason
+                      </span>
                     )}
                     {' '}
                     <button
@@ -635,17 +657,24 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                   )}
                 </td>
               </tr>
-              {extendingId === p.id && canExtend && (
+              {extendingId === p.id && canExtend && (() => {
+                const range = extensionSalaryRange(p, extType);
+                return (
                 <tr>
                   <td colSpan={17} style={{ background: 'var(--bg)' }}>
+                    <div style={{ padding: '6px 4px 0', color: 'var(--muted)', fontSize: 12 }}>
+                      {extensionWindowLabel(extType)}
+                      {extType === 'rookie' && <> Rookie max: {money(rookieMax(p))}/yr.</>}
+                      {extType === 'veteran' && <> Range: {money(range.min)}–{money(range.max)}/yr (±20% of current salary).</>}
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
                       <span style={{ color: 'var(--muted)' }}>Market rate: {money(askingPrice(p))}/yr</span>
                       <label>
                         Salary ($M):{' '}
                         <input
                           type="number"
-                          min={MIN_SALARY / 1e6}
-                          max={MAX_SALARY / 1e6}
+                          min={range.min / 1e6}
+                          max={range.max / 1e6}
                           step={0.5}
                           value={extSalaryM}
                           onChange={(e) => setExtSalaryM(Number(e.target.value))}
@@ -677,7 +706,10 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     )}
                   </td>
                 </tr>
-              )}
+                );
+              })()}
+              </>
+              ); })()}
               </React.Fragment>
             ))}
           </tbody>

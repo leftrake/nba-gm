@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException } from '../engine/league.js';
+import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet } from '../engine/league.js';
 import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
 import { POSITIONS } from '../engine/lineup.js';
 import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
@@ -98,8 +98,61 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     .sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul)
     .slice(0, 50);
 
+  const myRfas = league.freeAgents.filter((p) => p.restrictedFA && p.formerTeamId === team.id);
+  const offerSheets = league.offerSheets || [];
+
+  const matchSheet = (p) => {
+    const res = matchOfferSheet(league, p.id);
+    setMessage(res.ok
+      ? { type: 'ok', text: `${p.name} re-signed — offer sheet matched.` }
+      : { type: 'err', text: res.error });
+    commit();
+  };
+
   return (
     <div className="panel">
+      {myRfas.length > 0 && (
+        <div style={{ marginBottom: 14, padding: 10, border: '1px solid var(--accent)', borderRadius: 6 }}>
+          <h3 style={{ marginTop: 0 }}>Your Restricted Free Agents</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Asking</th><th>Status</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {myRfas.map((p) => {
+                const sheet = offerSheets.find((s) => s.playerId === p.id);
+                const roundsLeft = sheet ? sheet.deadlineRound + 1 - league.faDaysLeft : null;
+                return (
+                  <tr key={p.id}>
+                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                    <td>{p.pos}</td>
+                    <td className="num">{p.age}</td>
+                    <td className="num">{money(askingPrice(p))}</td>
+                    <td>
+                      {sheet ? (
+                        <span style={{ color: 'var(--red)' }}>
+                          Offer sheet: {money(sheet.salary)}/yr x {sheet.years}yr — {roundsLeft > 0 ? `match within ${roundsLeft} round${roundsLeft === 1 ? '' : 's'} or lose him` : 'last round to match'}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--muted)' }}>On the open market — no offer sheets yet</span>
+                      )}
+                    </td>
+                    <td>
+                      {sheet && (
+                        <button className="btn small" disabled={team.roster.length >= ROSTER_MAX} onClick={() => matchSheet(p)}>
+                          Match Offer
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
       <h2>Free Agents</h2>
       <p style={{ marginBottom: 10, color: 'var(--muted)' }}>
         Cap room: <b style={{ color: room > 0 ? 'var(--green)' : 'var(--red)' }}>{money(room)}</b> · Roster: {team.roster.length}/{ROSTER_MAX}

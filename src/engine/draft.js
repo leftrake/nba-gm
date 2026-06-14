@@ -12,7 +12,12 @@ import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } f
 // ranges and grades, never true numbers.
 
 export const DRAFT_ROUNDS = 2;
-export const ROOKIE_YEARS = 3;
+
+// 1st-round picks get a 4-year rookie scale deal (so an "RFX" extension in
+// year 3 or 4 is meaningful); 2nd-rounders sign for 3.
+export function rookieContractYears(pick) {
+  return pick <= 30 ? 4 : 3;
+}
 const CLASS_SIZE = 68; // 60 get drafted; the rest go to free agency
 
 // NBA lottery odds (chances out of 1000) for the 14 lottery seats, worst record first
@@ -138,7 +143,7 @@ export function makeDraftPick(league, prospectId) {
   p.draftRound = pick <= 30 ? 1 : 2;
   p.draftPick = pick;
   if (team.roster.length < ROSTER_MAX) {
-    p.contract = { salary: rookieSalary(pick), years: ROOKIE_YEARS };
+    p.contract = { salary: rookieSalary(pick), years: rookieContractYears(pick) };
     team.roster.push(p);
   } else {
     // no roster spot — the pick goes unsigned and hits free agency
