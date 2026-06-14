@@ -15,6 +15,7 @@ import AllStarScreen from './components/AllStarScreen.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
+import Scouting from './components/Scouting.jsx';
 import FantasyDraft from './components/FantasyDraft.jsx';
 import Legacy from './components/Legacy.jsx';
 import Playoffs from './components/Playoffs.jsx';
@@ -278,6 +279,7 @@ export default function App() {
     ['stats', 'Stats'],
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
+    ...(league.phase === 'offseason' ? [['scouting', 'Scouting']] : []),
     ['draft', 'Draft'],
     ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
     ['freeagency', 'Free Agency'],
@@ -429,6 +431,7 @@ export default function App() {
           />
         )}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} prefill={tradePrefill} />}
+        {screen === 'scouting' && <Scouting league={league} commit={commit} openPlayer={openPlayer} />}
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'fantasydraft' && <FantasyDraft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}

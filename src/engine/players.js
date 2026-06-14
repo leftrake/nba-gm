@@ -2,6 +2,7 @@ import { rand, randInt, pick, gauss, clamp } from './rng.js';
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { initMorale } from './morale.js';
 import { NATIONALITIES, NATIONALITY_W } from './names.js';
+import { assignBackstory, durabilityAdjust, adjustGrowthDelta, adjustRatingDelta } from './backstory.js';
 
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
@@ -178,6 +179,7 @@ export function generatePlayer(rng = rand, opts = {}) {
 
   const id = nextPlayerId++;
   const country = pickCountry(rng);
+  const backstory = assignBackstory(rng);
   const p = {
     id,
     name: `${pick(country.firstNames, rng)} ${pick(country.lastNames, rng)}`,
@@ -197,8 +199,13 @@ export function generatePlayer(rng = rand, opts = {}) {
     },
     stamina: generateStamina(pos, age, rng),
     condition: 100, // game-day freshness, managed by the league's day loop
-    durability: generateDurability(rng),
+    durability: Math.round(clamp(generateDurability(rng) + durabilityAdjust(backstory), 25, 99)),
     injury: null, // { type, tier, gamesLeft } while hurt — see engine/injuries.js
+    // Hidden personality archetype — see engine/backstory.js. `scout` tracks
+    // pre-draft/pre-roster scouting investment (engine/scoutingTrips.js).
+    backstory,
+    backstoryRevealed: false,
+    scout: { watched: 0 },
     morale: initMorale(id), // 0-100, see engine/morale.js
     moraleLowStreak: 0,
     tradeDemand: false,
@@ -356,8 +363,10 @@ export function developPlayer(p, rng = rand) {
   } else {
     delta = gauss(-3.5 - (p.age - 34) * 0.6, 1.0, rng); // falling off the cliff
   }
+  delta = adjustGrowthDelta(p, delta, room, rng);
   for (const key of Object.keys(p.ratings)) {
     let d = delta + gauss(0, 1.2, rng);
+    d = adjustRatingDelta(p, d, key, room, rng);
     if (d > 0 && room <= 0) d = 0; // the ceiling is a ceiling
     p.ratings[key] = Math.round(clamp(p.ratings[key] + d, 25, 99));
   }

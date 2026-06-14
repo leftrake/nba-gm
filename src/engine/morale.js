@@ -22,6 +22,7 @@ import { clamp, gauss, makeRng } from './rng.js';
 import { overall } from './players.js';
 import { tradeValue, validateTrade, executeTrade } from './trade.js';
 import { pushNews } from './save.js';
+import { lossMoraleMult, legendTeammateBonus } from './backstory.js';
 
 // Seeded off the player's id (not the league rng) so adding morale doesn't
 // shift the random sequence everything else in player generation draws from.
@@ -111,13 +112,17 @@ export function dailyMoraleUpdate(league, results) {
     const info = byTeam.get(team.id);
     const turmoil = team.turmoil ?? 0;
     const demandCount = team.roster.filter((p) => p.tradeDemand).length;
+    const legendBonus = legendTeammateBonus(team);
     for (const p of team.roster) {
       const ovr = overall(p);
       const caresWin = caresAboutWinning(p);
       const caresRole = 1 - caresWin * 0.6;
       let m = p.morale ?? 50;
       if (info) {
-        m += (info.won ? 0.15 : -0.15) * (0.4 + caresWin);
+        const resultDelta = (info.won ? 0.15 : -0.15) * (0.4 + caresWin);
+        // "Busted prospect" types sour faster on losers; "family provider"
+        // types stay loyal to teams that pay them well — see backstory.js.
+        m += info.won ? resultDelta : resultDelta * lossMoraleMult(p);
         const line = info.box.find((l) => l.playerId === p.id);
         const min = line?.min ?? 0;
         if (min > 0) {
@@ -127,6 +132,7 @@ export function dailyMoraleUpdate(league, results) {
       }
       m -= turmoil * 0.01;
       m -= demandCount * 0.02;
+      m += legendBonus; // steady locker room from a long-tenured "one city legend"
       m += (50 - m) * 0.003; // gentle drift back toward neutral
       setMorale(p, m);
     }

@@ -1,6 +1,7 @@
 import { rand, gauss, clamp } from './rng.js';
 import { overall, ftRating, supportedMinutes } from './players.js';
 import { moraleRatingMod } from './morale.js';
+import { clutchMod } from './backstory.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, playerFit, isInjured, minutesCap } from './lineup.js';
 
 // A team's game rotation: the saved lineup when it's legal, otherwise a
@@ -108,6 +109,8 @@ function gamePlayer({ p, min, slot }, rng) {
     // arriving worn down (heavy recent minutes) costs ratings all night
     condPenalty: (100 - (p.condition ?? 100)) * 0.2,
     ftPct: clamp(0.465 + ftRating(p) * 0.005, 0.48, 0.95),
+    // small make-probability bump in clutch situations for some backstories
+    clutchMod: clutchMod(p),
     wIns: Math.pow(Math.max(r.inside - 25, 5), 2),
     wMid: Math.pow(Math.max(r.mid - 25, 5), 2) * 0.5,
     wThree: Math.pow(Math.max(r.three - 25, 5), 2) * 1.05,
@@ -265,7 +268,9 @@ function maybeAssist(off, shooter, type, rng) {
 }
 
 // One offensive possession. Mutates box-score lines, returns points scored.
-function playPossession(off, def, home, rng) {
+// `clutch` is true in the final two minutes of the 4th or any OT — see
+// backstory.js's clutchMod for the shooters this affects.
+function playPossession(off, def, home, rng, clutch) {
   // turnover before a shot gets up?
   const toP = clamp(0.125 + (def.def - off.pass) * 0.0012, 0.07, 0.2);
   if (rng() < toP) {
@@ -286,14 +291,14 @@ function playPossession(off, def, home, rng) {
     const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
     const { made, lastMissed } = shootFreeThrows(shooter, 2, rng);
     if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
-    if (lastMissed && offenseRebounds(off, def, rng)) return made + playShots(off, def, home, rng);
+    if (lastMissed && offenseRebounds(off, def, rng)) return made + playShots(off, def, home, rng, clutch);
     return made;
   }
-  return playShots(off, def, home, rng);
+  return playShots(off, def, home, rng, clutch);
 }
 
 // Shot attempts until the possession ends (score, defensive board, FTs).
-function playShots(off, def, home, rng) {
+function playShots(off, def, home, rng, clutch) {
   const defAdj = (def.def - 58) * 0.0035;
   let pts = 0;
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -307,6 +312,7 @@ function playShots(off, def, home, rng) {
     else if (type === 'mid') { makeP = 0.412 + (shooter.mid - 58) * 0.0035 - defAdj; shotPts = 2; foulP = 0.06; }
     else { makeP = 0.338 + (shooter.three - 58) * 0.003 - defAdj; shotPts = 3; foulP = 0.013; }
     if (home) makeP += 0.012;
+    if (clutch) makeP += shooter.clutchMod;
 
     const made = rng() < clamp(makeP, 0.12, 0.85);
     const fouled = rng() < foulP;
@@ -449,11 +455,12 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     // anyone who picks up his 6th foul leaves the floor before the next play
     for (let k = 0; k < possEach; k++) {
       const rem = remStart - (minutes * (k + 1)) / Math.max(possEach, 1);
-      const hp = playPossession(h, a, true, rng);
+      const clutch = period >= 3 && rem <= 2.05;
+      const hp = playPossession(h, a, true, rng, clutch);
       homeScore.pts += hp;
       track(0, hp, rem);
       a = replaceFouledOut(a, awayPlayers, rng);
-      const ap = playPossession(a, h, false, rng);
+      const ap = playPossession(a, h, false, rng, clutch);
       awayScore.pts += ap;
       track(1, ap, rem);
       h = replaceFouledOut(h, homePlayers, rng);

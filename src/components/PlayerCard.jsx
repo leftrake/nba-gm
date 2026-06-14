@@ -4,6 +4,7 @@ import { durabilityNote, ratingRow, posLabel, similarPlayers } from '../engine/p
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
+import { personalityNote, scoutBackstoryNote } from '../engine/backstory.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
 import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, PlayerLink, Origin } from './shared.jsx';
 
@@ -251,6 +252,12 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
             ⚕ Scouting note: {durabilityNote(p)}.
           </p>
         )}
+
+        <p style={{ margin: '10px 0', color: 'var(--muted)' }}>
+          {p.backstoryRevealed
+            ? <>📰 {scoutBackstoryNote(p)}</>
+            : <>Personality: comes across as {personalityNote(p)}.</>}
+        </p>
 
         <h3>Ratings {fogged && <span style={{ color: 'var(--muted)', textTransform: 'none', letterSpacing: 0 }}>(scouted — ranges tighten with experience)</span>}</h3>
         {[...RATINGS, ['stamina', 'Stamina']].map(([key, label]) => {

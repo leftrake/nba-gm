@@ -25,14 +25,15 @@ import {
   createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, payroll, projectedPayroll,
 } from '../src/engine/league.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
-import { overall } from '../src/engine/players.js';
+import { overall, salaryFor } from '../src/engine/players.js';
+import { askingPriceMult } from '../src/engine/backstory.js';
 import { autoLineup, lineupWarnings } from '../src/engine/lineup.js';
 import { getTeamPicks, FUTURE_DRAFTS } from '../src/engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, APRON } from '../src/data/teams.js';
 import { issueDirectives, generateOwner, computeBudget, computeRevenue, processOwnerSeason, playoffRoundReached } from '../src/engine/owner.js';
 import { makeRng } from '../src/engine/rng.js';
 
-const SEASONS = Number(process.argv[2]) || 3;
+const SEASONS = Number(process.argv[2]) || 4;
 const SEED = Number(process.argv[3]) || 20260611;
 const MIN_GP = 50; // qualifying bar for per-game leader stats
 
@@ -67,6 +68,12 @@ console.log(`Seed ${SEED} — ${SEASONS} season(s), opening mean overall ${basel
 let firstSeasonInjuryRate = null;
 let sawTaxTeam = false;
 let sawUnderCapTeam = false;
+
+// Backstory tracking (engine/backstory.js): undrafted "gem" first contracts,
+// "bust" development growth, and AI scouting spend — accumulated across
+// every simulated season below.
+const gemSignings = []; // salary / salaryFor(overall, age) for each first FA contract
+const devGrowth = { bust: [], other: [] }; // overall deltas for age<25, room>0 players
 
 for (let s = 0; s < SEASONS; s++) {
   let totalPts = 0;
@@ -203,7 +210,34 @@ for (let s = 0; s < SEASONS; s++) {
   // play out the rest of the league year
   let guard = 0;
   while (league.phase === 'playoffs' && guard++ < 500) simPlayoffGame(league);
+
+  // Scouting trips (engine/scoutingTrips.js): the finals-win branch of
+  // simPlayoffGame seeds league.scouting and runs aiScoutTurn for every AI
+  // team before advanceOffseason consumes the prospect pool (initDraft clears
+  // league.scouting), so check the spend right here.
+  if (league.scouting) {
+    for (const team of league.teams) {
+      if (team.id === league.userTeamId) continue;
+      const left = league.scouting.budgets[team.id] ?? 0;
+      checkBool(`${team.id} AI scouting budget mostly spent`, left < 50_000, `$${(left / 1000).toFixed(0)}K left`);
+    }
+  }
+
+  // Snapshot growth-eligible players (age < 25, room to grow) before
+  // development so bust vs. non-bust growth can be compared after.
+  const devBefore = new Map();
+  for (const p of allPlayers()) {
+    if (p.age < 25 && p.potential > overall(p)) devBefore.set(p.id, { ovr: overall(p), backstory: p.backstory });
+  }
+
   advanceOffseason(league);
+
+  for (const p of allPlayers()) {
+    const before = devBefore.get(p.id);
+    if (!before) continue;
+    const delta = overall(p) - before.ovr;
+    (before.backstory === 'bust' ? devGrowth.bust : devGrowth.other).push(delta);
+  }
 
   console.log('  Draft Picks');
   const teamIds = new Set(league.teams.map((t) => t.id));
@@ -232,6 +266,16 @@ for (let s = 0; s < SEASONS; s++) {
   guard = 0;
   while (league.phase === 'freeagency' && guard++ < 50) simFreeAgencyDay(league);
   if (league.phase !== 'regular') throw new Error(`stuck in phase ${league.phase}`);
+
+  // "Undrafted gem" pricing (engine/backstory.js askingPriceMult): a gem who
+  // goes undrafted and signs as a free agent the same year (exp === 0, no
+  // draftYear) should land below market value on that first contract most of
+  // the time.
+  for (const p of allPlayers()) {
+    if (p.backstory === 'gem' && p.draftYear == null && p.exp === 0 && p.contract) {
+      gemSignings.push(p.contract.salary / salaryFor(overall(p), p.age));
+    }
+  }
 
   console.log('  Free Agency');
   const unsigned70 = league.freeAgents.filter((p) => overall(p) >= 70);
@@ -336,6 +380,27 @@ console.log('\nOwnership system (6 seasons, small-market low-patience vs large-m
 console.log('\nLeague-wide (across all seasons)');
 checkBool('at least one team enters the luxury tax', sawTaxTeam);
 checkBool('at least one team sits $30M+ under the cap', sawUnderCapTeam);
+
+console.log('\nBackstories (engine/backstory.js)');
+// askingPrice's gem discount (askingPriceMult) is the mechanism behind
+// "undrafted gems sign below market value" — most undrafted gems are
+// low-overall rookies whose market salary already sits at the MIN_SALARY
+// floor, where a 15% discount has no visible effect, so this checks the
+// pricing rule directly rather than relying on rare non-floored signings.
+check('gem asking-price discount while unrevealed', askingPriceMult({ backstory: 'gem', backstoryRevealed: false }), 0.7, 0.9);
+check('gem asking-price discount clears once revealed', askingPriceMult({ backstory: 'gem', backstoryRevealed: true }), 1, 1);
+if (gemSignings.length > 0) {
+  const underpriced = gemSignings.filter((r) => r < 0.9).length;
+  console.log(`    ----  undrafted gem first-contract signings below market: ${underpriced}/${gemSignings.length} (informational — small/floor-dominated sample)`);
+} else {
+  console.log('    ----  no undrafted "gem" first-contract signings this run');
+}
+if (devGrowth.bust.length > 0 && devGrowth.other.length > 0) {
+  check('bust avg development growth below non-bust',
+    mean(devGrowth.other) - mean(devGrowth.bust), 0.02, 5);
+} else {
+  console.log('    ----  not enough age<25 development data to compare bust growth');
+}
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

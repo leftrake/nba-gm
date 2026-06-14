@@ -35,7 +35,7 @@ export function rookieSalary(pickNumber) {
 // the top, a band of future starters, and role players the rest of the way
 // down. Prospects arrive far below their ceiling — the younger they are,
 // the wider the gap — and grow into it via developPlayer.
-function generateDraftClass(rng) {
+export function generateDraftClass(rng) {
   const prospects = [];
   // Sized so the league's talent pyramid holds steady year over year: more
   // superstar/starter prospects than this and star counts inflate the
@@ -95,11 +95,18 @@ export function initDraft(league, rng) {
     return p ? p.teamId : originalTeamId;
   };
 
+  // The scouting phase (engine/scoutingTrips.js) pre-generates this draft's
+  // prospect pool when the offseason starts, so scouting progress carries
+  // straight through to the big board. Fall back to a fresh class for saves
+  // that skipped that phase.
+  const prospects = league.scouting?.prospects ?? generateDraftClass(rng);
+  league.scouting = null;
+
   league.draft = {
     season: draftSeason,
     order: [...round1.map((id) => ownerOf(1, id)), ...round2.map((id) => ownerOf(2, id))],
     pickIndex: 0,
-    prospects: generateDraftClass(rng),
+    prospects,
     results: [], // { pick, round, teamId, playerId, playerName, pos }
   };
 

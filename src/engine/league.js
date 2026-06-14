@@ -23,6 +23,8 @@ import {
   snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace,
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
 } from './legacy.js';
+import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
+import { initScoutingPhase } from './scoutingTrips.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -792,6 +794,9 @@ export function simPlayoffGame(league) {
       bumpRosterMorale(champ, 10);
       pushNews(league, { day: league.dayIndex, category: 'league', major: true, teamIds: [champ.id], text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
       league.phase = 'offseason';
+      // Pre-draft scouting window opens: seed the prospect pool and let the
+      // AI spend its scouting budgets before the user advances the offseason.
+      initScoutingPhase(league, makeRng(league.seed + league.season * 70_007 + 555_001));
     }
   }
   return played;
@@ -929,6 +934,7 @@ export function advanceOffseason(league) {
       snapshotRatings(p, league.season); // progression history: ratings before this summer's development
       const oldRow = ratingRow(p);
       developPlayer(p, rng);
+      maybeRevealBackstory(league, p, team); // backstory.js: reputation emerges after 2 seasons
       const entry = isUserTeam
         ? { id: p.id, name: p.name, pos: p.pos, age: p.age, old: oldRow, now: ratingRow(p) }
         : null;
@@ -1261,7 +1267,9 @@ function finalizeFreeAgency(league) {
 export function askingPrice(p) {
   const base = salaryFor(overall(p), p.age);
   const discount = Math.pow(0.875, p.faRoundsUnsigned || 0);
-  return clamp(Math.round((base * discount) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
+  // "Undrafted gem" types are systematically underpriced until their
+  // reputation becomes public — see backstory.js
+  return clamp(Math.round((base * discount * askingPriceMult(p)) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
 }
 
 // Deterministic per-team noise in [0,1), independent of the rng sequence so
@@ -1421,7 +1429,8 @@ export function extensionDemand(league, teamId, p, years) {
   if (p.tradeDemand) return null; // a disgruntled player won't commit long-term to this team
   const winPct = currentWinPct(team);
   if (overall(p) >= 78 && winPct < 0.45 && faNoise(p.id, 7) < 0.6) return null;
-  return demandSalary(team, p, years, winPct);
+  // "Family provider" types sign extensions cheaper — see backstory.js
+  return Math.round(demandSalary(team, p, years, winPct) * extensionDemandMult(p));
 }
 
 // User-facing extension offer. The player evaluates it like a free-agency

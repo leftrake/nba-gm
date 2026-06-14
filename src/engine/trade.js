@@ -3,7 +3,8 @@ import { getTeam, payroll, recordSeasonStint, TRADE_DEADLINE_DAY } from './leagu
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews } from './save.js';
 import { clamp } from './rng.js';
-import { bumpTurmoil } from './morale.js';
+import { bumpTurmoil, adjustMorale } from './morale.js';
+import { reputationMult, tradedAwayPenalty } from './backstory.js';
 import { pickValue, pickLabel, violatesStepien } from './draftPicks.js';
 import { teamNeeds } from './strategy.js';
 import { applyTradeApprovalEffect } from './owner.js';
@@ -73,6 +74,8 @@ export function tradeValue(p, strategy, team) {
       if (better >= 2) v *= 0.9; // already two deep at this position
     }
   }
+  // once a backstory is public, AI valuations account for it (backstory.js)
+  v *= reputationMult(p);
   return Math.round(v);
 }
 
@@ -172,6 +175,9 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
     p.moraleLowStreak = 0;
     p.morale = Math.round(clamp((p.morale ?? 50) * 0.6 + 20, 0, 100) * 10) / 10;
   }
+  // "One city legend" types take a real morale hit leaving their draft team
+  for (const p of outA) adjustMorale(p, tradedAwayPenalty(p, a.id));
+  for (const p of outB) adjustMorale(p, tradedAwayPenalty(p, b.id));
   const picksA = picksAIds.map((id) => league.draftPicks.find((p) => p.id === id)).filter(Boolean);
   const picksB = picksBIds.map((id) => league.draftPicks.find((p) => p.id === id)).filter(Boolean);
   for (const pick of picksA) pick.teamId = teamBId;

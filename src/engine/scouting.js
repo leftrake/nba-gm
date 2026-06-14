@@ -25,9 +25,17 @@ function noise01(playerId, season, salt) {
 
 // Rookies are the biggest unknowns, veterans are a settled book. Falls back
 // to age (entry around 19) for players from saves predating the exp field.
+// Scouting trips (engine/scoutingTrips.js) tighten this further: each "watch"
+// assignment chips away at the uncertainty, and an "extended watch" (3
+// assignments) collapses it to a full reveal. "International star" prospects
+// carry an extra point of uncertainty pre-draft — they're harder to scout
+// accurately from overseas.
 export function scoutUncertainty(p) {
   const exp = p.exp ?? Math.max(0, p.age - 19);
-  return Math.round(clamp(6 - exp * 0.7, 1, 6));
+  let u = 6 - exp * 0.7;
+  if (p.backstory === 'international') u += 1;
+  u -= 1.5 * (p.scout?.watched ?? 0);
+  return Math.round(clamp(u, 0, 6));
 }
 
 // The true value always falls inside the range, but at a deterministic
