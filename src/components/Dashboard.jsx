@@ -303,7 +303,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
       <div className="panel">
         <h2>Top Stories</h2>
         {league.news.slice(0, 8).map((n, i) => (
-          <NewsItem n={n} openTeam={openTeam} key={i} />
+          <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />
         ))}
         <p style={{ marginTop: 10 }}>
           <a className="team-link" style={{ color: 'var(--team-color)' }} onClick={openNews}>

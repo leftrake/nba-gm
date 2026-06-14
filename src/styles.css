@@ -198,6 +198,13 @@ button.btn.small { padding: 4px 10px; font-size: 12px; }
 }
 .news-item.major .news-when { font-weight: 400; }
 
+/* stories involving the user's team get a colored accent in their team color */
+.news-item.your-team {
+  border-left: 3px solid var(--team-color, var(--accent));
+  padding-left: 9px;
+}
+.news-item.your-team:not(.major) { color: var(--text); }
+
 .news-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .news-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .news-tabs button {

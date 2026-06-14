@@ -25,10 +25,11 @@ function newsWhen(n) {
   return PHASE_LABELS[n.phase] ?? '';
 }
 
-export function NewsItem({ n, openTeam }) {
+export function NewsItem({ n, openTeam, userTeamId }) {
   const when = newsWhen(n);
+  const yours = userTeamId != null && (n.teamIds || []).includes(userTeamId);
   return (
-    <div className={`news-item${n.major ? ' major' : ''}`}>
+    <div className={`news-item${n.major ? ' major' : ''}${yours ? ' your-team' : ''}`}>
       <span className="news-text"><NewsText text={n.text} openTeam={openTeam} /></span>
       {when && <span className="news-when">{when}</span>}
     </div>
@@ -78,7 +79,7 @@ export default function News({ league, openTeam }) {
           <p style={{ color: 'var(--muted)' }}>No stories match these filters yet.</p>
         )}
         {feed.map((n, i) => (
-          <NewsItem n={n} openTeam={openTeam} key={i} />
+          <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />
         ))}
       </div>
 
@@ -86,7 +87,7 @@ export default function News({ league, openTeam }) {
         <div className="panel" key={season}>
           <h2>{season} · Biggest Stories</h2>
           {items.map((n, i) => (
-            <NewsItem n={n} openTeam={openTeam} key={i} />
+            <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />
           ))}
         </div>
       ))}

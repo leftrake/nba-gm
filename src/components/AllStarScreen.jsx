@@ -6,8 +6,9 @@ import { PlayerLink, TeamLink } from './shared.jsx';
 function PlayerRow({ league, playerId, teamId, openPlayer, openTeam, extra }) {
   const found = getPlayerById(league, playerId);
   if (!found) return null;
+  const isUser = teamId === league.userTeamId;
   return (
-    <div className="result-row">
+    <div className="result-row" style={isUser ? { background: 'var(--panel2)' } : {}}>
       <span>
         <PlayerLink p={found.player} openPlayer={openPlayer} /> · <TeamLink team={getTeam(league, teamId)} openTeam={openTeam}>{teamId}</TeamLink>
       </span>
@@ -76,8 +77,9 @@ export default function AllStarScreen({ league, openPlayer, openTeam, onContinue
             {cat.leaders.map((l, i) => {
               const found = getPlayerById(league, l.playerId);
               if (!found) return null;
+              const isUser = l.teamId === league.userTeamId;
               return (
-                <div className="result-row" key={l.playerId}>
+                <div className="result-row" key={l.playerId} style={isUser ? { background: 'var(--panel2)' } : {}}>
                   <span>{i + 1}. <PlayerLink p={found.player} openPlayer={openPlayer} /> · <TeamLink team={getTeam(league, l.teamId)} openTeam={openTeam}>{l.teamId}</TeamLink></span>
                   <span className="num">{l.value.toFixed(1)} {cat.unit}</span>
                 </div>
