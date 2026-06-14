@@ -6,7 +6,7 @@ import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, li
 import { scoutedOverall } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
-import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor } from './shared.jsx';
 
 // Visual cap breakdown: each contract as a proportional block colored by
 // years remaining (green = 1yr, yellow = 2-3yr, red = 4yr+), dead money as
@@ -276,6 +276,13 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               {team.wins}-{team.losses}
               <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'inherit', fontWeight: 400, marginLeft: 10 }}>#{seed} in the {team.conf}</span>
               {!isUser && <span style={{ marginLeft: 10, verticalAlign: 'middle' }}><StrategyTag team={team} /></span>}
+              <span
+                className="tag"
+                style={{ marginLeft: 10, verticalAlign: 'middle', color: turmoilColor(team.turmoil ?? 0) }}
+                title="Locker room turmoil — spikes after trades and waives, decays over time"
+              >
+                Locker Room: {turmoilLabel(team.turmoil ?? 0)}
+              </span>
             </div>
           </div>
           <select value={teamId} onChange={(e) => openTeam(e.target.value)}>
@@ -593,7 +600,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 <td>{posLabel(p)}</td>
                 <td className="num">{p.age}</td>
                 <td className="num"><Sta p={p} league={league} fogged={!isUser} /></td>
-                <td className="num"><Cond p={p} /></td>
+                <td className="num"><Cond p={p} label /></td>
                 <td><Morale p={p} /></td>
                 <td className="num">{perGame(p.stats, 'pts')}</td>
                 <td className="num">{perGame(p.stats, 'reb')}</td>

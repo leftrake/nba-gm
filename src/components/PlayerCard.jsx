@@ -101,7 +101,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <h2 style={{ fontSize: 18, textTransform: 'none', letterSpacing: 0, marginBottom: 0 }}>{p.name}</h2>
           <span style={{ color: 'var(--muted)' }}>
-            {posLabel(p)} · {p.age} yrs · {p.exp != null &&<>{p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`} · </>}{p.nationality && <><Origin p={p} full /> · </>}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
+            {posLabel(p)} · {p.age} yrs · {p.exp != null &&<>{p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`} · </>}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
           </span>
           <span style={{ flex: 1 }} />
           {team && onTradeFor && (
@@ -109,6 +109,12 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           )}
           <button className="btn small secondary" onClick={onClose}>✕</button>
         </div>
+
+        {p.nationality && (
+          <p style={{ margin: '4px 0', color: 'var(--muted)' }}>
+            <Origin p={p} full />
+          </p>
+        )}
 
         <p style={{ margin: '10px 0' }}>
           Overall: <Ovr p={p} league={league} fogged={fogged} /> · Potential: <Pot p={p} league={league} fogged={fogged} /> · Condition: <Cond p={p} /> ·{' '}
@@ -176,7 +182,8 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
             <thead>
               <tr>
                 <th>Season</th><th>Team</th><th className="num">GP</th><th className="num">MPG</th><th className="num">PPG</th>
-                <th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
+                <th className="num">RPG</th><th className="num">APG</th><th className="num">SPG</th><th className="num">BPG</th>
+                <th className="num">TOPG</th><th className="num">FG%</th><th className="num">3P%</th><th className="num">FT%</th>
               </tr>
             </thead>
             <tbody>
@@ -189,7 +196,12 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                   <td className="num">{perGame(s, 'pts')}</td>
                   <td className="num">{perGame(s, 'reb')}</td>
                   <td className="num">{perGame(s, 'ast')}</td>
+                  <td className="num">{perGame(s, 'stl')}</td>
+                  <td className="num">{perGame(s, 'blk')}</td>
+                  <td className="num">{s.tov != null ? perGame(s, 'tov') : '–'}</td>
                   <td className="num">{fgPct(s)}</td>
+                  <td className="num">{s.tpa ? ((s.tpm / s.tpa) * 100).toFixed(1) : '–'}</td>
+                  <td className="num">{s.fta ? ((s.ftm / s.fta) * 100).toFixed(1) : '–'}</td>
                 </tr>
               ))}
             </tbody>

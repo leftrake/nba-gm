@@ -1,6 +1,7 @@
 import React from 'react';
 import { overall, flagFor } from '../engine/players.js';
 import { scoutRange, scoutedOverallRange, scoutedPotential, potentialGrade } from '../engine/scouting.js';
+import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 import { TEAMS } from '../data/teams.js';
 
 function ovrClass(o) {
@@ -53,11 +54,16 @@ export function condColor(c) {
   return c >= 85 ? 'var(--green)' : c >= 70 ? '#d29922' : c >= 50 ? '#f0883e' : 'var(--red)';
 }
 
-export function Cond({ p }) {
+export function condLabel(c) {
+  return c >= 85 ? 'Fresh' : c >= 70 ? 'Good' : c >= 50 ? 'Tired' : 'Exhausted';
+}
+
+export function Cond({ p, label }) {
   const c = Math.round(p.condition ?? 100);
   return (
     <span style={{ whiteSpace: 'nowrap' }} title={`Condition ${c}% — drains with heavy minutes (worse on back-to-backs), recovers on rest days`}>
       <span style={{ color: condColor(c), fontSize: 10, verticalAlign: 'middle' }}>●</span> {c}
+      {label && <span style={{ color: 'var(--muted)', marginLeft: 4 }}>{condLabel(c)}</span>}
     </span>
   );
 }
@@ -74,12 +80,18 @@ function moraleEmoji(m) {
 
 export function Morale({ p }) {
   const m = Math.round(p.morale ?? 50);
+  const unhappy = !p.tradeDemand && (p.moraleLowStreak ?? 0) >= MORALE_WARNING_STREAK;
   return (
     <span style={{ whiteSpace: 'nowrap' }} title={`Morale ${m}/100 — rises with winning, minutes/role, playoff success and extensions; falls with losing, being underused, being shopped, and roster turmoil`}>
       <span style={{ color: moraleColor(m) }}>{moraleEmoji(m)}</span> {m}
       {p.tradeDemand && (
         <span className="tag" style={{ color: 'var(--red)', marginLeft: 4 }} title={`${p.name} has publicly demanded a trade`}>
           TRADE REQUEST
+        </span>
+      )}
+      {unhappy && (
+        <span className="tag" style={{ color: '#d29922', marginLeft: 4 }} title={`${p.name} has been unhappy for a while — a trade demand may follow if this continues`}>
+          UNHAPPY
         </span>
       )}
     </span>
@@ -119,6 +131,16 @@ export function ApprovalMeter({ value }) {
       <div style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: approvalColor(value) }} />
     </div>
   );
+}
+
+// Locker room turmoil: spikes from roster moves (trades, waives) and decays
+// slowly. Not fogged — every team's locker room mood is common knowledge.
+export function turmoilLabel(t) {
+  return t >= 1.5 ? 'Volatile' : t >= 0.5 ? 'Tense' : 'Stable';
+}
+
+export function turmoilColor(t) {
+  return t >= 1.5 ? 'var(--red)' : t >= 0.5 ? '#d29922' : 'var(--green)';
 }
 
 export function money(n) {

@@ -140,6 +140,11 @@ const TRADE_DEMAND_THRESHOLD = 28;
 const TRADE_DEMAND_STREAK = 25; // consecutive low-morale sim days
 const RESCIND_THRESHOLD = 45;
 
+// Early-warning point on the moraleLowStreak — crossing this shows an
+// "unhappy" flag in the UI well before the streak reaches TRADE_DEMAND_STREAK
+// and triggers an actual trade demand.
+export const MORALE_WARNING_STREAK = 12;
+
 // Tracks how long each star has languished below the unhappiness threshold;
 // crossing the streak triggers a public trade demand, and recovering above
 // the rescind threshold lifts one.
