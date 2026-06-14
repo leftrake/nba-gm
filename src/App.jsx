@@ -229,7 +229,7 @@ export default function App() {
   // Remember the user team's most recent game (with box scores) for the dashboard
   const trackFeatured = (results) => {
     const mine = results.find((r) => r.home === league.userTeamId || r.away === league.userTeamId);
-    if (mine) setFeaturedGame({ ...mine, day: league.dayIndex - 1 });
+    if (mine) setFeaturedGame({ ...mine, day: leagueRef.current.dayIndex - 1 });
     return mine;
   };
 
