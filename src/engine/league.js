@@ -708,7 +708,7 @@ export function initPlayoffs(league) {
   };
 }
 
-function makeRoundMatchups(seeds) {
+export function makeRoundMatchups(seeds) {
   // 1v8, 4v5, 3v6, 2v7
   const order = [[0, 7], [3, 4], [2, 5], [1, 6]];
   return order.map(([a, b]) => makeSeries(seeds[a], seeds[b]));
