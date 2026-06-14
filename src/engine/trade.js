@@ -14,6 +14,15 @@ import { applyTradeApprovalEffect } from './owner.js';
 // automatically discount hurt players without needing their own checks.
 const INJURY_VALUE_MULT = { dtd: 0.95, minor: 0.85, significant: 0.65, season: 0.4 };
 
+// Tracks the user's biggest trade "win" (received value minus given-up
+// value) for the GM legacy tracker — only trades where the user gained.
+function recordBestTrade(league, teamId, diff, text) {
+  if (teamId !== league.userTeamId) return;
+  if (diff > (league.gmLegacy.bestTrade?.valueDiff ?? 0)) {
+    league.gmLegacy.bestTrade = { season: league.season, text, valueDiff: diff };
+  }
+}
+
 // Trade value: overall matters most, youth and contract length matter too.
 // Pass a front-office strategy ('contending' | 'rebuilding' | 'retooling')
 // to value the player through that team's lens; omit it for a neutral view.
@@ -171,30 +180,33 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   bumpTurmoil(b);
   a.tradesThisSeason = (a.tradesThisSeason || 0) + 1;
   b.tradesThisSeason = (b.tradesThisSeason || 0) + 1;
+  const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
+  const tradeText = `${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`;
   if (a.owner) {
     const give = outA.reduce((s, p) => s + tradeValue(p, undefined, b), 0) + picksA.reduce((s, p) => s + pickValue(league, p, b.strategy), 0);
     const get = outB.reduce((s, p) => s + tradeValue(p, undefined, a), 0) + picksB.reduce((s, p) => s + pickValue(league, p, a.strategy), 0);
     applyTradeApprovalEffect(a, give, get);
+    recordBestTrade(league, a.id, get - give, tradeText);
   }
   if (b.owner) {
     const give = outB.reduce((s, p) => s + tradeValue(p, undefined, a), 0) + picksB.reduce((s, p) => s + pickValue(league, p, a.strategy), 0);
     const get = outA.reduce((s, p) => s + tradeValue(p, undefined, b), 0) + picksA.reduce((s, p) => s + pickValue(league, p, b.strategy), 0);
     applyTradeApprovalEffect(b, give, get);
+    recordBestTrade(league, b.id, get - give, tradeText);
   }
-  const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
   pushNews(league, {
     day: league.dayIndex,
     category: 'trade',
     teamIds: [a.id, b.id],
     // a star changing hands makes it a blockbuster
     major: [...outA, ...outB].some((p) => overall(p) >= 80),
-    text: `TRADE: ${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`,
+    text: `TRADE: ${tradeText}`,
   });
   league.tradeHistory.push({
     season: league.season,
     day: league.dayIndex,
     teamIds: [a.id, b.id],
-    text: `${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`,
+    text: tradeText,
   });
 }
 
@@ -316,6 +328,7 @@ export function executeMultiTrade(league, teamIds, sends) {
       if (dest) pick.teamId = dest.team.id;
     }
   }
+  let userDiff = null;
   for (const leg of legs) {
     bumpTurmoil(leg.team);
     if (leg.outPlayers.length || leg.outPicks.length || leg.inPlayers.length || leg.inPicks.length) {
@@ -332,6 +345,7 @@ export function executeMultiTrade(league, teamIds, sends) {
       const get = leg.inPlayers.reduce((s, p) => s + tradeValue(p, undefined, leg.team), 0)
         + leg.inPicks.reduce((s, p) => s + pickValue(league, p, leg.team.strategy), 0);
       applyTradeApprovalEffect(leg.team, give, get);
+      if (leg.team.id === league.userTeamId) userDiff = get - give;
     }
   }
 
@@ -341,6 +355,7 @@ export function executeMultiTrade(league, teamIds, sends) {
     .filter((l) => l.outPlayers.length || l.outPicks.length)
     .map((l) => `${l.team.name} send ${names(l.outPlayers, l.outPicks)}`)
     .join('; ');
+  if (userDiff != null) recordBestTrade(league, league.userTeamId, userDiff, `${summary}.`);
   pushNews(league, {
     day: league.dayIndex,
     category: 'trade',

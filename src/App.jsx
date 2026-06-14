@@ -16,6 +16,7 @@ import TradeMachine from './components/TradeMachine.jsx';
 import FreeAgency from './components/FreeAgency.jsx';
 import Draft from './components/Draft.jsx';
 import FantasyDraft from './components/FantasyDraft.jsx';
+import Legacy from './components/Legacy.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayoffPostGame from './components/PlayoffPostGame.jsx';
 import DevelopmentReport from './components/DevelopmentReport.jsx';
@@ -23,6 +24,7 @@ import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
 import GameModal from './components/BoxScore.jsx';
 import { checkSave } from './engine/save.js';
+import { readCrossSaveLegacy } from './engine/legacy.js';
 
 const SAVE_KEY = 'nba-gm-save';
 
@@ -148,6 +150,7 @@ export default function App() {
   };
 
   if (!league) {
+    const pastLegacies = readCrossSaveLegacy();
     return (
       <div className="app">
         <main>
@@ -164,6 +167,29 @@ export default function App() {
               </p>
             )}
           </div>
+          {pastLegacies.length > 0 && (
+            <div className="panel" style={{ maxWidth: 560, marginInline: 'auto', marginBottom: 16, textAlign: 'left' }}>
+              <h2>Your Legacy So Far</h2>
+              <p style={{ color: 'var(--muted)' }}>
+                {pastLegacies.length} franchise{pastLegacies.length === 1 ? '' : 's'} managed ·{' '}
+                {pastLegacies.reduce((s, l) => s + l.championships, 0)} championship{pastLegacies.reduce((s, l) => s + l.championships, 0) === 1 ? '' : 's'} ·{' '}
+                {pastLegacies.reduce((s, l) => s + l.hallOfFamers.length, 0)} Hall of Famer{pastLegacies.reduce((s, l) => s + l.hallOfFamers.length, 0) === 1 ? '' : 's'} drafted
+              </p>
+              <table>
+                <thead><tr><th>Team</th><th className="num">Seasons</th><th className="num">Titles</th><th>Best Season</th></tr></thead>
+                <tbody>
+                  {pastLegacies.map((l) => (
+                    <tr key={l.saveId}>
+                      <td>{l.teamName}</td>
+                      <td className="num">{l.seasons}</td>
+                      <td className="num">{l.championships}</td>
+                      <td>{l.bestSeasonRecord ? `${l.bestSeasonRecord.wins}-${l.bestSeasonRecord.losses} (${l.bestSeasonRecord.season})` : '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {!pendingTeamId ? (
             <div className="team-picker">
               {TEAMS.map((t) => (
@@ -256,6 +282,7 @@ export default function App() {
     ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
     ['freeagency', 'Free Agency'],
     ['playoffs', 'Playoffs'],
+    ['legacy', 'Legacy'],
     ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
     ['settings', 'Settings'],
   ];
@@ -409,6 +436,7 @@ export default function App() {
         {screen === 'postgame' && (playoffDay?.length
           ? <PlayoffPostGame league={league} played={playoffDay} onBack={() => setScreen('playoffs')} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
           : <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />)}
+        {screen === 'legacy' && <Legacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
         </div>

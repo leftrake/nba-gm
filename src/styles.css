@@ -198,6 +198,12 @@ button.btn.small { padding: 4px 10px; font-size: 12px; }
 }
 .news-item.major .news-when { font-weight: 400; }
 
+/* all-time records broken — gold accent, distinct from plain .major */
+.news-item.record-breaker {
+  border-left: 3px solid #e3c567;
+  background: color-mix(in srgb, #e3c567 10%, var(--panel2));
+}
+
 /* stories involving the user's team get a colored accent in their team color */
 .news-item.your-team {
   border-left: 3px solid var(--team-color, var(--accent));

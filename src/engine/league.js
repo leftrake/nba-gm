@@ -19,6 +19,10 @@ import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
 import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives } from './owner.js';
+import {
+  snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace,
+  evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
+} from './legacy.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -61,6 +65,19 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     offerSheets: [], // RFA offer sheets awaiting the original team's match
     extensionTalks: {}, // { [playerId]: { ... } } — in-progress extension offers
     history: [],
+    saveId: `${seed}_${Date.now()}`,
+    retiredPlayers: [], // trimmed snapshots — see engine/legacy.js
+    recordBook: { singleSeason: {}, career: {} },
+    hallOfFame: [],
+    dynasties: [],
+    teamSeasonRecords: [], // { season, teamId, wins, losses } — one row/team/season
+    recordPaceFlags: {}, // { [season]: { [playerId]: { [category]: true } } }
+    recordBreakingMoment: null,
+    gmLegacy: {
+      totalWins: 0, totalLosses: 0, championships: 0, confFinalsAppearances: 0,
+      bestSeasonRecord: null, bestTrade: null, bestDraftPick: null, bestFASigning: null,
+      draftWatchlist: [], faWatchlist: [],
+    },
   };
   if (fantasy) {
     initFantasyDraft(league, rng);
@@ -322,6 +339,8 @@ export function backfillPlayers(league) {
     if (p.tradeDemand == null) p.tradeDemand = false;
     // saves predating player season-stint tracking (mid-season trades)
     if (!p.seasonStints) p.seasonStints = [];
+    // saves predating the legacy/records system
+    if (p.championships == null) p.championships = 0;
   };
   for (const team of league.teams) team.roster.forEach(fill);
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
@@ -365,6 +384,22 @@ export function backfillPlayers(league) {
   for (const n of league.news) {
     if (!n.category) n.category = 'league';
     if (n.season == null) n.season = league.season;
+  }
+  // Saves predating the legacy/records system
+  if (!league.saveId) league.saveId = `${league.seed}_${Date.now()}`;
+  if (!league.retiredPlayers) league.retiredPlayers = [];
+  if (!league.recordBook) league.recordBook = { singleSeason: {}, career: {} };
+  if (!league.hallOfFame) league.hallOfFame = [];
+  if (!league.dynasties) league.dynasties = [];
+  if (!league.teamSeasonRecords) league.teamSeasonRecords = [];
+  if (!league.recordPaceFlags) league.recordPaceFlags = {};
+  if (league.recordBreakingMoment === undefined) league.recordBreakingMoment = null;
+  if (!league.gmLegacy) {
+    league.gmLegacy = {
+      totalWins: 0, totalLosses: 0, championships: 0, confFinalsAppearances: 0,
+      bestSeasonRecord: null, bestTrade: null, bestDraftPick: null, bestFASigning: null,
+      draftWatchlist: [], faWatchlist: [],
+    };
   }
 }
 
@@ -605,6 +640,7 @@ export function simDay(league) {
     dailyApprovalUpdate(userTeam);
     maybeOwnerInterference(league, userTeam, rng);
   }
+  if (league.dayIndex % 7 === 0) checkRecordPace(league);
   league.dayIndex += 1;
   if (league.dayIndex === TRADE_DEADLINE_DAY + 1) {
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '🔒 The trade deadline has passed. All trades are locked until the offseason.' });
@@ -830,9 +866,17 @@ export function advanceOffseason(league) {
   });
   league.seasonAwards = null;
 
+  // Every player on the champion's roster banks a championship credit —
+  // before retirements/trades reshuffle that roster.
+  if (league.playoffs?.champion) {
+    const champTeam = getTeam(league, league.playoffs.champion);
+    for (const p of champTeam.roster) p.championships = (p.championships || 0) + 1;
+  }
+
   // Captured before per-team wins/losses reset below, for the ownership system
   const ownerResult = userTeam ? {
     wins: userTeam.wins,
+    losses: userTeam.losses,
     playoffRound: playoffRoundReached(league, userTeam.id),
     champion: league.playoffs?.champion === userTeam.id,
   } : null;
@@ -907,6 +951,7 @@ export function advanceOffseason(league) {
       .map((d) => ({ ...d, years: d.years - 1 }))
       .filter((d) => d.years > 0);
     team.lastWins = team.wins; // free agents judge teams by last season's record
+    league.teamSeasonRecords.push({ season: league.season, teamId: team.id, wins: team.wins, losses: team.losses });
     team.wins = 0;
     team.losses = 0;
   }
@@ -916,10 +961,27 @@ export function advanceOffseason(league) {
   // Empty in headless all-AI sims, where no team is the user's.
   league.devReport = { season: league.season, entries: devEntries };
 
+  const newlyRetired = [];
   for (const { team, p } of retiring) {
     team.roster = team.roster.filter((x) => x.id !== p.id);
+    const snap = snapshotRetiree(p, league, team.id);
+    league.retiredPlayers.push(snap);
+    newlyRetired.push(snap);
     announceRetirement(league, p, team.id);
   }
+
+  // All-time record book, Hall of Fame, dynasties, and the GM legacy
+  // tracker — derived from this season's careerStats/history/retirees.
+  const brokenRecords = computeRecordBook(league);
+  for (const b of brokenRecords) {
+    const { text, isUserTeam } = describeBrokenRecord(league, b);
+    pushNews(league, { day: 0, category: 'milestone', major: true, recordBreaker: true, teamIds: isUserTeam ? [league.userTeamId] : undefined, text });
+    if (isUserTeam && !league.recordBreakingMoment) league.recordBreakingMoment = { ...b, text, isUserTeam: true };
+  }
+  evaluateHallOfFame(league, newlyRetired);
+  detectDynasties(league);
+  updateGmLegacy(league, ownerResult);
+  updateCrossSaveLegacy(league);
 
   // Expiring contracts: the incumbent team gets a re-sign window
   // (Bird-rights style — allowed to cross the cap, but not the luxury
@@ -1529,6 +1591,9 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
     years: years ?? clamp(Math.round(gauss(2.5, 1)), 1, 4),
   };
   recordContract(p, league.season, team.id, p.contract);
+  if (teamId === league.userTeamId) {
+    league.gmLegacy.faWatchlist.push({ playerId: p.id, season: league.season, salary: p.contract.salary, age: p.age });
+  }
   delete p.extOfferMade;
   p.restrictedFA = false;
   p.offerSheetPending = false;
@@ -1556,6 +1621,7 @@ export function matchOfferSheet(league, playerId) {
   if (!p) return { ok: false, error: 'That player is no longer available.' };
   p.contract = { salary: sheet.salary, years: sheet.years };
   recordContract(p, league.season, team.id, p.contract);
+  league.gmLegacy.faWatchlist.push({ playerId: p.id, season: league.season, salary: p.contract.salary, age: p.age });
   delete p.extOfferMade;
   p.restrictedFA = false;
   p.offerSheetPending = false;

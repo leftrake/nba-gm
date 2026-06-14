@@ -30,7 +30,7 @@ export function NewsItem({ n, openTeam, userTeamId }) {
   const when = newsWhen(n);
   const yours = userTeamId != null && (n.teamIds || []).includes(userTeamId);
   return (
-    <div className={`news-item${n.major ? ' major' : ''}${yours ? ' your-team' : ''}`}>
+    <div className={`news-item${n.major ? ' major' : ''}${yours ? ' your-team' : ''}${n.recordBreaker ? ' record-breaker' : ''}`}>
       <span className="news-text"><NewsText text={n.text} openTeam={openTeam} /></span>
       {when && <span className="news-when">{when}</span>}
     </div>

@@ -253,6 +253,53 @@ function OwnerCard({ league, team }) {
   );
 }
 
+// Banner for an active dynasty era covering the user's team this season.
+function DynastyBanner({ league, team }) {
+  const dyn = (league.dynasties || []).find((d) =>
+    d.teamId === team.id && league.season >= d.startSeason && league.season - d.endSeason <= 1);
+  if (!dyn) return null;
+  return (
+    <div className="panel champion-banner">
+      <h2>🏆 {dyn.name}</h2>
+      <p style={{ color: 'var(--muted)' }}>
+        {dyn.championships.length} championships since {dyn.startSeason} · Record {dyn.record?.wins}-{dyn.record?.losses}
+      </p>
+    </div>
+  );
+}
+
+// Dismissible highlight for a record broken by the user's team/player.
+function RecordBreakingBanner({ league, commit }) {
+  const m = league.recordBreakingMoment;
+  if (!m) return null;
+  return (
+    <div className="panel champion-banner">
+      <h2>📜 Record Broken!</h2>
+      <p>{m.text}</p>
+      <button className="btn small secondary" onClick={() => { league.recordBreakingMoment = null; commit(); }}>
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+// Small summary tile linking to the full Legacy screen.
+function LegacyTile({ league, setScreen }) {
+  const gm = league.gmLegacy || {};
+  return (
+    <div className="panel">
+      <h2>My Legacy</h2>
+      <p style={{ color: 'var(--muted)' }}>
+        {gm.totalWins ?? 0}-{gm.totalLosses ?? 0} · {gm.championships ?? 0} championship{(gm.championships ?? 0) === 1 ? '' : 's'} ·{' '}
+        {gm.confFinalsAppearances ?? 0} conf. finals appearance{(gm.confFinalsAppearances ?? 0) === 1 ? '' : 's'}
+      </p>
+      <a className="team-link" style={{ color: 'var(--team-color)' }} onClick={() => setScreen('legacy')}>
+        View record book, Hall of Fame &amp; more ▸
+      </a>
+    </div>
+  );
+}
+
 export default function Dashboard({ league, leagueRef, commit, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews, onCounterTradeOffer, setScreen, trackFeatured, setLastResults }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
@@ -268,7 +315,13 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
     <div>
       <NewsTicker league={league} openTeam={openTeam} />
 
+      <RecordBreakingBanner league={league} commit={commit} />
+
+      <DynastyBanner league={league} team={team} />
+
       <Banner league={league} team={team} seed={seed} openTeam={openTeam} />
+
+      <LegacyTile league={league} setScreen={setScreen} />
 
       <OwnerCard league={league} team={team} />
 

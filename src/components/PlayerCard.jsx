@@ -4,6 +4,7 @@ import { durabilityNote, ratingRow, posLabel, similarPlayers } from '../engine/p
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
+import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
 import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, PlayerLink, Origin } from './shared.jsx';
 
 const RATINGS = [
@@ -85,12 +86,120 @@ function Progression({ league, p }) {
   );
 }
 
+// Memorial layout for a retired player (a trimmed `league.retiredPlayers`
+// snapshot — no ratings/contract/live stats, just career history).
+function RetiredMemorial({ league, p, onClose, openTeam }) {
+  const totals = (p.careerStats || []).reduce(
+    (a, c) => ({ gp: a.gp + c.gp, pts: a.pts + c.pts, reb: a.reb + c.reb, ast: a.ast + c.ast }),
+    { gp: 0, pts: 0, reb: 0, ast: 0 }
+  );
+  const seasons = [...new Set((p.careerStats || []).map((c) => c.season))].sort((a, b) => a - b);
+  const recordsHeld = recordsHeldBy(league, p.id);
+  const hof = league.hallOfFame?.find((h) => h.playerId === p.id);
+  const finalTeam = p.finalTeam != null ? getTeam(league, p.finalTeam) : null;
+  const userSeasons = (p.careerStats || []).filter((c) => c.team === league.userTeamId).length;
+  const posName = POS_NAMES[p.pos] || p.pos;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <h2 style={{ fontSize: 18, textTransform: 'none', letterSpacing: 0, marginBottom: 0 }}>{p.name}</h2>
+          <span style={{ color: 'var(--muted)' }}>
+            {posName} · Retired after {p.retiredSeason}
+            {finalTeam && <> · last with <TeamLink team={finalTeam} openTeam={openTeam} /></>}
+          </span>
+          <span style={{ flex: 1 }} />
+          <button className="btn small secondary" onClick={onClose}>✕</button>
+        </div>
+
+        {hof && (
+          <div style={{ marginTop: 10 }}>
+            <h3>🏛️ Hall of Fame — Class of {hof.inductedSeason}</h3>
+            <p>{hof.narrative}</p>
+          </div>
+        )}
+
+        {!hof && (
+          <p style={{ margin: '10px 0', color: 'var(--muted)' }}>
+            {seasons.length} season{seasons.length === 1 ? '' : 's'} in the league
+            {p.draftYear ? <>, drafted {p.draftYear} round {p.draftRound} (pick {p.draftPick}) by <TeamLink team={getTeam(league, p.draftTeam)} openTeam={openTeam} /></> : ', undrafted'}.
+          </p>
+        )}
+
+        {p.championships > 0 && (
+          <p style={{ margin: '10px 0' }}>🏆 {p.championships}× champion</p>
+        )}
+
+        {recordsHeld.length > 0 && (
+          <p style={{ margin: '10px 0', color: 'var(--accent)' }}>
+            📜 All-time record holder: {recordsHeld.join(', ')}
+          </p>
+        )}
+
+        {p.awards?.length > 0 && (
+          <>
+            <h3 style={{ marginTop: 14 }}>Awards</h3>
+            {groupAwards(p.awards).map((g) => (
+              <div key={g.award} style={{ marginBottom: 2 }}>
+                {g.seasons.length > 1 && <b>{g.seasons.length}× </b>}{g.award}{' '}
+                <span style={{ color: 'var(--muted)' }}>({g.seasons.join(', ')})</span>
+              </div>
+            ))}
+          </>
+        )}
+
+        <h3 style={{ marginTop: 14 }}>Career Totals</h3>
+        <p>
+          {totals.gp} GP · {perGame(totals, 'pts')} ppg · {perGame(totals, 'reb')} rpg · {perGame(totals, 'ast')} apg
+        </p>
+
+        {userSeasons > 0 && (
+          <p style={{ margin: '10px 0', color: 'var(--team-color)' }}>
+            🤝 Spent {userSeasons} season{userSeasons === 1 ? '' : 's'} with your franchise.
+          </p>
+        )}
+
+        <h3 style={{ marginTop: 14 }}>Season by Season</h3>
+        {p.careerStats.length === 0 && <p style={{ color: 'var(--muted)' }}>No recorded seasons.</p>}
+        {p.careerStats.length > 0 && (
+          <table>
+            <thead>
+              <tr>
+                <th>Season</th><th>Team</th><th className="num">GP</th><th className="num">PPG</th>
+                <th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...p.careerStats].reverse().map((s, i) => (
+                <tr key={`${s.season}-${s.team ?? i}`}>
+                  <td>{s.season}</td>
+                  <td>{s.team != null ? <TeamLink team={getTeam(league, s.team)} openTeam={openTeam} /> : '–'}</td>
+                  <td className="num">{s.gp}</td>
+                  <td className="num">{perGame(s, 'pts')}</td>
+                  <td className="num">{perGame(s, 'reb')}</td>
+                  <td className="num">{perGame(s, 'ast')}</td>
+                  <td className="num">{fgPct(s)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  if (p.retiredSeason != null) {
+    return <RetiredMemorial league={league} p={p} onClose={onClose} openTeam={openTeam} />;
+  }
 
   const team = league.teams.find((t) => t.roster.some((x) => x.id === p.id));
   const fogged = team?.id !== league.userTeamId;

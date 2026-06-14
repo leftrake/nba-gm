@@ -142,6 +142,9 @@ export function makeDraftPick(league, prospectId) {
   p.draftYear = d.season;
   p.draftRound = pick <= 30 ? 1 : 2;
   p.draftPick = pick;
+  if (teamId === league.userTeamId) {
+    league.gmLegacy.draftWatchlist.push({ playerId: p.id, season: d.season, pick });
+  }
   if (team.roster.length < ROSTER_MAX) {
     p.contract = { salary: rookieSalary(pick), years: rookieContractYears(pick) };
     recordContract(p, league.season, team.id, p.contract);
