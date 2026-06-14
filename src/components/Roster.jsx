@@ -5,7 +5,91 @@ import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, li
 import { scoutedOverall } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
-import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag } from './shared.jsx';
+
+// Visual cap breakdown: each contract as a proportional block colored by
+// years remaining (green = 1yr, yellow = 2-3yr, red = 4yr+), dead money as
+// a faded block, with cap/tax line markers.
+function CapBreakdown({ team, pay, dead }) {
+  const scale = Math.max(LUXURY_TAX, pay + dead) * 1.02;
+  const segs = [...team.roster]
+    .filter((p) => p.contract)
+    .sort((a, b) => b.contract.salary - a.contract.salary)
+    .map((p) => {
+      const yrs = p.contract.years;
+      const cls = yrs <= 1 ? 'yr1' : yrs <= 3 ? 'yr23' : 'yr4plus';
+      return { key: p.id, label: p.name.split(' ').slice(-1)[0], width: (p.contract.salary / scale) * 100, cls, title: `${p.name} — ${money(p.contract.salary)}/yr, ${yrs} yr${yrs === 1 ? '' : 's'} left` };
+    });
+  const deadWidth = (dead / scale) * 100;
+  const capPct = (SALARY_CAP / scale) * 100;
+  const taxPct = (LUXURY_TAX / scale) * 100;
+  return (
+    <div>
+      <div className="cap-bar-v2">
+        {segs.map((s) => (
+          <div key={s.key} className={`cap-seg ${s.cls}`} style={{ width: `${s.width}%` }} title={s.title}>
+            {s.width > 5 ? s.label : ''}
+          </div>
+        ))}
+        {dead > 0 && (
+          <div className="cap-seg dead" style={{ width: `${deadWidth}%` }} title={`Dead money — ${money(dead)}`}>
+            {deadWidth > 4 ? 'Dead' : ''}
+          </div>
+        )}
+        <div className="cap-bar-v2-marker" style={{ left: `${capPct}%` }} title={`Salary cap — ${money(SALARY_CAP)}`} />
+        <div className="cap-bar-v2-marker" style={{ left: `${taxPct}%` }} title={`Luxury tax — ${money(LUXURY_TAX)}`} />
+      </div>
+      <div className="cap-legend">
+        <span><span className="dot" style={{ background: 'var(--green)' }} /> 1 yr left</span>
+        <span><span className="dot" style={{ background: 'var(--yellow)' }} /> 2–3 yrs</span>
+        <span><span className="dot" style={{ background: 'var(--red)' }} /> 4+ yrs</span>
+        {dead > 0 && <span><span className="dot" style={{ background: 'var(--muted)', opacity: 0.6 }} /> Dead money</span>}
+        <span style={{ marginLeft: 'auto' }}>Cap {money(SALARY_CAP)} · Tax {money(LUXURY_TAX)}</span>
+      </div>
+    </div>
+  );
+}
+
+// Rival scouting view: star players (fogged), cap situation, strategy, and
+// recent form as W/L dots, shown in place of a detailed roster table.
+function FrontOfficeSnapshot({ league, team, pay, dead, recent, openPlayer }) {
+  const stars = [...team.roster].sort((a, b) => scoutedOverall(b, league.season) - scoutedOverall(a, league.season)).slice(0, 4);
+  const form = recent.map(({ g, r }) => {
+    if (!r) return null;
+    const home = g.home === team.id;
+    const myPts = home ? r.homePts : r.awayPts;
+    const oppPts = home ? r.awayPts : r.homePts;
+    return myPts > oppPts ? 'W' : 'L';
+  }).filter(Boolean);
+
+  return (
+    <div className="panel" style={{ borderLeft: '4px solid var(--team-color)' }}>
+      <h2>Front Office Snapshot</h2>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        {stars.map((p) => (
+          <div key={p.id} className="panel" style={{ flex: '1 1 150px', margin: 0, padding: 10, borderTop: '3px solid var(--team-color)' }}>
+            <div style={{ fontWeight: 700 }}><PlayerLink p={p} openPlayer={openPlayer} /></div>
+            <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>{posLabel(p)} · Age {p.age}</div>
+            <Ovr p={p} league={league} fogged />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        <div><span style={{ color: 'var(--muted)', fontSize: 12 }}>Strategy</span><br /><StrategyTag team={team} /></div>
+        <div>
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>Last 5</span><br />
+          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+            {form.length === 0 && <span style={{ color: 'var(--muted)' }}>–</span>}
+            {form.map((r, i) => (
+              <span key={i} className="tag" style={{ color: r === 'W' ? 'var(--green)' : 'var(--red)', borderColor: r === 'W' ? 'var(--green)' : 'var(--red)' }}>{r}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <CapBreakdown team={team} pay={pay} dead={dead} />
+    </div>
+  );
+}
 
 // Small marker next to a minutes box when the assignment outruns the
 // player's stamina — legal, but the fatigue sim will make him pay.
@@ -166,26 +250,49 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     if (sortKey === 'pts') return (b.stats.gp ? b.stats.pts / b.stats.gp : 0) - (a.stats.gp ? a.stats.pts / a.stats.gp : 0);
     return 0;
   });
+  // Group starters before bench (preserving the chosen sort within each
+  // group) so the table can show a divider between the two.
+  const starterIds = isUser ? new Set(POSITIONS.map((pos) => lineup.starters[pos].id).filter((id) => id != null)) : new Set();
+  const rosterRows = isUser
+    ? [...sorted.filter((p) => starterIds.has(p.id)), ...sorted.filter((p) => !starterIds.has(p.id))]
+    : sorted;
 
   return (
-    <div>
-      <div className="panel" style={{ borderLeft: `4px solid ${team.color}` }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ marginBottom: 0 }}>{team.city} {team.name} {isUser && <span className="tag">YOUR TEAM</span>} <StrategyTag team={team} /></h2>
+    <div style={{ '--team-color': team.color }}>
+      <div className="panel" style={{ borderLeft: `4px solid var(--team-color)` }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <div className="team-logo" style={{ width: 56, height: 56, fontSize: 20, background: team.color }}>{team.id}</div>
+          <div style={{ flex: 1 }}>
+            <div className="display-font" style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 2 }}>{team.city}</div>
+            <h1 className="display-font" style={{ fontSize: 30, margin: '2px 0' }}>{team.name} {isUser && <span className="tag">YOUR TEAM</span>}</h1>
+            <div className="score-big" style={{ fontSize: 22 }}>
+              {team.wins}-{team.losses}
+              <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'inherit', fontWeight: 400, marginLeft: 10 }}>#{seed} in the {team.conf}</span>
+              {!isUser && <span style={{ marginLeft: 10, verticalAlign: 'middle' }}><StrategyTag team={team} /></span>}
+            </div>
+          </div>
           <select value={teamId} onChange={(e) => openTeam(e.target.value)}>
             {league.teams.map((t) => (
               <option key={t.id} value={t.id}>{t.city} {t.name}</option>
             ))}
           </select>
         </div>
-        <p>Record: <b>{team.wins}-{team.losses}</b> · Seed: <b>#{seed}</b> in the {team.conf}</p>
-        <p style={{ marginTop: 8 }}>
-          Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)}
-          {dead > 0 && <span style={{ color: 'var(--muted)' }}> (incl. {money(dead)} dead money)</span>}
-          {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)', marginLeft: 8 }}>LUXURY TAX</span>}
-        </p>
-        <div className="cap-bar"><div className={pay > SALARY_CAP ? 'over' : ''} style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
+        {isUser && (
+          <>
+            <p style={{ marginTop: 8 }}>
+              Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)}
+              {dead > 0 && <span style={{ color: 'var(--muted)' }}> (incl. {money(dead)} dead money)</span>}
+              {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)', marginLeft: 8 }}>LUXURY TAX</span>}
+              <span style={{ marginLeft: 10 }}><StrategyTag team={team} /></span>
+            </p>
+            <CapBreakdown team={team} pay={pay} dead={dead} />
+          </>
+        )}
       </div>
+
+      {!isUser && (
+        <FrontOfficeSnapshot league={league} team={team} pay={pay} dead={dead} recent={recent} openPlayer={openPlayer} />
+      )}
 
       <div className="grid2">
         <div className="panel">
@@ -312,7 +419,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 </tbody>
               </table>
             </div>
-            <div>
+            <div style={{ borderLeft: '2px solid var(--team-color)', paddingLeft: 14 }}>
               <h2 style={{ fontSize: 14 }}>Bench Rotation</h2>
               <table>
                 <thead>
@@ -461,10 +568,17 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
             </tr>
           </thead>
           <tbody>
-            {sorted.map((p) => (
+            {rosterRows.map((p, i) => (
               <React.Fragment key={p.id}>
-              <tr>
-                <td><Ovr p={p} league={league} fogged={!isUser} /></td>
+              {isUser && i > 0 && starterIds.has(rosterRows[i - 1].id) && !starterIds.has(p.id) && (
+                <tr>
+                  <td colSpan={17} style={{ padding: 0, borderBottom: '2px solid var(--team-color)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '4px 8px' }}>Bench</div>
+                  </td>
+                </tr>
+              )}
+              <tr className={posStripe(p)}>
+                <td>{isUser ? <OvrArc value={overall(p)} /> : <Ovr p={p} league={league} fogged={!isUser} />}</td>
                 <td><Pot p={p} league={league} fogged={!isUser} /></td>
                 <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                 <td>{posLabel(p)}</td>

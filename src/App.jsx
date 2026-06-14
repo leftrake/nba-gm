@@ -259,7 +259,7 @@ export default function App() {
   ];
 
   return (
-    <div className="app">
+    <div className="app" style={{ '--team-color': userTeam.color }}>
       <div className="topbar">
         <h1>🏀 {userTeam.city} {userTeam.name}</h1>
         <span className="meta">
@@ -366,6 +366,7 @@ export default function App() {
           </div>
         )}
 
+        <div className="page-fade" key={screen}>
         {screen === 'dashboard' && (
           <Dashboard
             league={league}
@@ -407,6 +408,7 @@ export default function App() {
           : <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />)}
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
+        </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} onTradeFor={proposeTradeFor} />}
       </main>

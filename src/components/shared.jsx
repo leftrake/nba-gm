@@ -126,6 +126,32 @@ export function fmtDate(d) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+// Overall rating rendered as a filled progress arc, colored the same as
+// the Ovr tier colors (`ovrClass`).
+export function OvrArc({ value, size = 38 }) {
+  const r = (size - 6) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value)) / 100;
+  const color = value >= 85 ? '#d2a8ff' : value >= 75 ? 'var(--green)' : value >= 65 ? '#58a6ff' : value >= 55 ? 'var(--text)' : 'var(--muted)';
+  return (
+    <span className="ovr-arc" style={{ width: size, height: size }}>
+      <svg viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border)" strokeWidth="3" />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="3"
+          strokeDasharray={`${c * pct} ${c}`} strokeLinecap="round"
+        />
+      </svg>
+      <span className="ovr-arc-num" style={{ color }}>{value}</span>
+    </span>
+  );
+}
+
+// Left-border accent class for a player's primary position
+export function posStripe(p) {
+  return `pos-stripe-${p.pos}`;
+}
+
 export function PlayerLink({ p, openPlayer, children }) {
   if (!openPlayer) return <>{children ?? p.name}</>;
   return (

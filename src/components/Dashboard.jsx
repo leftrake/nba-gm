@@ -6,9 +6,89 @@ import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink } from './
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
+import NewsTicker from './Ticker.jsx';
 import TradeOffers from './TradeOffers.jsx';
 import { ROUND_NAMES } from './Playoffs.jsx';
 import Calendar from './Calendar.jsx';
+
+// First scheduled game for `teamId` from the current day forward.
+function nextGameFor(league, teamId) {
+  for (let di = league.dayIndex; di < league.schedule.length; di++) {
+    const g = league.schedule[di].find((x) => x.home === teamId || x.away === teamId);
+    if (g) return { di, g };
+  }
+  return null;
+}
+
+// Front-page banner: team identity, record/seed, and the next matchup in
+// large display type.
+function Banner({ league, team, seed, openTeam }) {
+  const ng = nextGameFor(league, team.id);
+  return (
+    <div className="panel" style={{ borderLeft: '4px solid var(--team-color)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div className="display-font" style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 2 }}>
+            {league.season} Season
+          </div>
+          <h1 className="display-font" style={{ fontSize: 36, margin: '2px 0 6px', lineHeight: 1.1 }}>{team.city} {team.name}</h1>
+          <div className="score-big" style={{ fontSize: 26 }}>
+            {team.wins}-{team.losses}
+            <span style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'inherit', fontWeight: 400, marginLeft: 10 }}>
+              #{seed} in the {team.conf}
+            </span>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: 'var(--muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>
+            {league.phase === 'regular' ? 'Next Game' : 'Schedule'}
+          </div>
+          {ng ? (
+            <>
+              <div className="display-font" style={{ fontSize: 20 }}>
+                {ng.g.home === team.id ? 'vs' : '@'}{' '}
+                <TeamLink team={getTeam(league, ng.g.home === team.id ? ng.g.away : ng.g.home)} openTeam={openTeam} />
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 12 }}>{fmtDate(dateForDay(league, ng.di))}</div>
+            </>
+          ) : (
+            <div className="display-font" style={{ fontSize: 18, color: 'var(--muted)' }}>No games remaining</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Conference standings in context: a handful of rows around the user's
+// current seed, with their row highlighted in the team color.
+function StandingsWidget({ league, team, openTeam }) {
+  const rows = standings(league, team.conf);
+  const seedIdx = rows.findIndex((t) => t.id === team.id);
+  const start = Math.max(0, Math.min(seedIdx - 2, rows.length - 5));
+  const slice = rows.slice(start, start + 5);
+  return (
+    <div className="panel">
+      <h2>{team.conf}ern Conference</h2>
+      <table>
+        <thead><tr><th>#</th><th>Team</th><th className="num">W</th><th className="num">L</th></tr></thead>
+        <tbody>
+          {slice.map((t, i) => {
+            const rank = start + i;
+            return (
+              <tr key={t.id} style={t.id === team.id ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color)' } : undefined}>
+                <td>{rank + 1}{rank === 7 ? ' —' : ''}</td>
+                <td><TeamLink team={t} openTeam={openTeam} /></td>
+                <td className="num">{t.wins}</td>
+                <td className="num">{t.losses}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 // League-wide injury report: every player currently out, the user's team
 // first, then alphabetical by team.
@@ -58,15 +138,15 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   return (
     <div className="panel" style={{ borderLeft: `4px solid ${won ? 'var(--green)' : 'var(--red)'}` }}>
       <h2>Your Last Game · {title}</h2>
-      <p style={{ fontSize: 18, marginBottom: 12 }}>
+      <p className="score-big" style={{ fontSize: 32, marginBottom: 12 }}>
         <span className={fg.awayPts > fg.homePts ? 'winner' : ''}>
           <TeamLink team={getTeam(league, fg.away)} openTeam={openTeam} /> {fg.awayPts}
         </span>
-        <span style={{ color: 'var(--muted)' }}> @ </span>
+        <span style={{ color: 'var(--muted)', fontSize: 20 }}> @ </span>
         <span className={fg.homePts > fg.awayPts ? 'winner' : ''}>
           <TeamLink team={getTeam(league, fg.home)} openTeam={openTeam} /> {fg.homePts}
         </span>
-        <b style={{ marginLeft: 10, color: won ? 'var(--green)' : 'var(--red)' }}>{won ? 'W' : 'L'}</b>
+        <b style={{ marginLeft: 10, fontSize: 20, color: won ? 'var(--green)' : 'var(--red)' }}>{won ? 'W' : 'L'}</b>
       </p>
       <LineScore league={league} game={fg} />
       <TopPerformers league={league} game={fg} openPlayer={openPlayer} />
@@ -107,6 +187,14 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
 
   return (
     <div>
+      <NewsTicker league={league} openTeam={openTeam} />
+
+      <Banner league={league} team={team} seed={seed} openTeam={openTeam} />
+
+      {featuredGame && (
+        <FeaturedGame league={league} fg={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
+      )}
+
       <Calendar
         league={league}
         leagueRef={leagueRef}
@@ -120,14 +208,11 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
 
       <TradeOffers league={league} commit={commit} openPlayer={openPlayer} onCounter={onCounterTradeOffer} />
 
-      {featuredGame && (
-        <FeaturedGame league={league} fg={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
-      )}
-
       <div className="grid2">
+        <StandingsWidget league={league} team={team} openTeam={openTeam} />
+
         <div className="panel">
           <h2>Team Overview</h2>
-          <p>Record: <b>{team.wins}-{team.losses}</b> · Seed: <b>#{seed}</b> in the {team.conf}</p>
           <p style={{ marginTop: 8 }}>Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)}{dead > 0 && <span style={{ color: 'var(--muted)' }}> (incl. {money(dead)} dead money)</span>} {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)' }}>LUXURY TAX</span>}</p>
           <div className="cap-bar"><div className={pay > SALARY_CAP ? 'over' : ''} style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
           <h3 style={{ marginTop: 14 }}>Top Players</h3>
@@ -144,10 +229,11 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
             </tbody>
           </table>
         </div>
+      </div>
 
+      {lastResults.length > 0 && (
         <div className="panel">
           <h2>Latest Scores</h2>
-          {lastResults.length === 0 && <p style={{ color: 'var(--muted)' }}>Sim a day to see scores.</p>}
           {lastResults.map((r, i) => (
             <div className="result-row" key={i}>
               <span className={r.awayPts > r.homePts ? 'winner' : ''}>
@@ -164,15 +250,15 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
             </div>
           ))}
         </div>
-      </div>
+      )}
 
       <div className="panel">
-        <h2>Latest Headlines</h2>
-        {league.news.slice(0, 5).map((n, i) => (
+        <h2>Top Stories</h2>
+        {league.news.slice(0, 8).map((n, i) => (
           <NewsItem n={n} openTeam={openTeam} key={i} />
         ))}
         <p style={{ marginTop: 10 }}>
-          <a className="team-link" style={{ color: 'var(--accent)' }} onClick={openNews}>
+          <a className="team-link" style={{ color: 'var(--team-color)' }} onClick={openNews}>
             Full news feed ▸
           </a>
         </p>

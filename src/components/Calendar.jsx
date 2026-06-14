@@ -36,6 +36,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   const resultFor = (di, g) => (league.resultsByDay?.[di] || []).find((r) => r.home === g.home && r.away === g.away);
   const todayHasGame = league.dayIndex < league.schedule.length
     && league.schedule[league.dayIndex].some((g) => g.home === me || g.away === me);
+  // Was this the user's championship season? Colors win cells gold in hindsight.
+  const championSeason = league.playoffs?.champion === me
+    || league.history.some((h) => h.season === league.season && h.champion === me);
 
   // Sim day-by-day toward `target` (exclusive), or indefinitely if null —
   // flashing each cell as it's simmed, fast enough that a week takes ~1-2s.
@@ -147,12 +150,21 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
             const userGame = inRange ? league.schedule[di].find((g) => g.home === me || g.away === me) : null;
             const result = userGame ? resultFor(di, userGame) : null;
             const clickable = inRange && isFuture && !animating;
+            const isPastDay = inRange && di < league.dayIndex;
+            const isFutureDay = inRange && di > league.dayIndex;
+            const resultIsWin = result
+              ? (userGame.home === me ? result.homePts > result.awayPts : result.awayPts > result.homePts)
+              : false;
 
             const cls = [
               'calendar-cell',
               !inMonth ? 'outmonth' : '',
               !inRange ? 'muted' : '',
               isToday ? 'today' : '',
+              isPastDay ? 'cal-past' : '',
+              isFutureDay ? 'cal-future' : '',
+              result ? (resultIsWin ? 'cal-win' : 'cal-loss') : '',
+              result && resultIsWin && championSeason ? 'cal-champ' : '',
               flashDay === di ? 'flash' : '',
               clickable ? 'clickable' : '',
             ].filter(Boolean).join(' ');

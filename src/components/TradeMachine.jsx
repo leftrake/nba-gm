@@ -11,6 +11,22 @@ import { Ovr, Pot, StrategyTag, money, PlayerLink } from './shared.jsx';
 
 const YELLOW = '#d29922';
 
+// Value of a leg from its own team's perspective: outgoing assets are
+// valued by whoever would receive them (their needs/strategy), incoming
+// assets by this team's own needs/strategy.
+function legValue(league, legs, leg) {
+  const giveVal = leg.outPlayers.reduce((s, p) => {
+    const dest = legs.find((l) => l.inPlayers.includes(p))?.team;
+    return s + tradeValue(p, undefined, dest);
+  }, 0) + leg.outPicks.reduce((s, p) => {
+    const dest = legs.find((l) => l.inPicks.includes(p))?.team;
+    return s + pickValue(league, p, dest?.strategy);
+  }, 0);
+  const getVal = leg.inPlayers.reduce((s, p) => s + tradeValue(p, undefined, leg.team), 0)
+    + leg.inPicks.reduce((s, p) => s + pickValue(league, p, leg.team.strategy), 0);
+  return { giveVal, getVal };
+}
+
 function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, changeTeamAt, removeTeam, openPlayer, userId }) {
   const leg = legs.find((l) => l.team.id === team.id);
   const pay = payroll(team);
@@ -36,7 +52,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
   };
 
   return (
-    <div className="panel">
+    <div className="panel team-col" style={{ '--team-color': team.color, borderTop: `3px solid ${team.color}`, ...(team.id === userId ? { borderColor: 'var(--team-color-line)', borderTopColor: team.color } : null) }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h2 style={{ marginBottom: 0 }}>
           {changeTeamAt ? (
@@ -57,7 +73,9 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
       <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>
         Payroll {money(pay)} · {capSpace >= 0 ? `${money(capSpace)} cap space` : `${money(-capSpace)} over the cap`} · {taxDistance >= 0 ? `${money(taxDistance)} below tax` : `${money(-taxDistance)} into tax`}
       </p>
-      <p style={{ fontWeight: 600 }}>Projected payroll: <span style={{ color: projColor }}>{money(projected)}</span></p>
+      <p style={{ marginTop: 6 }}>
+        Projected payroll: <span className="cap-impact" style={{ color: projColor }}>{money(projected)}</span>
+      </p>
 
       <h3>Sends</h3>
       <table>
@@ -133,7 +151,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
                 const owner = legs.find((l) => l.outPlayers.includes(p))?.team;
                 const pFogged = owner?.id !== userId;
                 return (
-                  <tr key={p.id}>
+                  <tr key={p.id} className="trade-asset-enter">
                     <td><Ovr p={p} league={league} fogged={pFogged} /></td>
                     <td><Pot p={p} league={league} fogged={pFogged} /></td>
                     <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
@@ -148,7 +166,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
               {leg.inPicks.map((pick) => {
                 const owner = legs.find((l) => l.outPicks.includes(pick))?.team;
                 return (
-                  <tr key={pick.id}>
+                  <tr key={pick.id} className="trade-asset-enter">
                     <td colSpan={6}>{pickLabel(pick)}</td>
                     <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, team.strategy)}</td>
                     <td>{owner?.name}</td>
@@ -201,6 +219,10 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
 
   const legs = resolveMultiTradeLegs(league, teamIds, sends);
   const hasAnyAsset = legs.some((l) => l.outPlayers.length || l.outPicks.length);
+  const userLeg = legs.find((l) => l.team.id === userId);
+  const { giveVal: myGive, getVal: myGet } = legValue(league, legs, userLeg);
+  const meterTotal = myGive + myGet;
+  const givePct = meterTotal > 0 ? (myGive / meterTotal) * 100 : 50;
 
   const toggleAsset = (teamId, kind, id) => {
     setSends((prev) => {
@@ -306,7 +328,7 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
   };
 
   return (
-    <div>
+    <div className="warroom" style={{ '--team-color': getTeam(league, userId).color }}>
       <div className="panel">
         <h2>Trade Machine</h2>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -320,6 +342,18 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
             {message.lines.map((line, i) => (
               <p key={i} style={{ color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{line}</p>
             ))}
+          </div>
+        )}
+        {hasAnyAsset && (
+          <div style={{ marginTop: 14 }}>
+            <div className="value-meter">
+              <div className="side-a" style={{ width: `${givePct}%` }} />
+              <div className="side-b" style={{ width: `${100 - givePct}%` }} />
+            </div>
+            <div className="value-meter-labels">
+              <span>You give · {myGive}</span>
+              <span>You receive · {myGet}</span>
+            </div>
           </div>
         )}
       </div>
@@ -344,17 +378,7 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
       <div className="panel">
         <h2>Trade Value Summary</h2>
         {legs.map((leg) => {
-          // Outgoing assets are valued from the receiving team's perspective
-          // (their needs and strategy); incoming assets from this team's own.
-          const giveVal = leg.outPlayers.reduce((s, p) => {
-            const dest = legs.find((l) => l.inPlayers.includes(p))?.team;
-            return s + tradeValue(p, undefined, dest);
-          }, 0) + leg.outPicks.reduce((s, p) => {
-            const dest = legs.find((l) => l.inPicks.includes(p))?.team;
-            return s + pickValue(league, p, dest?.strategy);
-          }, 0);
-          const getVal = leg.inPlayers.reduce((s, p) => s + tradeValue(p, undefined, leg.team), 0)
-            + leg.inPicks.reduce((s, p) => s + pickValue(league, p, leg.team.strategy), 0);
+          const { giveVal, getVal } = legValue(league, legs, leg);
           if (!giveVal && !getVal) return null;
           const lopsided = giveVal > 0 && getVal < giveVal * 0.85;
           return (
