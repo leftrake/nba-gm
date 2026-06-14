@@ -335,7 +335,17 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
       const team = getTeam(league, tid);
       if (e.reason) return `The ${team.name} reject the deal: ${e.reason}`;
       const pct = Math.round(e.ratio * 100);
-      const note = pct < 70 ? 'Not even close.' : pct < 90 ? 'Add more value.' : "They're close — sweeten it slightly.";
+      let note;
+      if (pct < 70) {
+        note = 'Not even close.';
+      } else {
+        const ask = team.strategy === 'rebuilding'
+          ? 'add a draft pick or a young prospect'
+          : team.strategy === 'contending'
+            ? 'add proven veteran help or a future pick'
+            : 'add a player or a draft pick';
+        note = pct < 90 ? `They want more value — ${ask}.` : `They're close — ${ask} to get it done.`;
+      }
       return `The ${team.name} reject the deal: they value what they'd receive at ~${pct}% of what they'd give up. ${note}`;
     });
     for (const [tid] of rejections) {

@@ -98,6 +98,15 @@ export function computeAwards(league) {
     allNba[ti].push(c);
   }
 
+  // All-Defensive: two teams of five, filled best-first by DPOY score
+  // (positionless, like the modern voting format).
+  const DEF_TEAM_NAMES = ['First', 'Second'];
+  const allDef = DEF_TEAM_NAMES.map(() => []);
+  const ranked = [...eligible].sort((a, b) => dpoyScore(b) - dpoyScore(a));
+  for (let i = 0; i < DEF_TEAM_NAMES.length * 5 && i < ranked.length; i++) {
+    allDef[Math.floor(i / 5)].push(ranked[i]);
+  }
+
   // Record the win on the player and return the serializable league-side snapshot
   const give = (c, award, line) => {
     if (!c.p.awards) c.p.awards = []; // players from saves predating awards
@@ -113,10 +122,16 @@ export function computeAwards(league) {
     sixth: sixth && give(sixth, 'Sixth Man of the Year', scoringLine(sixth.p.stats)),
     allNba: allNba.map((teamArr, i) =>
       teamArr.map((c) => give(c, `All-NBA ${TEAM_NAMES[i]} Team`, scoringLine(c.p.stats)))),
+    allDef: allDef.map((teamArr, i) =>
+      teamArr.map((c) => give(c, `All-Defensive ${DEF_TEAM_NAMES[i]} Team`, defenseLine(c.p.stats)))),
   };
 
   // unshift in reverse prestige order so the news feed reads MVP first
   const news = (text, extra) => pushNews(league, { day: league.dayIndex, category: 'award', ...extra, text });
+  for (let i = DEF_TEAM_NAMES.length - 1; i >= 0; i--) {
+    if (allDef[i].length) news(`All-Defensive ${DEF_TEAM_NAMES[i]} Team: ${allDef[i].map((c) => c.p.name).join(', ')}.`,
+      { teamIds: [...new Set(allDef[i].map((c) => c.team.id))] });
+  }
   for (let i = TEAM_NAMES.length - 1; i >= 0; i--) {
     if (allNba[i].length) news(`All-NBA ${TEAM_NAMES[i]} Team: ${allNba[i].map((c) => c.p.name).join(', ')}.`,
       { teamIds: [...new Set(allNba[i].map((c) => c.team.id))] });
@@ -137,6 +152,8 @@ const AWARD_ORDER = [
   'All-NBA First Team',
   'All-NBA Second Team',
   'All-NBA Third Team',
+  'All-Defensive First Team',
+  'All-Defensive Second Team',
 ];
 
 // Group a player's award list by honor, ordered by prestige:

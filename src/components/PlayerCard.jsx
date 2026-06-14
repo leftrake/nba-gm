@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
-import { durabilityNote, ratingRow, posLabel } from '../engine/players.js';
+import { durabilityNote, ratingRow, posLabel, similarPlayers } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
-import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, Origin } from './shared.jsx';
+import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, PlayerLink, Origin } from './shared.jsx';
 
 const RATINGS = [
   ['inside', 'Inside'],
@@ -85,7 +85,7 @@ function Progression({ league, p }) {
   );
 }
 
-export default function PlayerCard({ league, player: p, onClose, openTeam, onTradeFor }) {
+export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -193,6 +193,18 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, onTra
             </tbody>
           </table>
         )}
+
+        <h3 style={{ marginTop: 14 }}>Similar Players</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {similarPlayers(league, p).map(({ p: sp, team: st }) => {
+            const spFogged = st.id !== league.userTeamId;
+            return (
+              <div key={sp.id}>
+                <Ovr p={sp} league={league} fogged={spFogged} /> <PlayerLink p={sp} openPlayer={openPlayer} /> ({posLabel(sp)}) — <TeamLink team={st} openTeam={openTeam} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

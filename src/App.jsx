@@ -410,7 +410,7 @@ export default function App() {
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
-        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} onTradeFor={proposeTradeFor} />}
+        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
       </main>
     </div>
   );

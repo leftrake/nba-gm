@@ -300,6 +300,27 @@ export function snapshotRatings(p, season) {
   }
 }
 
+// "Similar to" — the closest matches across the league for a player's
+// rating profile, by Euclidean distance over the seven core ratings plus a
+// small age component (so a young high-upside player doesn't match a
+// veteran with an identical current profile as closely).
+export function similarPlayers(league, target, count = 5) {
+  const rows = [];
+  for (const team of league.teams) {
+    for (const p of team.roster) {
+      if (p.id === target.id) continue;
+      let sum = 0;
+      for (const k of HISTORY_KEYS) {
+        const d = p.ratings[k] - target.ratings[k];
+        sum += d * d;
+      }
+      sum += Math.pow((p.age - target.age) * 0.5, 2);
+      rows.push({ p, team, dist: sum });
+    }
+  }
+  return rows.sort((a, b) => a.dist - b.dist).slice(0, count);
+}
+
 // Yearly development. Growth is ceiling-driven: high-potential players under
 // 25 close on their ceiling fast (3–6 overall a year, with occasional
 // breakout leaps), modest ceilings inch along and plateau early. Decline is
