@@ -31,6 +31,8 @@ function colValue(s, key, perGameMode) {
 function fmtCol(v, key, perGameMode) {
   if (PCT_COLS.has(key) || perGameMode) {
     const r = Math.round(v * 10) / 10;
+    // r === 0 also catches -0 (e.g. a team with net-zero +/-), which would
+    // otherwise render as "-0.0".
     return (r === 0 ? 0 : r).toFixed(1);
   }
   return (Math.round(v) || 0).toLocaleString();

@@ -31,8 +31,10 @@ export function tradeValue(p, strategy, team) {
   // potential premium
   const upside = Math.max(0, p.potential - ovr);
   v *= 1 + upside * 0.02;
-  // bad contract discount
-  if (p.contract && p.contract.salary > 30_000_000 && ovr < 75) v *= 0.7;
+  // bad contract discount — a signed extension is what this player actually
+  // costs going forward, so value against that salary once it's on the books
+  const futureSalary = p.extension ? p.extension.salary : p.contract?.salary;
+  if (futureSalary > 30_000_000 && ovr < 75) v *= 0.7;
   // a player who has publicly demanded a trade has sharply reduced value
   if (p.tradeDemand) v *= 0.5;
   // an injured player is worth less the longer they'll be out — nobody
@@ -81,7 +83,7 @@ export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds
 
   const newSizeA = a.roster.length - outA.length + outB.length;
   const newSizeB = b.roster.length - outB.length + outA.length;
-  if (newSizeA > 15 || newSizeB > 15) return { ok: false, reason: 'A team would exceed 15 players.' };
+  if (newSizeA > ROSTER_MAX || newSizeB > ROSTER_MAX) return { ok: false, reason: `A team would exceed ${ROSTER_MAX} players.` };
   if (newSizeA < 8 || newSizeB < 8) return { ok: false, reason: 'A team would drop below 8 players.' };
 
   // Salary matching: if over the cap after trade, incoming salary <= 125% outgoing + 250k

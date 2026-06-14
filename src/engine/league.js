@@ -54,6 +54,10 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     news: [{ day: 0, season: 2026, phase: 'regular', category: 'league', teamIds: [userTeamId], text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
     newsArchive: {}, // { [season]: [major news items, chronological] }
     tradeOffers: [], // incoming AI trade offers awaiting a response
+    tradeOfferCooldowns: {}, // { [teamId]: dayIndex } — see tradeOffers.js
+    negotiations: {}, // { [playerId]: { ... } } — in-progress FA offers
+    offerSheets: [], // RFA offer sheets awaiting the original team's match
+    extensionTalks: {}, // { [playerId]: { ... } } — in-progress extension offers
     history: [],
   };
   if (fantasy) {
@@ -118,7 +122,7 @@ function makeRoster(rng) {
   // the cap, so most franchises start within $10M of it and some slightly
   // over. The scaling leaves individual players a little over- or
   // underpaid relative to market, which is realistic.
-  const target = SALARY_CAP - 7_000_000 + rng() * 14_000_000; // $134M–$148M
+  const target = payrollCalibrationTarget(rng);
   for (let pass = 0; pass < 3; pass++) {
     const total = roster.reduce((s, p) => s + p.contract.salary, 0);
     const factor = target / total;
@@ -131,6 +135,20 @@ function makeRoster(rng) {
     }
   }
   return roster;
+}
+
+// How far past the luxury tax line a contender will push to keep its core
+// together (re-signings, offer-sheet matches). Distinct from capProjection's
+// APRON, which is a display threshold for the future-payroll screen, not a
+// spending decision.
+export const CONTENDER_CEILING = LUXURY_TAX + 15_000_000;
+
+// A roster-payroll target near the cap, used to calibrate a fresh team's
+// books (opening day, fantasy draft): most franchises land within $10M of
+// the cap and some slightly over. Shared so both calibration sites use the
+// same band.
+export function payrollCalibrationTarget(rng) {
+  return SALARY_CAP - 7_000_000 + rng() * 14_000_000; // $134M-$148M
 }
 
 // Target season length in calendar days: Oct 21 → ~Apr 13 (see dateForDay).
@@ -272,7 +290,12 @@ export function getTeam(league, id) {
   return league.teams.find((t) => t.id === id);
 }
 
-// Saves predating player origins / experience: fill the missing fields.
+// The migration path for the JSON-serialized save (see save.js): every field
+// added to the league/team/player shape after initial release gets a
+// default here, keyed off `== null`/`!field` so old saves are patched to the
+// current shape on load. New fields should be added here FIRST — read sites
+// elsewhere can then assume the field always exists, instead of repeating
+// `?? ` / `|| []` / `|| {}` defaults at every call site.
 // Seeded from the league, so repeated loads of an unsaved league derive the
 // same values.
 export function backfillPlayers(league) {
@@ -295,12 +318,16 @@ export function backfillPlayers(league) {
     if (p.morale == null) p.morale = initMorale(p.id);
     if (p.moraleLowStreak == null) p.moraleLowStreak = 0;
     if (p.tradeDemand == null) p.tradeDemand = false;
+    // saves predating player season-stint tracking (mid-season trades)
+    if (!p.seasonStints) p.seasonStints = [];
   };
   for (const team of league.teams) team.roster.forEach(fill);
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
   for (const team of league.teams) {
     if (team.tradesThisSeason == null) team.tradesThisSeason = 0;
     if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
+    // saves predating dead-money tracking from waived contracts
+    if (!team.deadMoney) team.deadMoney = [];
   }
   // Saves predating the ownership system: generate an owner for the user's team
   if (league.userTeamId) {
@@ -323,6 +350,11 @@ export function backfillPlayers(league) {
   if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
   // Saves predating incoming trade offers
   if (!league.tradeOffers) league.tradeOffers = [];
+  if (!league.tradeOfferCooldowns) league.tradeOfferCooldowns = {};
+  // Saves predating free-agency negotiations / RFA offer sheets / extensions
+  if (!league.negotiations) league.negotiations = {};
+  if (!league.offerSheets) league.offerSheets = [];
+  if (!league.extensionTalks) league.extensionTalks = {};
   // Saves predating news categories/archiving
   if (!league.newsArchive) league.newsArchive = {};
   for (const n of league.news) {
@@ -349,7 +381,7 @@ export function payroll(team) {
 }
 
 export function deadMoneyTotal(team) {
-  return (team.deadMoney || []).reduce((s, d) => s + d.salary, 0);
+  return team.deadMoney.reduce((s, d) => s + d.salary, 0);
 }
 
 // ---------- Condition ----------
@@ -664,7 +696,7 @@ export function advanceOffseason(league) {
     for (const p of team.roster) {
       // archive season stats, split into one row per team if traded mid-season
       let prev = emptyStats();
-      for (const stint of p.seasonStints || []) {
+      for (const stint of p.seasonStints) {
         const stintStats = diffStats(stint.stats, prev);
         if (stintStats.gp > 0) p.careerStats.push({ season: league.season, team: stint.team, ...stintStats });
         prev = stint.stats;
@@ -721,7 +753,7 @@ export function advanceOffseason(league) {
       }
     }
     // Dead money burns off on the same clock as the contracts it came from
-    team.deadMoney = (team.deadMoney || [])
+    team.deadMoney = team.deadMoney
       .map((d) => ({ ...d, years: d.years - 1 }))
       .filter((d) => d.years > 0);
     team.lastWins = team.wins; // free agents judge teams by last season's record
@@ -765,7 +797,7 @@ export function advanceOffseason(league) {
         MIN_SALARY, MAX_SALARY,
       );
       // contenders push past the tax line a bit to keep their core together
-      const ceiling = team.strategy === 'contending' ? LUXURY_TAX + 15_000_000 : LUXURY_TAX;
+      const ceiling = team.strategy === 'contending' ? CONTENDER_CEILING : LUXURY_TAX;
       if (payroll(team) + salary <= ceiling) {
         p.contract = { salary, years: preferredYears(p) };
         delete p.extOfferMade;
@@ -844,7 +876,6 @@ function resignChance(team, p) {
 // shopping, the top of the market is usually picked clean after round one.
 export function simFreeAgencyDay(league) {
   const rng = makeRng(league.seed + league.season * 31 + league.faDaysLeft);
-  league.offerSheets = league.offerSheets || [];
   // Deepest cap room shops first — those are the teams that can land stars
   const order = league.teams
     .filter((t) => t.id !== league.userTeamId)
@@ -901,7 +932,7 @@ export function simFreeAgencyDay(league) {
         }
         const formerTeam = getTeam(league, target.formerTeamId);
         const formerMatches = formerTeam.strategy !== 'rebuilding' && overall(target) >= 75
-          && payroll(formerTeam) + demand <= LUXURY_TAX + 15_000_000;
+          && payroll(formerTeam) + demand <= CONTENDER_CEILING;
         if (formerMatches) {
           // the original team matches immediately — this bidder leaves empty-handed
           league.freeAgents.splice(i, 1);
@@ -1030,7 +1061,7 @@ export function proratedMinSalary(league) {
 export function signMidSeasonFA(league, teamId, playerId) {
   if (league.phase !== 'regular') return { ok: false, error: 'Mid-season signings are only possible during the regular season.' };
   const team = getTeam(league, teamId);
-  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: `Roster full (${ROSTER_MAX}). Waive someone first.` };
   const idx = league.freeAgents.findIndex((p) => p.id === playerId);
   if (idx === -1) return { ok: false, error: 'That player is no longer a free agent.' };
   const p = league.freeAgents[idx];
@@ -1165,7 +1196,6 @@ export function offerExtension(league, teamId, playerId, salary, years) {
   const range = extensionSalaryRange(p, type);
   salary = clamp(Math.round(salary / 100_000) * 100_000, range.min, range.max);
   p.extOfferMade = true;
-  league.extensionTalks = league.extensionTalks || {};
   const talks = league.extensionTalks[playerId];
   const meetsCounter = talks?.counter && years === talks.counter.years && salary >= talks.counter.salary;
   if (!meetsCounter && talks && salary <= talks.best) {
@@ -1306,7 +1336,7 @@ export function makeOffer(league, teamId, playerId, salary, years) {
     const formerTeam = getTeam(league, p.formerTeamId);
     return { ok: false, error: `${p.name} is a restricted free agent — his rights remain with the ${formerTeam.city} ${formerTeam.name} unless they decline to match an offer sheet.` };
   }
-  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: `Roster full (${ROSTER_MAX}). Waive someone first.` };
   const exception = signingException(league, teamId, salary);
   if (!exception) {
     const room = SALARY_CAP - payroll(team);
@@ -1315,7 +1345,6 @@ export function makeOffer(league, teamId, playerId, salary, years) {
       : `the mid-level exception only covers up to ${fmtM(MLE_AMOUNT)}`;
     return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}. Minimum contracts can always be offered.` };
   }
-  league.negotiations = league.negotiations || {};
   const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
   if (nego.round !== league.faDaysLeft) { nego.offers = 0; nego.round = league.faDaysLeft; }
   // accepting a standing counter is always honored, even out of patience
@@ -1364,11 +1393,11 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
 // User matches an offer sheet on his own restricted free agent, keeping him
 // at the offer's salary/years instead of losing him to the bidding team.
 export function matchOfferSheet(league, playerId) {
-  const idx = (league.offerSheets || []).findIndex((s) => s.playerId === playerId && s.formerTeamId === league.userTeamId);
+  const idx = league.offerSheets.findIndex((s) => s.playerId === playerId && s.formerTeamId === league.userTeamId);
   if (idx === -1) return { ok: false, error: 'No offer sheet to match for that player.' };
   const sheet = league.offerSheets[idx];
   const team = getTeam(league, league.userTeamId);
-  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: 'Roster full (15). Waive someone first.' };
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: `Roster full (${ROSTER_MAX}). Waive someone first.` };
   const p = league.freeAgents.find((x) => x.id === playerId);
   if (!p) return { ok: false, error: 'That player is no longer available.' };
   p.contract = { salary: sheet.salary, years: sheet.years };
@@ -1388,7 +1417,6 @@ export function matchOfferSheet(league, playerId) {
 // one entry per team. No-op if he hasn't played for this team yet.
 export function recordSeasonStint(p, teamId) {
   if (!p.stats.gp) return;
-  if (!p.seasonStints) p.seasonStints = [];
   p.seasonStints.push({ team: teamId, stats: { ...p.stats } });
 }
 
@@ -1400,7 +1428,6 @@ export function releasePlayer(league, teamId, playerId) {
   recordSeasonStint(p, teamId);
   bumpTurmoil(team);
   if (p.contract) {
-    if (!team.deadMoney) team.deadMoney = []; // saves predating this field
     team.deadMoney.push({ playerName: p.name, salary: p.contract.salary, years: p.contract.years });
   }
   p.contract = null;

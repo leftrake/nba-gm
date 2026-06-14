@@ -1,10 +1,11 @@
-import { SALARY_CAP, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
+import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
 import { generatePlayer, resetPlayerIds, overall, salaryFor } from './players.js';
 import { autoLineup } from './lineup.js';
 import { evaluateStrategies } from './strategy.js';
 import { ensureDraftPicks } from './draftPicks.js';
 import { pushNews } from './save.js';
+import { getTeam, payrollCalibrationTarget } from './league.js';
 
 // ---------- Fantasy Draft ----------
 // An alternative new-game mode: every player from all 30 rosters plus the
@@ -23,10 +24,6 @@ const POOL_TIERS = [
   [57, 6], [57, 6], [57, 6], [48, 6], [48, 6], [48, 6], [48, 6], [45, 6],
 ];
 const FRINGE_COUNT = 90; // extra players beyond the 450 that get drafted
-
-function getTeam(league, teamId) {
-  return league.teams.find((t) => t.id === teamId);
-}
 
 // 540-player pool: 30 * 15 tiered players plus a tail of fringe free agents.
 export function generateFantasyPool(rng) {
@@ -201,7 +198,7 @@ export function finishFantasyDraft(league) {
     for (const p of team.roster) {
       p.contract = { salary: salaryFor(overall(p), p.age), years: randInt(1, 4, rng) };
     }
-    const target = SALARY_CAP - 7_000_000 + rng() * 14_000_000; // $134M-$148M
+    const target = payrollCalibrationTarget(rng);
     for (let pass = 0; pass < 3; pass++) {
       const total = team.roster.reduce((s, p) => s + p.contract.salary, 0);
       const factor = target / total;

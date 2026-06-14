@@ -38,7 +38,7 @@ export function isExpiringIn(p, seasonsOut, includeExtensions = true) {
 // entries decay by 1 year each offseason (years: 1 means it counts for the
 // current season only), so an entry applies while years - seasonsOut > 0.
 export function projectedDeadMoney(team, seasonsOut) {
-  return (team.deadMoney || [])
+  return team.deadMoney
     .filter((d) => d.years - seasonsOut > 0)
     .reduce((s, d) => s + d.salary, 0);
 }

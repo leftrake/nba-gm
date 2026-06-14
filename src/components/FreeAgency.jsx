@@ -39,7 +39,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     });
   };
 
-  const negotiations = league.negotiations || {};
+  const negotiations = league.negotiations;
 
   const toggleNegotiation = (p) => {
     if (negotiatingId === p.id) {
@@ -99,7 +99,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     .slice(0, 50);
 
   const myRfas = league.freeAgents.filter((p) => p.restrictedFA && p.formerTeamId === team.id);
-  const offerSheets = league.offerSheets || [];
+  const offerSheets = league.offerSheets;
 
   const matchSheet = (p) => {
     const res = matchOfferSheet(league, p.id);

@@ -24,7 +24,7 @@ export default function FuturePayroll({ league, openPlayer, onTradeFor, setScree
     .filter((p) => p.contract)
     .sort((a, b) => b.contract.salary - a.contract.salary);
 
-  const deadMoney = team.deadMoney || [];
+  const deadMoney = team.deadMoney;
 
   const picksBySeason = years.map((so) => {
     const draftSeason = league.season + 1 + so;

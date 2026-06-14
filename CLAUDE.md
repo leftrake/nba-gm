@@ -37,7 +37,7 @@ The hard split is **engine vs. UI**:
 
 - `src/engine/` — pure game logic, no React imports. `league.js` is the hub: it owns the league object shape, the season loop (`simDay`, `simPlayoffRound`, `advanceOffseason`, `simFreeAgencyDay`, `startNewSeason`), and free-agency/roster moves. It pulls from `players.js` (generation, `overall()`, development curve, salary formulas), `sim.js` (single-game sim + box scores), `trade.js` (trade value, cap validation, AI accept/reject), and `rng.js` (seeded mulberry32).
 - `src/components/` — React screens, one per nav tab, switched by `App.jsx`.
-- `src/data/teams.js` — the 30 teams plus cap constants (`SALARY_CAP`, `MIN_SALARY`, roster limits). Engine code imports cap numbers from here rather than hardcoding them (one stray hardcoded CAP exists in `simFreeAgencyDay`).
+- `src/data/teams.js` — the 30 teams plus cap constants (`SALARY_CAP`, `MIN_SALARY`, roster limits). Engine code imports cap numbers from here rather than hardcoding them.
 
 ### State model — mutate then commit
 

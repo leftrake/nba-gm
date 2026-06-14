@@ -77,12 +77,11 @@ function rebuilderWouldChase(p) {
 }
 
 function isOnCooldown(league, teamId) {
-  const until = league.tradeOfferCooldowns?.[teamId];
+  const until = league.tradeOfferCooldowns[teamId];
   return until != null && until > league.dayIndex;
 }
 
 export function setTradeOfferCooldown(league, teamId) {
-  if (!league.tradeOfferCooldowns) league.tradeOfferCooldowns = {};
   league.tradeOfferCooldowns[teamId] = league.dayIndex + REJECTION_COOLDOWN_DAYS;
 }
 

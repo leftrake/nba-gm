@@ -217,7 +217,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   };
 
   // ---- Extension offers (user team, regular season only)
-  const extTalks = league.extensionTalks || {};
+  const extTalks = league.extensionTalks;
   const canExtend = isUser && league.phase === 'regular';
 
   const toggleExtend = (p) => {
@@ -716,7 +716,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
         </table>
       </div>
 
-      {(team.deadMoney || []).length > 0 && (
+      {team.deadMoney.length > 0 && (
         <div className="panel">
           <h2>Dead Money</h2>
           <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
