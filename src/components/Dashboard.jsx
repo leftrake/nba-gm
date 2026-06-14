@@ -1,5 +1,5 @@
 import React from 'react';
-import { getTeam, standings, payroll, deadMoneyTotal, dateForDay } from '../engine/league.js';
+import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor } from './shared.jsx';
@@ -25,6 +25,7 @@ function nextGameFor(league, teamId) {
 // large display type.
 function Banner({ league, team, seed, openTeam }) {
   const ng = nextGameFor(league, team.id);
+  const po = league.phase === 'playoffs' ? teamPlayoffStatus(league, team.id) : null;
   return (
     <div className="panel" style={{ borderLeft: '4px solid var(--team-color)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
@@ -42,9 +43,26 @@ function Banner({ league, team, seed, openTeam }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ color: 'var(--muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>
-            {league.phase === 'regular' ? 'Next Game' : 'Schedule'}
+            {league.phase === 'regular' ? 'Next Game' : league.phase === 'playoffs' ? 'Playoffs' : 'Schedule'}
           </div>
-          {ng ? (
+          {league.phase === 'playoffs' && po ? (
+            po.champion ? (
+              <div className="display-font" style={{ fontSize: 18 }}>🏆 NBA Champions</div>
+            ) : po.series ? (
+              <>
+                <div className="display-font" style={{ fontSize: 20 }}>
+                  {ROUND_NAMES[po.round]}{' vs '}
+                  <TeamLink team={getTeam(league, po.series.high === team.id ? po.series.low : po.series.high)} openTeam={openTeam} />
+                </div>
+                <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                  Series {po.series.high === team.id ? po.series.highWins : po.series.lowWins}-{po.series.high === team.id ? po.series.lowWins : po.series.highWins}
+                  {po.eliminated && ' · Eliminated'}
+                </div>
+              </>
+            ) : (
+              <div className="display-font" style={{ fontSize: 18, color: 'var(--muted)' }}>Awaiting next round</div>
+            )
+          ) : ng ? (
             <>
               <div className="display-font" style={{ fontSize: 20 }}>
                 {ng.g.home === team.id ? 'vs' : '@'}{' '}

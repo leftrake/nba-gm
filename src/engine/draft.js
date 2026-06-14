@@ -1,6 +1,6 @@
 import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, overall } from './players.js';
+import { generatePlayer, resetPlayerIds, overall, recordContract } from './players.js';
 import { pushNews } from './save.js';
 import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
 
@@ -144,6 +144,7 @@ export function makeDraftPick(league, prospectId) {
   p.draftPick = pick;
   if (team.roster.length < ROSTER_MAX) {
     p.contract = { salary: rookieSalary(pick), years: rookieContractYears(pick) };
+    recordContract(p, league.season, team.id, p.contract);
     team.roster.push(p);
   } else {
     // no roster spot — the pick goes unsigned and hits free agency

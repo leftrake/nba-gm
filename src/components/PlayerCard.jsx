@@ -208,6 +208,27 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           </table>
         )}
 
+        {p.contractHistory?.length > 0 && (
+          <>
+            <h3 style={{ marginTop: 14 }}>Contract History</h3>
+            <table>
+              <thead>
+                <tr><th>Season</th><th>Team</th><th className="num">Salary</th><th className="num">Years</th></tr>
+              </thead>
+              <tbody>
+                {[...p.contractHistory].reverse().map((c, i) => (
+                  <tr key={i}>
+                    <td>{c.season}</td>
+                    <td><TeamLink team={getTeam(league, c.team)} openTeam={openTeam} /></td>
+                    <td className="num">{money(c.salary)}</td>
+                    <td className="num">{c.years}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
         <h3 style={{ marginTop: 14 }}>Similar Players</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {similarPlayers(league, p).map(({ p: sp, team: st }) => {

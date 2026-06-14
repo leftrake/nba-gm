@@ -55,6 +55,16 @@ export default function News({ league, openTeam }) {
   const teams = [...league.teams].sort((a, b) =>
     a.id === league.userTeamId ? -1 : b.id === league.userTeamId ? 1 : a.city.localeCompare(b.city));
 
+  // Every executed trade, regardless of how "major" it was — unlike the news
+  // feed/archive, this list is never trimmed. Grouped by season, newest first.
+  const tradesBySeason = [];
+  for (const t of [...(league.tradeHistory || [])].reverse()) {
+    if (teamId !== 'all' && !t.teamIds.includes(teamId)) continue;
+    let bucket = tradesBySeason.find((b) => b.season === t.season);
+    if (!bucket) { bucket = { season: t.season, items: [] }; tradesBySeason.push(bucket); }
+    bucket.items.push(t);
+  }
+
   return (
     <div>
       <div className="panel">
@@ -92,6 +102,26 @@ export default function News({ league, openTeam }) {
           ))}
         </div>
       ))}
+
+      {cat === 'trade' && (
+        <div className="panel">
+          <h2>Trade History</h2>
+          {tradesBySeason.length === 0 && (
+            <p style={{ color: 'var(--muted)' }}>No trades have been made yet.</p>
+          )}
+          {tradesBySeason.map(({ season, items }) => (
+            <div key={season}>
+              <h3>{season}</h3>
+              {items.map((t, i) => (
+                <div className="news-item" key={i}>
+                  <span className="news-text"><NewsText text={t.text} openTeam={openTeam} /></span>
+                  <span className="news-when">{fmtDate(new Date(season - 1, 9, 21 + t.day))}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

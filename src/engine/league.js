@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow } from './players.js';
+import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
@@ -54,6 +54,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     }),
     news: [{ day: 0, season: 2026, phase: 'regular', category: 'league', teamIds: [userTeamId], text: `Welcome, GM! You're now running the ${TEAMS.find(t => t.id === userTeamId).city} ${TEAMS.find(t => t.id === userTeamId).name}.` }],
     newsArchive: {}, // { [season]: [major news items, chronological] }
+    tradeHistory: [], // executed trades, chronological — see executeTrade/executeMultiTrade
     tradeOffers: [], // incoming AI trade offers awaiting a response
     tradeOfferCooldowns: {}, // { [teamId]: dayIndex } — see tradeOffers.js
     negotiations: {}, // { [playerId]: { ... } } — in-progress FA offers
@@ -350,6 +351,8 @@ export function backfillPlayers(league) {
   if (!user.lineup) user.lineup = autoLineup(user.roster);
   // Saves predating the news cap
   if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
+  // Saves predating the trade history log
+  if (!league.tradeHistory) league.tradeHistory = [];
   // Saves predating incoming trade offers
   if (!league.tradeOffers) league.tradeOffers = [];
   if (!league.tradeOfferCooldowns) league.tradeOfferCooldowns = {};
@@ -762,6 +765,30 @@ function advanceRound(po, league) {
   }
 }
 
+// Where a team stands in the playoffs right now: its active series (if
+// still alive and the bracket has reached it), the series it was eliminated
+// in, or the championship. Returns null if the team never made the playoffs
+// or its next series hasn't been set yet.
+export function teamPlayoffStatus(league, teamId) {
+  const po = league.playoffs;
+  if (!po) return null;
+  if (po.champion === teamId) return { champion: true, round: 3 };
+  if (po.finals && (po.finals.high === teamId || po.finals.low === teamId)) {
+    return { series: po.finals, round: 3, active: !po.finals.winner };
+  }
+  for (const conf of ['East', 'West']) {
+    for (const m of po[conf] || []) {
+      if (m.high === teamId || m.low === teamId) return { series: m, round: po.round, active: !m.winner };
+    }
+  }
+  for (const { round, conf, series } of [...(po.completed || [])].reverse()) {
+    if (series.high === teamId || series.low === teamId) {
+      return { series, round, active: false, eliminated: series.winner !== teamId };
+    }
+  }
+  return null;
+}
+
 // Fast-forward: sim game-by-game until the current round is done
 export function simPlayoffRound(league) {
   const po = league.playoffs;
@@ -849,6 +876,7 @@ export function advanceOffseason(league) {
           if (p.extension) {
             // the extension signed during the season kicks in seamlessly
             p.contract = p.extension;
+            recordContract(p, league.season + 1, team.id, p.contract);
             p.extension = null;
             delete p.extOfferMade;
           } else {
@@ -922,6 +950,7 @@ export function advanceOffseason(league) {
       const ceiling = team.strategy === 'contending' ? CONTENDER_CEILING : LUXURY_TAX;
       if (payroll(team) + salary <= ceiling) {
         p.contract = { salary, years: preferredYears(p) };
+        recordContract(p, league.season + 1, team.id, p.contract);
         delete p.extOfferMade;
         if (overall(p) >= 70) {
           pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name} re-signs with the ${team.city} ${team.name} (${fmtM(salary)} x ${p.contract.years}yr).` });
@@ -1062,6 +1091,7 @@ export function simFreeAgencyDay(league) {
           target.restrictedFA = false;
           delete target.formerTeamId;
           target.contract = { salary: demand, years };
+          recordContract(target, league.season, formerTeam.id, target.contract);
           delete target.extOfferMade;
           formerTeam.roster.push(target);
           pushNews(league, { day: 0, category: 'signing', teamIds: [formerTeam.id], text: `The ${formerTeam.city} ${formerTeam.name} match an offer sheet to keep ${target.name} (${fmtM(demand)}/yr x ${years}yr).` });
@@ -1191,6 +1221,7 @@ export function signMidSeasonFA(league, teamId, playerId) {
     return { ok: false, error: `${p.name} won't take a minimum deal mid-season — he's holding out for a real contract in the offseason.` };
   }
   p.contract = { salary: proratedMinSalary(league), years: 1 };
+  recordContract(p, league.season, team.id, p.contract);
   league.freeAgents.splice(idx, 1);
   team.roster.push(p); // on the roster now — available for the next game
   bumpTurmoil(team, 0.5);
@@ -1497,6 +1528,7 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
     salary: salary ?? askingPrice(p),
     years: years ?? clamp(Math.round(gauss(2.5, 1)), 1, 4),
   };
+  recordContract(p, league.season, team.id, p.contract);
   delete p.extOfferMade;
   p.restrictedFA = false;
   p.offerSheetPending = false;
@@ -1523,6 +1555,7 @@ export function matchOfferSheet(league, playerId) {
   const p = league.freeAgents.find((x) => x.id === playerId);
   if (!p) return { ok: false, error: 'That player is no longer available.' };
   p.contract = { salary: sheet.salary, years: sheet.years };
+  recordContract(p, league.season, team.id, p.contract);
   delete p.extOfferMade;
   p.restrictedFA = false;
   p.offerSheetPending = false;

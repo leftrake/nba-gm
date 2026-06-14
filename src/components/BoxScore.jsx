@@ -127,8 +127,8 @@ export function LineScore({ league, game }) {
   if (!game.homeQtrs?.length) return null;
   const cols = game.homeQtrs.map((_, i) => periodLabel(i));
   const row = (teamId, qtrs, oppQtrs, pts, winner) => (
-    <tr style={winner ? { fontWeight: 700 } : undefined}>
-      <td><TeamBadge team={getTeam(league, teamId)} size="small" /> {getTeam(league, teamId).name}</td>
+    <tr>
+      <td style={winner ? { fontWeight: 700 } : undefined}><TeamBadge team={getTeam(league, teamId)} size="small" /> {getTeam(league, teamId).name}</td>
       {qtrs.map((q, i) => <td className="num" key={i} style={q > oppQtrs[i] ? { fontWeight: 700 } : undefined}>{q}</td>)}
       <td className="num"><b>{pts}</b></td>
     </tr>

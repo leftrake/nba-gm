@@ -1,6 +1,28 @@
 import React, { useState } from 'react';
-import { getTeam, dateForDay } from '../engine/league.js';
+import { getTeam, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { fmtDate, TeamLink, TeamBadge } from './shared.jsx';
+import { ROUND_NAMES } from './Playoffs.jsx';
+
+// Every playoff game the user's team has played this postseason, oldest
+// first, across whatever rounds are archived in `po.completed` plus the
+// team's current series.
+function userPlayoffGames(league, me) {
+  const po = league.playoffs;
+  if (!po) return [];
+  const seriesList = [];
+  for (const { round, series } of po.completed || []) {
+    if (series.high === me || series.low === me) seriesList.push({ round, series });
+  }
+  for (const conf of ['East', 'West']) {
+    for (const m of po[conf] || []) if (m.high === me || m.low === me) seriesList.push({ round: po.round, series: m });
+  }
+  if (po.finals && (po.finals.high === me || po.finals.low === me)) seriesList.push({ round: 3, series: po.finals });
+  const games = [];
+  for (const { round, series } of seriesList) {
+    (series.games || []).forEach((g, i) => games.push({ round, gameNo: i + 1, g }));
+  }
+  return games;
+}
 
 export default function Schedule({ league, openTeam, openGame }) {
   const me = league.userTeamId;
@@ -24,6 +46,9 @@ export default function Schedule({ league, openTeam, openGame }) {
   const upcoming = userGames.filter((x) => x.di >= league.dayIndex);
 
   const oppOf = (g) => getTeam(league, g.home === me ? g.away : g.home);
+
+  const playoffGames = userPlayoffGames(league, me).reverse();
+  const playoffStatus = league.playoffs ? teamPlayoffStatus(league, me) : null;
 
   // results from saves predating the possession sim have no stored box score
   const ScoreCells = ({ g, r, di }) => {
@@ -50,7 +75,21 @@ export default function Schedule({ league, openTeam, openGame }) {
       <div>
         <div className="panel">
           <h2>Upcoming Games</h2>
-          {upcoming.length === 0 && <p style={{ color: 'var(--muted)' }}>Regular season complete.</p>}
+          {upcoming.length === 0 && !playoffStatus && <p style={{ color: 'var(--muted)' }}>Regular season complete.</p>}
+          {upcoming.length === 0 && playoffStatus && (
+            playoffStatus.champion ? (
+              <p style={{ color: 'var(--muted)' }}>🏆 NBA Champions — the season is over.</p>
+            ) : playoffStatus.series ? (
+              <p style={{ color: 'var(--muted)' }}>
+                {ROUND_NAMES[playoffStatus.round]} vs{' '}
+                <TeamLink team={getTeam(league, playoffStatus.series.high === me ? playoffStatus.series.low : playoffStatus.series.high)} openTeam={openTeam} />
+                {' '}— series {playoffStatus.series.high === me ? playoffStatus.series.highWins : playoffStatus.series.lowWins}-{playoffStatus.series.high === me ? playoffStatus.series.lowWins : playoffStatus.series.highWins}
+                {playoffStatus.eliminated && ' (eliminated)'}
+              </p>
+            ) : (
+              <p style={{ color: 'var(--muted)' }}>Awaiting the next playoff round.</p>
+            )
+          )}
           {upcoming.length > 0 && (
             <div style={{ maxHeight: 380, overflowY: 'auto' }}>
               <table>
@@ -95,6 +134,37 @@ export default function Schedule({ league, openTeam, openGame }) {
             </div>
           )}
         </div>
+
+        {playoffGames.length > 0 && (
+          <div className="panel">
+            <h2>Playoff Games</h2>
+            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <table>
+                <thead><tr><th>Round</th><th>Opponent</th><th>W/L</th><th className="num">Score</th></tr></thead>
+                <tbody>
+                  {playoffGames.map(({ round, gameNo, g }) => {
+                    const opp = getTeam(league, g.home === me ? g.away : g.home);
+                    const myPts = g.home === me ? g.homePts : g.awayPts;
+                    const oppPts = g.home === me ? g.awayPts : g.homePts;
+                    const title = `${ROUND_NAMES[round]} · Game ${gameNo}`;
+                    return (
+                      <tr key={`${round}-${gameNo}`}>
+                        <td>{title}</td>
+                        <td>{g.home === me ? 'vs' : '@'} <TeamBadge team={opp} size="small" /> <TeamLink team={opp} openTeam={openTeam} /></td>
+                        <td style={{ color: myPts > oppPts ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+                          {myPts > oppPts ? 'W' : 'L'}
+                        </td>
+                        <td className="num">
+                          <a className="team-link" title="View game" onClick={() => openGame(g, title)}>{myPts}-{oppPts}</a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="panel">

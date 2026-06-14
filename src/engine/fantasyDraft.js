@@ -1,6 +1,6 @@
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, overall, salaryFor } from './players.js';
+import { generatePlayer, resetPlayerIds, overall, salaryFor, recordContract } from './players.js';
 import { autoLineup } from './lineup.js';
 import { evaluateStrategies } from './strategy.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -210,6 +210,7 @@ export function finishFantasyDraft(league) {
         );
       }
     }
+    for (const p of team.roster) recordContract(p, league.season, team.id, p.contract);
   }
 
   league.fantasyDraftResults = d.results;

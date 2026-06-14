@@ -190,6 +190,12 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
     major: [...outA, ...outB].some((p) => overall(p) >= 80),
     text: `TRADE: ${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`,
   });
+  league.tradeHistory.push({
+    season: league.season,
+    day: league.dayIndex,
+    teamIds: [a.id, b.id],
+    text: `${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`,
+  });
 }
 
 // ---------- Multi-team trades (2-4 teams) ----------
@@ -341,5 +347,11 @@ export function executeMultiTrade(league, teamIds, sends) {
     teamIds: legs.map((l) => l.team.id),
     major,
     text: legs.length > 2 ? `${legs.length}-TEAM TRADE: ${summary}.` : `TRADE: ${summary}.`,
+  });
+  league.tradeHistory.push({
+    season: league.season,
+    day: league.dayIndex,
+    teamIds: legs.map((l) => l.team.id),
+    text: `${summary}.`,
   });
 }

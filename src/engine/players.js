@@ -301,6 +301,14 @@ export function snapshotRatings(p, season) {
   }
 }
 
+// Logs a signed deal (new contract, re-sign, extension kicking in, etc.) to
+// the player's contract history for the Player Profile screen.
+export function recordContract(p, season, teamId, contract) {
+  if (!contract) return;
+  if (!p.contractHistory) p.contractHistory = [];
+  p.contractHistory.push({ season, team: teamId, salary: contract.salary, years: contract.years });
+}
+
 // "Similar to" — the closest matches across the league for a player's
 // rating profile, by Euclidean distance over the seven core ratings plus a
 // small age component (so a young high-upside player doesn't match a
