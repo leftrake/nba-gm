@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews,
+  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews, standings,
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
@@ -40,6 +40,19 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
 
   const events = getLeagueEvents();
   const resultFor = (di, g) => (league.resultsByDay?.[di] || []).find((r) => r.home === g.home && r.away === g.away);
+  // Top-4-seed teams in each conference, for highlighting marquee matchups.
+  const topSeeds = new Set([
+    ...standings(league, 'East').slice(0, 4).map((t) => t.id),
+    ...standings(league, 'West').slice(0, 4).map((t) => t.id),
+  ]);
+  // Marquee = Christmas Day slate, a clash of two top-4 seeds, or a
+  // same-division rivalry game.
+  const isMarqueeGame = (di, g) => {
+    if (di === CHRISTMAS_DAY) return true;
+    if (topSeeds.has(g.home) && topSeeds.has(g.away)) return true;
+    const home = getTeam(league, g.home), away = getTeam(league, g.away);
+    return home.conf === away.conf && home.div === away.div;
+  };
   const todayHasGame = league.dayIndex < league.schedule.length
     && league.schedule[league.dayIndex].some((g) => g.home === me || g.away === me);
   // Was this the user's championship season? Colors win cells gold in hindsight.
@@ -161,6 +174,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
             const dayEvents = events.filter((e) => e.dayIndex === di);
             const userGame = inRange ? league.schedule[di].find((g) => g.home === me || g.away === me) : null;
             const result = userGame ? resultFor(di, userGame) : null;
+            const otherGames = inRange && !isBlackout ? league.schedule[di].filter((g) => g.home !== me && g.away !== me) : [];
             const clickable = inRange && isFuture && !animating;
             const isPastDay = inRange && di < league.dayIndex;
             const isFutureDay = inRange && di > league.dayIndex;
@@ -201,27 +215,50 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                 {inRange && (
                   isBlackout ? (
                     <div className="calendar-note">All-Star break — no games</div>
-                  ) : userGame ? (
-                    result ? (
-                      <a className="team-link calendar-game" onClick={(e) => { e.stopPropagation(); openGame(result, fmtDate(d)); }}>
-                        {userGame.home === me ? 'vs' : '@'}{' '}
-                        <TeamBadge team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} size="small" />{' '}
-                        {userGame.home === me ? userGame.away : userGame.home}{' '}
-                        <span style={{ color: (userGame.home === me ? result.homePts > result.awayPts : result.awayPts > result.homePts) ? 'var(--green)' : 'var(--red)' }}>
-                          {userGame.home === me ? result.homePts : result.awayPts}-{userGame.home === me ? result.awayPts : result.homePts}
-                        </span>
-                      </a>
-                    ) : (
-                      <span className="calendar-game">
-                        {userGame.home === me ? 'vs' : '@'}{' '}
-                        <TeamBadge team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} size="small" />{' '}
-                        <TeamLink team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} openTeam={(id) => { if (!animating) openTeam(id); }}>
-                          {userGame.home === me ? userGame.away : userGame.home}
-                        </TeamLink>
-                      </span>
-                    )
                   ) : (
-                    <div className="calendar-note">—</div>
+                    <>
+                      {userGame ? (
+                        result ? (
+                          <a className="team-link calendar-game" onClick={(e) => { e.stopPropagation(); openGame(result, fmtDate(d)); }}>
+                            {userGame.home === me ? 'vs' : '@'}{' '}
+                            <TeamBadge team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} size="small" />{' '}
+                            {userGame.home === me ? userGame.away : userGame.home}{' '}
+                            <span style={{ color: (userGame.home === me ? result.homePts > result.awayPts : result.awayPts > result.homePts) ? 'var(--green)' : 'var(--red)' }}>
+                              {userGame.home === me ? result.homePts : result.awayPts}-{userGame.home === me ? result.awayPts : result.homePts}
+                            </span>
+                          </a>
+                        ) : (
+                          <span className="calendar-game">
+                            {userGame.home === me ? 'vs' : '@'}{' '}
+                            <TeamBadge team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} size="small" />{' '}
+                            <TeamLink team={getTeam(league, userGame.home === me ? userGame.away : userGame.home)} openTeam={(id) => { if (!animating) openTeam(id); }}>
+                              {userGame.home === me ? userGame.away : userGame.home}
+                            </TeamLink>
+                          </span>
+                        )
+                      ) : otherGames.length === 0 ? (
+                        <div className="calendar-note">—</div>
+                      ) : null}
+                      {otherGames.length > 0 && (
+                        <div className="calendar-other-games">
+                          {otherGames.map((g) => {
+                            const r = resultFor(di, g);
+                            const home = getTeam(league, g.home), away = getTeam(league, g.away);
+                            const marquee = isMarqueeGame(di, g);
+                            return (
+                              <span
+                                key={`${g.home}-${g.away}`}
+                                className={`calendar-chip${marquee ? ' marquee' : ''}${r ? ' clickable' : ''}`}
+                                title={`${away.city} ${away.name} @ ${home.city} ${home.name}`}
+                                onClick={r ? (e) => { e.stopPropagation(); openGame(r, fmtDate(d)); } : undefined}
+                              >
+                                {g.away} {r ? `${r.awayPts}-${r.homePts}` : '@'} {g.home}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )
                 )}
                 {confirmDay === di && (

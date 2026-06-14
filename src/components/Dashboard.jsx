@@ -196,6 +196,21 @@ function OwnerCard({ league, team }) {
       {isRosterFrozen(league, team) && (
         <p style={{ color: 'var(--red)' }}>🔒 Roster frozen by ownership.</p>
       )}
+      {owner.missedPlayoffsStreak > 0 && (
+        <p style={{ color: 'var(--red)' }}>
+          📉 Missed the playoffs {owner.missedPlayoffsStreak} season{owner.missedPlayoffsStreak === 1 ? '' : 's'} in a row.
+        </p>
+      )}
+      {owner.champYears > 0 && (
+        <p style={{ color: '#e3c567' }}>
+          🏆 Championship afterglow — ownership goodwill and revenue boosted for {owner.champYears} more season{owner.champYears === 1 ? '' : 's'}.
+        </p>
+      )}
+      {owner.extensionOffered && (
+        <p style={{ color: 'var(--accent)' }}>
+          ✉️ {owner.name} has offered you a contract extension as GM — awaiting your response.
+        </p>
+      )}
       {owner.directives?.length > 0 && (
         <>
           <h3 style={{ marginTop: 14 }}>Owner Directives</h3>
