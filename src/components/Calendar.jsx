@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents,
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
@@ -25,6 +25,12 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   const todayDate = dateForDay(league, clamp(league.dayIndex, 0, lastDi));
 
   const [view, setView] = useState(() => ({ year: todayDate.getFullYear(), month: todayDate.getMonth() }));
+
+  // Keep the visible month in sync with the in-game date as days are simmed,
+  // so the user doesn't have to manually page the calendar forward.
+  useEffect(() => {
+    setView({ year: todayDate.getFullYear(), month: todayDate.getMonth() });
+  }, [todayDate.getFullYear(), todayDate.getMonth()]);
   const [flashDay, setFlashDay] = useState(null);
   const [animating, setAnimating] = useState(false);
   const [openEvent, setOpenEvent] = useState(null);
