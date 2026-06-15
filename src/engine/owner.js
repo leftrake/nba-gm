@@ -323,6 +323,21 @@ export function issueDirectives(league, team, rng) {
   }
 }
 
+// The user responds to a pending GM contract extension offer (issued after
+// winning a championship). Accepting boosts ownership approval and signals
+// long-term security; declining is a no-op on approval but clears the offer.
+export function respondToExtension(league, team, accept) {
+  const owner = team.owner;
+  if (!owner || !owner.extensionOffered) return;
+  owner.extensionOffered = false;
+  if (accept) {
+    owner.approval = clamp(owner.approval + 5, 0, 100);
+    pushNews(league, { day: 0, category: 'owner', teamIds: [team.id], text: `You accept ${owner.name}'s contract extension as GM.` });
+  } else {
+    pushNews(league, { day: 0, category: 'owner', teamIds: [team.id], text: `You politely decline ${owner.name}'s contract extension offer, preferring to let your results speak season to season.` });
+  }
+}
+
 // ---------- Season transitions ----------
 
 // Called once per season for the user's team, before the new directives are

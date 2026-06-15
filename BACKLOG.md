@@ -8,16 +8,9 @@ just delete it — git history keeps the record).
 
 ## UI/UX
 
-- Minutes adjuster buttons on the roster/lineup screen are too small and hard to click; increase hit area or replace with a drag slider or direct number input field.
-- Add background color/theme customization to Settings: a palette of dark theme options beyond the default (midnight blue, forest green, deep purple, charcoal) plus the ability to set a custom hex accent color.
-- On the Roster screen, add left and right arrow buttons on either side of the team dropdown that cycle through teams one at a time — left goes to the previous team, right goes to the next, wrapping from last to first and first to last. The dropdown remains for jumping directly to any team. Team order should follow a consistent sequence, either alphabetical by city or grouped by conference and division matching the standings order.
-- The post-draft summary screen should display picks in order from 1 to 60, not 60 to 1. Next to any player who went undrafted or whose drafting team had a full roster and couldn't sign them — sending them directly to free agency — show a small note like "→ Free Agent (roster full)" so it's clear why they didn't land on a team. Makes it easy to spot late-round gems who are immediately available to sign off waivers.
-- On the League Leaders screen, add a "See full stats →" link next to each category header (Points, Rebounds, Assists, etc.) that navigates to the Stats page pre-sorted by that category descending — e.g. clicking next to Points opens Stats sorted by PTS, next to Rebounds opens it sorted by REB. The Stats page should accept an initial sort column as a parameter so Leaders can pass it directly rather than the user re-sorting manually after navigating.
 
 ## Bugs
 
-- "GM contract extension offered" news item (e.g. "Patricia Cole has offered you a contract extension as GM") has no corresponding UI or response flow — either build the accept/decline interaction or remove the news item until it's implemented.
-- Visual layering bug on the playoff bracket screen — the "East" and "West" conference labels render below other text elements like "Conference Semifinals" round headers, causing them to appear behind or overlapping incorrectly. Fix z-index or DOM ordering in Playoffs.jsx so conference labels sit at the correct visual layer above the bracket content.
 
 ## Balance tweaks
 

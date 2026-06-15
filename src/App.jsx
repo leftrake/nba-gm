@@ -28,6 +28,7 @@ import Walkthrough from './components/Walkthrough.jsx';
 import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/shared.jsx';
 import { checkSave } from './engine/save.js';
 import { readCrossSaveLegacy } from './engine/legacy.js';
+import { loadTheme, loadAccent, applyTheme, THEME_KEY, ACCENT_KEY } from './theme.js';
 
 const SAVE_KEY = 'nba-gm-save';
 
@@ -62,6 +63,20 @@ export default function App() {
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
+  const [statsInitialSort, setStatsInitialSort] = useState(null);
+  const [theme, setTheme] = useState(loadTheme);
+  const [accentColor, setAccentColor] = useState(loadAccent);
+
+  useEffect(() => { applyTheme(theme, accentColor); }, [theme, accentColor]);
+
+  const updateTheme = useCallback((key) => {
+    setTheme(key);
+    try { localStorage.setItem(THEME_KEY, key); } catch {}
+  }, []);
+  const updateAccent = useCallback((hex) => {
+    setAccentColor(hex);
+    try { localStorage.setItem(ACCENT_KEY, hex); } catch {}
+  }, []);
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
@@ -77,6 +92,13 @@ export default function App() {
   const openPlayer = useCallback((p) => setViewPlayer(p), []);
   const closePlayer = useCallback(() => setViewPlayer(null), []);
   const openGame = useCallback((game, title) => setViewGame({ game, title }), []);
+
+  // From the League Leaders screen's "See full stats →" links: jump to the
+  // Stats page's Player Stats tab pre-sorted by the given stat column.
+  const openStats = useCallback((sortKey) => {
+    setStatsInitialSort(sortKey);
+    setScreen('stats');
+  }, []);
 
   // Hand an incoming trade offer to the Trade Machine, pre-filled so the
   // user can tweak it into a counter-offer.
@@ -433,8 +455,8 @@ export default function App() {
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
         {screen === 'futurecap' && <FuturePayroll league={league} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
-        {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} />}
-        {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+        {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} openStats={openStats} />}
+        {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} initialSort={statsInitialSort} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
         {screen === 'allstar' && (
           <AllStarScreen
@@ -455,7 +477,7 @@ export default function App() {
           : <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />)}
         {screen === 'legacy' && <Legacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
-        {screen === 'settings' && <Settings league={league} importLeague={importLeague} onResetTutorial={handleResetTutorial} />}
+        {screen === 'settings' && <Settings league={league} importLeague={importLeague} onResetTutorial={handleResetTutorial} theme={theme} setTheme={updateTheme} accentColor={accentColor} setAccentColor={updateAccent} />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}

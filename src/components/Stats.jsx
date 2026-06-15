@@ -58,11 +58,11 @@ function useSort(initialKey) {
   return [state, onSort];
 }
 
-function PlayerStatsTab({ league, openPlayer, openTeam }) {
+function PlayerStatsTab({ league, openPlayer, openTeam, initialSort }) {
   const [teamFilter, setTeamFilter] = useState('all');
   const [minGp, setMinGp] = useState(10);
   const [perGameMode, setPerGameMode] = useState(true);
-  const [sortState, onSort] = useSort('pts');
+  const [sortState, onSort] = useSort(initialSort || 'pts');
   const [sortKey, sortDir] = sortState;
 
   let rows = allPlayerStatRows(league, Math.max(0, Number(minGp) || 0));
@@ -262,7 +262,7 @@ const TABS = [
   ['leaders', 'League Leaders'],
 ];
 
-export default function Stats({ league, openPlayer, openTeam }) {
+export default function Stats({ league, openPlayer, openTeam, initialSort }) {
   const [tab, setTab] = useState('players');
   return (
     <div>
@@ -273,7 +273,7 @@ export default function Stats({ league, openPlayer, openTeam }) {
           </button>
         ))}
       </div>
-      {tab === 'players' && <PlayerStatsTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+      {tab === 'players' && <PlayerStatsTab league={league} openPlayer={openPlayer} openTeam={openTeam} initialSort={initialSort} />}
       {tab === 'teams' && <TeamStatsTab league={league} openTeam={openTeam} />}
       {tab === 'leaders' && <LeagueLeadersTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
     </div>

@@ -118,19 +118,27 @@ function OverStamina({ p, min }) {
 // blur.
 function MinInput({ value, onChange, disabled }) {
   const [draft, setDraft] = useState(null); // null = not editing, mirror the prop
+  const step = (delta) => {
+    const cur = Number(draft ?? value) || 0;
+    onChange(Math.max(0, Math.min(48, cur + delta)));
+  };
   return (
-    <input
-      type="number" min={0} max={48}
-      style={{ width: 56 }}
-      disabled={disabled}
-      value={draft ?? value}
-      onFocus={(e) => { setDraft(String(value)); e.target.select(); }}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        if (e.target.value !== '') onChange(e.target.value);
-      }}
-      onBlur={() => { if (draft === '') onChange(0); setDraft(null); }}
-    />
+    <div className="min-stepper">
+      <button type="button" className="min-step-btn" disabled={disabled || value <= 0} onClick={() => step(-1)} aria-label="Decrease minutes">−</button>
+      <input
+        type="number" min={0} max={48}
+        className="min-step-input"
+        disabled={disabled}
+        value={draft ?? value}
+        onFocus={(e) => { setDraft(String(value)); e.target.select(); }}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (e.target.value !== '') onChange(e.target.value);
+        }}
+        onBlur={() => { if (draft === '') onChange(0); setDraft(null); }}
+      />
+      <button type="button" className="min-step-btn" disabled={disabled || value >= 48} onClick={() => step(1)} aria-label="Increase minutes">+</button>
+    </div>
   );
 }
 
@@ -295,11 +303,31 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               </span>
             </div>
           </div>
-          <select value={teamId} onChange={(e) => openTeam(e.target.value)}>
-            {league.teams.map((t) => (
-              <option key={t.id} value={t.id}>{t.city} {t.name}</option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button
+              className="btn small"
+              title="Previous team"
+              onClick={() => {
+                const idx = league.teams.findIndex((t) => t.id === teamId);
+                const prev = league.teams[(idx - 1 + league.teams.length) % league.teams.length];
+                openTeam(prev.id);
+              }}
+            >◀</button>
+            <select value={teamId} onChange={(e) => openTeam(e.target.value)}>
+              {league.teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.city} {t.name}</option>
+              ))}
+            </select>
+            <button
+              className="btn small"
+              title="Next team"
+              onClick={() => {
+                const idx = league.teams.findIndex((t) => t.id === teamId);
+                const next = league.teams[(idx + 1) % league.teams.length];
+                openTeam(next.id);
+              }}
+            >▶</button>
+          </div>
         </div>
         {isUser && (
           <>

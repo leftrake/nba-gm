@@ -2,11 +2,20 @@ import React from 'react';
 import { LEADER_CATS, LEADER_MIN_GP, leaderMinGp, statLeaders } from '../engine/awards.js';
 import { PlayerLink, TeamLink, TeamBadge } from './shared.jsx';
 
-function LeaderTable({ league, statKey, label, unit, openPlayer, openTeam }) {
+function LeaderTable({ league, statKey, label, unit, openPlayer, openTeam, openStats }) {
   const rows = statLeaders(league, statKey);
   return (
     <div className="panel">
-      <h2>{label}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h2>{label}</h2>
+        <button
+          className="btn small secondary"
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}
+          onClick={() => openStats(statKey)}
+        >
+          See full stats →
+        </button>
+      </div>
       {rows.length === 0 && <p style={{ color: 'var(--muted)' }}>No games played yet.</p>}
       {rows.length > 0 && (
         <table>
@@ -29,7 +38,7 @@ function LeaderTable({ league, statKey, label, unit, openPlayer, openTeam }) {
   );
 }
 
-export default function Leaders({ league, openPlayer, openTeam }) {
+export default function Leaders({ league, openPlayer, openTeam, openStats }) {
   const minGp = leaderMinGp(league);
   return (
     <div>
@@ -47,6 +56,7 @@ export default function Leaders({ league, openPlayer, openTeam }) {
             unit={unit}
             openPlayer={openPlayer}
             openTeam={openTeam}
+            openStats={openStats}
           />
         ))}
       </div>

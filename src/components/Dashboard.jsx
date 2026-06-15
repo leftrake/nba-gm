@@ -3,7 +3,7 @@ import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffSta
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor, GuideTooltip } from './shared.jsx';
-import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus } from '../engine/owner.js';
+import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus, respondToExtension } from '../engine/owner.js';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -196,7 +196,7 @@ function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
 // Owner profile card: who they are, their current stance/approval, and any
 // active directives with deadlines. Shows the projected next-season budget
 // once the season is in the books.
-function OwnerCard({ league, team }) {
+function OwnerCard({ league, team, commit }) {
   const owner = team.owner;
   if (!owner) return null;
   const showProjected = league.phase !== 'regular' && league.phase !== 'playoffs' && owner.projectedBudget !== owner.budget;
@@ -226,7 +226,9 @@ function OwnerCard({ league, team }) {
       )}
       {owner.extensionOffered && (
         <p style={{ color: 'var(--accent)' }}>
-          ✉️ {owner.name} has offered you a contract extension as GM — awaiting your response.
+          ✉️ {owner.name} has offered you a contract extension as GM.{' '}
+          <button className="btn small" onClick={() => { respondToExtension(league, team, true); commit(); }}>Accept</button>{' '}
+          <button className="btn small" onClick={() => { respondToExtension(league, team, false); commit(); }}>Decline</button>
         </p>
       )}
       {owner.directives?.length > 0 && (
@@ -329,7 +331,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
 
       <LegacyTile league={league} setScreen={setScreen} />
 
-      <OwnerCard league={league} team={team} />
+      <OwnerCard league={league} team={team} commit={commit} />
 
       {featuredGame && (
         <FeaturedGame league={league} fg={featuredGame} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />

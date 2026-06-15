@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { SAVE_VERSION, checkSave } from '../engine/save.js';
+import { THEMES, DEFAULT_ACCENT } from '../theme.js';
 
-export default function Settings({ league, importLeague, onResetTutorial }) {
+export default function Settings({ league, importLeague, onResetTutorial, theme, setTheme, accentColor, setAccentColor }) {
   const fileRef = useRef(null);
   const [importError, setImportError] = useState(null);
   const [tutorialReset, setTutorialReset] = useState(false);
@@ -59,6 +60,33 @@ export default function Settings({ league, importLeague, onResetTutorial }) {
         />
       </div>
       {importError && <p style={{ color: 'var(--red)', marginTop: 12 }}>⚠️ {importError}</p>}
+
+      <h2 style={{ marginTop: 24 }}>Appearance</h2>
+      <p style={{ color: 'var(--muted)', marginTop: 8 }}>
+        Choose a dark theme palette and an optional custom accent color.
+      </p>
+      <div className="controls" style={{ marginTop: 12 }}>
+        <label>
+          Theme:{' '}
+          <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+            {Object.entries(THEMES).map(([key, t]) => (
+              <option key={key} value={key}>{t.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Accent color:{' '}
+          <input
+            type="color"
+            value={accentColor}
+            onChange={(e) => setAccentColor(e.target.value)}
+            style={{ verticalAlign: 'middle' }}
+          />
+        </label>
+        {accentColor.toLowerCase() !== DEFAULT_ACCENT && (
+          <button className="btn small secondary" onClick={() => setAccentColor(DEFAULT_ACCENT)}>Reset Accent</button>
+        )}
+      </div>
 
       <h2 style={{ marginTop: 24 }}>Tutorial</h2>
       <p style={{ color: 'var(--muted)', marginTop: 8 }}>

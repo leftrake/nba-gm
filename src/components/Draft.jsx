@@ -35,6 +35,12 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
     getTeam(league, r.teamId).roster.find((p) => p.id === r.playerId)
     || league.freeAgents.find((p) => p.id === r.playerId);
 
+  // True if the drafting team had no roster spot and the player went
+  // straight to free agency instead of joining the team.
+  const wentToFreeAgency = (r) =>
+    !getTeam(league, r.teamId).roster.some((p) => p.id === r.playerId)
+    && league.freeAgents.some((p) => p.id === r.playerId);
+
   const board = [...d.prospects].sort(
     (a, b) => boardValue(b, league.season) - boardValue(a, league.season)
   );
@@ -102,10 +108,10 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
           <h3>Picks</h3>
           <table>
             <thead>
-              <tr><th className="num">Pick</th><th>Team</th><th>Player</th><th>Pos</th></tr>
+              <tr><th className="num">Pick</th><th>Team</th><th>Player</th><th>Pos</th><th></th></tr>
             </thead>
             <tbody>
-              {[...d.results].reverse().map((r) => {
+              {d.results.map((r) => {
                 const p = draftedPlayer(r);
                 const mine = r.teamId === league.userTeamId;
                 return (
@@ -114,6 +120,11 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
                     <td><TeamLink team={getTeam(league, r.teamId)} openTeam={openTeam} /></td>
                     <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : r.playerName}</td>
                     <td>{r.pos}</td>
+                    <td>
+                      {wentToFreeAgency(r) && (
+                        <span style={{ color: 'var(--muted)', fontSize: '0.9em' }}>→ Free Agent (roster full)</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
