@@ -4,6 +4,7 @@ import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor, GuideTooltip } from './shared.jsx';
 import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus, respondToExtension } from '../engine/owner.js';
+import { SPECIALTY_INFO } from '../engine/coach.js';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -211,6 +212,11 @@ function OwnerCard({ league, team, commit }) {
       <ApprovalMeter value={owner.approval} />
       <p style={{ color: 'var(--muted)', fontSize: 12 }}>Approval {Math.round(owner.approval)}/100</p>
       <p style={{ marginTop: 8 }}>Budget: <b>{money(owner.budget)}</b>{showProjected && <span style={{ color: 'var(--muted)' }}> (projected next season: {money(owner.projectedBudget)})</span>}</p>
+      {team.coach && (
+        <p style={{ marginTop: 8, color: 'var(--muted)', fontSize: 13 }}>
+          Head Coach: <b style={{ color: 'var(--text)' }}>{team.coach.name}</b> · {SPECIALTY_INFO[team.coach.specialty].label}
+        </p>
+      )}
       {isRosterFrozen(league, team) && (
         <p style={{ color: 'var(--red)' }}>🔒 Roster frozen by ownership.</p>
       )}

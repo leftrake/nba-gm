@@ -96,6 +96,7 @@ for (let s = 0; s < SEASONS; s++) {
       teamGames += 2;
     }
   }
+  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
   const r = seasonReport(league, totalPts, teamGames);
 
   console.log(`Season ${league.season} (mean ovr at tip-off ${startOvr.toFixed(2)})`);

@@ -219,6 +219,40 @@ export function TeamLink({ team, openTeam, children }) {
   return <a className="team-link" onClick={() => openTeam(team.id)}>{label}</a>;
 }
 
+// Falling confetti overlay for celebratory offseason moments (championships,
+// award wins on the user's team).
+const CONFETTI_COLORS = ['#f0883e', '#3fb950', '#58a6ff', '#d2a8ff', '#d29922', '#f85149'];
+
+export function Confetti() {
+  const pieces = React.useMemo(
+    () => Array.from({ length: 60 }, (_, i) => ({
+      left: Math.random() * 100,
+      delay: Math.random() * 1.2,
+      duration: 2.2 + Math.random() * 1.6,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      rotate: Math.random() * 360,
+    })),
+    []
+  );
+  return (
+    <div className="confetti">
+      {pieces.map((c, i) => (
+        <span
+          key={i}
+          className="confetti-piece"
+          style={{
+            left: `${c.left}%`,
+            background: c.color,
+            animationDelay: `${c.delay}s`,
+            animationDuration: `${c.duration}s`,
+            transform: `rotate(${c.rotate}deg)`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // "Boston Celtics" / "Celtics" → team id, for linkifying free-form news text
 const NAME_TO_ID = {};
 for (const t of TEAMS) {

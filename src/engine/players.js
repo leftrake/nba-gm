@@ -353,7 +353,10 @@ export const TRAINING_FOCUS_OPTIONS = [
 // 25 close on their ceiling fast (3–6 overall a year, with occasional
 // breakout leaps), modest ceilings inch along and plateau early. Decline is
 // noticeable from 31 and steep after 33.
-export function developPlayer(p, rng = rand) {
+export function developPlayer(p, rng = rand, coachBonus = 0) {
+  // A development-focused coach nudges a young player's ceiling up (or down)
+  // a little each offseason, rather than directly inflating this year's growth.
+  if (coachBonus && p.age < 25) p.potential = clamp(p.potential + coachBonus, 25, 99);
   const ovr = overall(p);
   const room = p.potential - ovr;
   let delta;

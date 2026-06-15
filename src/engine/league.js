@@ -25,9 +25,13 @@ import {
 } from './legacy.js';
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
 import { initScoutingPhase } from './scoutingTrips.js';
+import { generateCoach, devBonus } from './coach.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
+  // Coaches draw from their own sequence so adding/changing the coaching
+  // system doesn't reshuffle the roster/schedule rng draws for a given seed.
+  const coachRng = makeRng(seed + 818_181);
   resetPlayerIds(1);
   const fantasy = !!opts.fantasyDraft;
 
@@ -39,6 +43,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     losses: 0,
     tradesThisSeason: 0,
     streak: { result: null, count: 0 },
+    coach: generateCoach(coachRng),
   }));
 
   const league = {
@@ -51,8 +56,8 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     dayIndex: 0,
     resultsByDay: [],
     phase: fantasy ? 'fantasydraft' : 'regular',
-    // regular | playoffs | fantasydraft | offseason/finals-mvp | offseason/development
-    // | offseason/lottery | offseason/draft | offseason/freeagency | offseason/preview
+    // regular | awards | playoffs | fantasydraft | offseason/finals-mvp | offseason/development
+    // | offseason/coaching | offseason/lottery | offseason/draft | offseason/freeagency | offseason/preview
     playoffs: null,
     freeAgents: fantasy ? [] : Array.from({ length: 60 }, () => {
       // unsigned for a reason: the open market skews toward fringe talent
@@ -197,7 +202,7 @@ export function getLeagueEvents() {
 // Trades lock once the deadline passes and remain locked through the
 // playoffs, reopening only when the next offseason begins.
 export function tradesLocked(league) {
-  if (league.phase === 'playoffs') return true;
+  if (league.phase === 'playoffs' || league.phase === 'awards') return true;
   if (league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY) return true;
   return false;
 }
@@ -370,7 +375,10 @@ export function backfillPlayers(league) {
     if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
     // saves predating dead-money tracking from waived contracts
     if (!team.deadMoney) team.deadMoney = [];
+    // saves predating the coaching staff system
+    if (!team.coach) team.coach = generateCoach(rng);
   }
+  if (!league.coachCandidates) league.coachCandidates = [generateCoach(rng), generateCoach(rng)];
   // Saves predating the ownership system: generate an owner for the user's team
   if (league.userTeamId) {
     const userTeam = getTeam(league, league.userTeamId);
@@ -708,7 +716,7 @@ export function simDay(league) {
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '⭐ All-Star rosters have been announced — the league pauses for All-Star Weekend.' });
   }
   if (league.dayIndex >= league.schedule.length) {
-    league.phase = 'playoffs';
+    league.phase = 'awards';
     league.playoffs = initPlayoffs(league);
     computeAwards(league);
     // the week off before the playoffs gets everyone most of the way fresh
@@ -975,6 +983,9 @@ function announceRetirement(league, p, teamId = null) {
 
 export function advanceOffseason(league) {
   const rng = makeRng(league.seed + league.season * 104729);
+  // Coaching decisions draw from their own sequence so they don't reshuffle
+  // the rng draws player development/free agency depend on.
+  const coachRng = makeRng(league.seed + league.season * 104729 + 555_555);
   const userTeam = getTeam(league, league.userTeamId); // absent in headless all-AI sims
   league.history.push({
     season: league.season,
@@ -1020,7 +1031,7 @@ export function advanceOffseason(league) {
       p.injury = null; // ...including last spring's torn ACL
       snapshotRatings(p, league.season); // progression history: ratings before this summer's development
       const oldRow = ratingRow(p);
-      developPlayer(p, rng);
+      developPlayer(p, rng, devBonus(team.coach));
       maybeRevealBackstory(league, p, team); // backstory.js: reputation emerges after 2 seasons
       const entry = isUserTeam
         ? { id: p.id, name: p.name, pos: p.pos, age: p.age, old: oldRow, now: ratingRow(p) }
@@ -1081,6 +1092,22 @@ export function advanceOffseason(league) {
     league.teamSeasonRecords.push({ season: league.season, teamId: team.id, wins: team.wins, losses: team.losses });
     team.wins = 0;
     team.losses = 0;
+
+    // AI teams quietly re-sign or replace their coach; the user does this on
+    // the Coaching Decisions screen instead (see league.coachCandidates below).
+    if (team.id !== league.userTeamId) {
+      if (team.coach.rating < 60 && coachRng() < 0.3) {
+        pushNews(league, { day: 0, category: 'league', teamIds: [team.id], text: `The ${team.name} part ways with head coach ${team.coach.name} after a disappointing season.` });
+        team.coach = generateCoach(coachRng);
+      } else {
+        team.coach.seasonsWithTeam += 1;
+      }
+    }
+  }
+  // Two fresh candidates for the user's Coaching Decisions screen, alongside
+  // the option to retain the incumbent.
+  if (league.userTeamId) {
+    league.coachCandidates = [generateCoach(coachRng), generateCoach(coachRng)];
   }
 
   // The user reviews this on the Development Report screen after advancing.

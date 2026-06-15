@@ -46,6 +46,7 @@ function runDraft(league) {
 
 function simRegularAndPlayoffs(league) {
   while (league.phase === 'regular') simDay(league);
+  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
   while (league.phase === 'playoffs') simPlayoffRound(league);
 }
 

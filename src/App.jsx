@@ -21,6 +21,8 @@ import Legacy from './components/Legacy.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayoffPostGame from './components/PlayoffPostGame.jsx';
 import DevelopmentReport from './components/DevelopmentReport.jsx';
+import CoachingDecisions from './components/CoachingDecisions.jsx';
+import AwardCeremony from './components/AwardCeremony.jsx';
 import FinalsMVP from './components/FinalsMVP.jsx';
 import DraftLottery from './components/DraftLottery.jsx';
 import SeasonPreview from './components/SeasonPreview.jsx';
@@ -305,7 +307,7 @@ export default function App() {
   // The Dev Report tab only shows while this offseason's report is fresh
   // (between development and the next season tipping off)
   const hasDevReport = !!league.devReport?.entries?.length
-    && (league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
+    && (league.phase === 'offseason/coaching' || league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
 
   const inOffseason = league.phase.startsWith('offseason/');
 
@@ -336,9 +338,11 @@ export default function App() {
         <span className="meta">
           {league.season} · {userTeam.wins}-{userTeam.losses} ·{' '}
           {league.phase === 'regular' ? `Day ${league.dayIndex + 1}/${league.schedule.length}`
+            : league.phase === 'awards' ? 'Award Ceremony'
             : league.phase === 'playoffs' ? 'Playoffs'
             : league.phase === 'offseason/finals-mvp' ? 'Finals MVP'
             : league.phase === 'offseason/development' ? 'Development Report'
+            : league.phase === 'offseason/coaching' ? 'Coaching Decisions'
             : league.phase === 'offseason/lottery' ? 'Draft Lottery'
             : league.phase === 'offseason/draft' ? (onTheClock(league) ? `Draft (Pick ${league.draft.pickIndex + 1}/${league.draft.order.length})` : 'Draft complete')
             : league.phase === 'fantasydraft' ? (onFantasyClock(league) ? `Fantasy Draft (Pick ${league.fantasyDraft.pickIndex + 1}/${league.fantasyDraft.order.length})` : 'Fantasy Draft complete')
@@ -484,6 +488,14 @@ export default function App() {
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} commit={commit} />}
+        {league.phase === 'awards' && (
+          <AwardCeremony
+            league={league}
+            openPlayer={openPlayer}
+            openTeam={openTeam}
+            onContinue={() => { league.phase = 'playoffs'; commit(); }}
+          />
+        )}
         {league.phase === 'offseason/finals-mvp' && (
           <FinalsMVP
             league={league}
@@ -496,7 +508,13 @@ export default function App() {
           <DevelopmentReport
             league={league}
             openPlayer={openPlayer}
-            onContinue={() => { league.phase = 'offseason/lottery'; commit(); }}
+            onContinue={() => { league.phase = 'offseason/coaching'; commit(); }}
+          />
+        )}
+        {league.phase === 'offseason/coaching' && (
+          <CoachingDecisions
+            league={league}
+            onContinue={(coach) => { getTeam(league, league.userTeamId).coach = coach; league.phase = 'offseason/lottery'; commit(); }}
           />
         )}
         {league.phase === 'offseason/lottery' && (

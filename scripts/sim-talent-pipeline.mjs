@@ -43,6 +43,7 @@ function measure() {
 for (let s = 0; s < SEASONS; s++) {
   let guard = 0;
   while (league.phase === 'regular' && guard++ < 400) simDay(league);
+  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
 
   const season = league.season;
   const m = measure(); // end of regular season, before offseason aging

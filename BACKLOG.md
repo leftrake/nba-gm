@@ -38,11 +38,6 @@ just delete it — git history keeps the record).
 
 - Add All-NBA team history to the Legacy screen showing every season's first/second/third team selections going back to the start of the save, filterable by player and season; similar archives for All-Defensive teams, All-Star rosters, and award winners.
 
-## Offseason Flow
-
-- Break the offseason into distinct named phases with engagement at each step: Award Ceremony (MVP/DPOY/ROY announcements with a visual moment), Development Report (player progression), Coaching Decisions (re-sign or replace staff), Draft Lottery (animated reveal), Draft, Free Agency, and Season Preview (projected standings, goals). Currently these happen too fast with no separation.
-- Award Ceremony phase (triggered after the regular season ends, before the playoffs begin): a full-screen slideshow modal covering most of the screen, one award per slide, navigated via left/right arrows or a next button. Slide order: MVP, Defensive Player of the Year, Rookie of the Year, Sixth Man of the Year, All-NBA First/Second/Third Team, All-Defensive First/Second Team. Each slide shows the award name large at top, the winner's name and team (or all 5 players for team awards) prominently centered, key stats that earned the award, and a gold/trophy visual treatment. If the winner or any All-NBA/All-Defensive selection is on the user's team, add extra emphasis (confetti, team color treatment, "Your Player" callout). Dismissible at any point via a skip button, but defaults to showing all slides in sequence; shows once per season. Finishing or skipping transitions to the playoff bracket.
-
 ## Ratings System
 
 - Expand the rating system beyond the current 7 attributes: consider splitting defense into perimeter defense and interior defense, adding a court vision sub-rating to passing, a handle/ball security rating affecting turnovers, and a motor/hustle rating affecting loose balls and charges. Large change touching `overall()`, the sim, and every display that shows ratings.

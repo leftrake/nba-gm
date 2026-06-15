@@ -106,6 +106,7 @@ for (let s = 0; s < SEASONS; s++) {
     }
     prevInjured = nowInjured;
   }
+  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
   const injuryRate = injuryEvents / league.teams.length;
   if (firstSeasonInjuryRate === null) firstSeasonInjuryRate = injuryRate;
 
@@ -342,6 +343,7 @@ console.log('\nOwnership system (6 seasons, small-market low-patience vs large-m
 
   function runSeason() {
     while (lg.phase === 'regular') simDay(lg);
+    if (lg.phase === 'awards') lg.phase = 'playoffs'; // skip the award ceremony gate
     let guard = 0;
     while (lg.phase === 'playoffs' && guard++ < 500) simPlayoffGame(lg);
 

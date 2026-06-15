@@ -1,38 +1,6 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
-import { PlayerLink, TeamLink } from './shared.jsx';
-
-const CONFETTI_COLORS = ['#f0883e', '#3fb950', '#58a6ff', '#d2a8ff', '#d29922', '#f85149'];
-
-function Confetti() {
-  const pieces = React.useMemo(
-    () => Array.from({ length: 60 }, (_, i) => ({
-      left: Math.random() * 100,
-      delay: Math.random() * 1.2,
-      duration: 2.2 + Math.random() * 1.6,
-      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      rotate: Math.random() * 360,
-    })),
-    []
-  );
-  return (
-    <div className="confetti">
-      {pieces.map((c, i) => (
-        <span
-          key={i}
-          className="confetti-piece"
-          style={{
-            left: `${c.left}%`,
-            background: c.color,
-            animationDelay: `${c.delay}s`,
-            animationDuration: `${c.duration}s`,
-            transform: `rotate(${c.rotate}deg)`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
+import { PlayerLink, TeamLink, Confetti } from './shared.jsx';
 
 // First offseason phase: the champion is crowned, the Finals MVP revealed,
 // and a quick game-by-game recap of the series. league.finalsMVP and

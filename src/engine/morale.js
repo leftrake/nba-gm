@@ -23,6 +23,7 @@ import { overall } from './players.js';
 import { tradeValue, validateTrade, executeTrade } from './trade.js';
 import { pushNews } from './save.js';
 import { lossMoraleMult, legendTeammateBonus } from './backstory.js';
+import { chemistryBonus } from './coach.js';
 
 // Seeded off the player's id (not the league rng) so adding morale doesn't
 // shift the random sequence everything else in player generation draws from.
@@ -113,6 +114,7 @@ export function dailyMoraleUpdate(league, results) {
     const turmoil = team.turmoil ?? 0;
     const demandCount = team.roster.filter((p) => p.tradeDemand).length;
     const legendBonus = legendTeammateBonus(team);
+    const coachBonus = chemistryBonus(team.coach);
     for (const p of team.roster) {
       const ovr = overall(p);
       const caresWin = caresAboutWinning(p);
@@ -133,6 +135,7 @@ export function dailyMoraleUpdate(league, results) {
       m -= turmoil * 0.01;
       m -= demandCount * 0.02;
       m += legendBonus; // steady locker room from a long-tenured "one city legend"
+      m += coachBonus; // a chemistry-minded (or poor) head coach
       m += (50 - m) * 0.003; // gentle drift back toward neutral
       setMorale(p, m);
     }
