@@ -2,7 +2,7 @@ import React from 'react';
 import { scoutedOverall } from '../engine/scouting.js';
 import { watchPlayer, regionalSweep, poachIntel, SCOUT_COSTS, EXTENDED_WATCH_COUNT } from '../engine/scoutingTrips.js';
 import { regionFor, SCOUT_REGIONS } from '../engine/backstory.js';
-import { Ovr, Pot, money, PlayerLink, Origin } from './shared.jsx';
+import { Ovr, Pot, money, PlayerLink, Origin, GuideTooltip } from './shared.jsx';
 
 export default function Scouting({ league, commit, openPlayer }) {
   const s = league.scouting;
@@ -33,7 +33,13 @@ export default function Scouting({ league, commit, openPlayer }) {
   return (
     <>
       <div className="panel">
-        <h2>Scouting</h2>
+        <GuideTooltip
+          tipKey="scouting_screen"
+          text="Your scouting budget resets each offseason. Spend it on players you're targeting in the draft — extended watches reveal backstory traits that affect development and market value."
+          block
+        >
+          <h2>Scouting</h2>
+        </GuideTooltip>
         <p style={{ marginBottom: 6 }}>
           Remaining budget: <b>{money(budget)}</b>
         </p>
@@ -104,7 +110,13 @@ export default function Scouting({ league, commit, openPlayer }) {
 
       {reports.length > 0 && (
         <div className="panel" style={{ marginTop: 14 }}>
-          <h3>Scout Reports</h3>
+          <GuideTooltip
+            tipKey="scout_report"
+            text="Rating ranges tighten with each report. Three watches on the same player fully reveals his ratings and personality. Regional sweeps cover more players cheaply but with less accuracy."
+            block
+          >
+            <h3>Scout Reports</h3>
+          </GuideTooltip>
           {reports.map((r, i) => (
             <p key={i} style={{ marginBottom: 8 }}>{r.text}</p>
           ))}

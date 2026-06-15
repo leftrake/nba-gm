@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam, payroll } from '../engine/league.js';
+import { getTeam, payroll, TRADE_DEADLINE_DAY } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade, resolveMultiTradeLegs } from '../engine/trade.js';
@@ -8,7 +8,7 @@ import { applyShoppedPenalty } from '../engine/morale.js';
 import { teamNeeds } from '../engine/strategy.js';
 import { ownerSignoffRequired, ownerBlocksTrade, ownerStance } from '../engine/owner.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
-import { Ovr, Pot, StrategyTag, money, PlayerLink } from './shared.jsx';
+import { Ovr, Pot, StrategyTag, money, PlayerLink, GuideTooltip } from './shared.jsx';
 
 const YELLOW = '#d29922';
 
@@ -352,10 +352,22 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
     commit();
   };
 
+  const deadlinePassed = league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY;
+
   return (
     <div className="warroom" style={{ '--team-color': getTeam(league, userId).color }}>
       <div className="panel">
-        <h2>Trade Machine</h2>
+        {deadlinePassed ? (
+          <GuideTooltip
+            tipKey="trade_deadline"
+            text="Trades are now locked until next season. Any moves you wanted to make had to happen before today."
+            block
+          >
+            <h2>Trade Machine</h2>
+          </GuideTooltip>
+        ) : (
+          <h2>Trade Machine</h2>
+        )}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn" onClick={propose} disabled={!hasAnyAsset}>Propose Trade</button>
           {teamIds.length < 4 && (

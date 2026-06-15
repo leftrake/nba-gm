@@ -291,6 +291,7 @@ button.slot-pick:hover { border-color: var(--accent); }
 
 .cap-bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .cap-bar > div { height: 100%; background: var(--green); }
+.cap-bar > div.near { background: #d29922; }
 .cap-bar > div.over { background: var(--red); }
 
 /* ---------- Owner approval meter ---------- */
@@ -645,3 +646,82 @@ button.slot-pick:hover { border-color: var(--accent); }
 .calendar-cell.cal-win { box-shadow: inset 3px 0 0 var(--green); }
 .calendar-cell.cal-loss { box-shadow: inset 3px 0 0 var(--red); }
 .calendar-cell.cal-champ { background: linear-gradient(135deg, rgba(227, 197, 103, 0.18), var(--panel2)); }
+
+/* ---------- Onboarding: first-encounter tooltips ---------- */
+.guide-tooltip-anchor { position: relative; display: inline-block; }
+.guide-tooltip-anchor.block { display: block; }
+.guide-tooltip-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 26px 10px 12px;
+  width: 280px;
+  max-width: 80vw;
+  z-index: 60;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  white-space: normal;
+}
+.guide-tooltip-popover p { margin: 0; }
+.guide-tooltip-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+}
+.guide-tooltip-close:hover { color: var(--text); }
+
+/* ---------- Onboarding: first-session walkthrough ---------- */
+.walkthrough-spotlight {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  z-index: 1000;
+  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+}
+.walkthrough-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 1000;
+  pointer-events: none;
+}
+.walkthrough-card {
+  position: fixed;
+  z-index: 1001;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 16px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.walkthrough-card h3 { margin: 0 0 8px; }
+.walkthrough-card p { margin: 0 0 14px; color: var(--text); font-size: 13px; }
+.walkthrough-skip {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 1001;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
+}
+.walkthrough-skip:hover { color: var(--text); }

@@ -3,7 +3,7 @@ import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMi
 import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
 import { POSITIONS } from '../engine/lineup.js';
 import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
-import { Ovr, Pot, money, PlayerLink } from './shared.jsx';
+import { Ovr, Pot, money, PlayerLink, GuideTooltip } from './shared.jsx';
 
 const OFFERS_PER_ROUND = 3;
 const FILTERS_KEY = 'nba-gm-fa-filters';
@@ -153,7 +153,13 @@ export default function FreeAgency({ league, commit, openPlayer }) {
           </table>
         </div>
       )}
-      <h2>Free Agents</h2>
+      <GuideTooltip
+        tipKey="fogged_ratings"
+        text="Rating ranges reflect your scouting knowledge — tighter ranges mean more certainty. Scout players before the draft or trade deadline to get better information."
+        block
+      >
+        <h2>Free Agents</h2>
+      </GuideTooltip>
       <p style={{ marginBottom: 10, color: 'var(--muted)' }}>
         Cap room: <b style={{ color: room > 0 ? 'var(--green)' : 'var(--red)' }}>{money(room)}</b> · Roster: {team.roster.length}/{ROSTER_MAX}
         {room <= 0 && (

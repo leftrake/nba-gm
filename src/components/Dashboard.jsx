@@ -2,7 +2,7 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor } from './shared.jsx';
+import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor, GuideTooltip } from './shared.jsx';
 import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus } from '../engine/owner.js';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
@@ -201,7 +201,7 @@ function OwnerCard({ league, team }) {
   if (!owner) return null;
   const showProjected = league.phase !== 'regular' && league.phase !== 'playoffs' && owner.projectedBudget !== owner.budget;
   return (
-    <div className="panel">
+    <div className="panel" data-tour="owner-card">
       <h2>Ownership</h2>
       <p style={{ marginTop: 8 }}><b>{owner.name}</b>, Owner</p>
       <p style={{ color: 'var(--muted)' }}>{personalitySummary(owner)}</p>
@@ -231,7 +231,13 @@ function OwnerCard({ league, team }) {
       )}
       {owner.directives?.length > 0 && (
         <>
-          <h3 style={{ marginTop: 14 }}>Owner Directives</h3>
+          <GuideTooltip
+            tipKey="owner_directive"
+            text="Your owner wants something specific. Ignoring it costs approval — and low approval leads to budget cuts, interference, and eventually getting fired."
+            block
+          >
+            <h3 style={{ marginTop: 14 }}>Owner Directives</h3>
+          </GuideTooltip>
           {owner.directives.map((d, i) => {
             const status = directiveStatus(league, team, d);
             const icon = status === 'done' ? '✅' : status === 'on-track' ? '🟡' : '📋';
@@ -348,7 +354,17 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
         <div className="panel">
           <h2>Team Overview</h2>
           <p style={{ marginTop: 8 }}>Payroll: <b>{money(pay)}</b> / Cap {money(SALARY_CAP)}{dead > 0 && <span style={{ color: 'var(--muted)' }}> (incl. {money(dead)} dead money)</span>} {pay > LUXURY_TAX && <span className="tag" style={{ color: 'var(--red)' }}>LUXURY TAX</span>}</p>
-          <div className="cap-bar"><div className={pay > SALARY_CAP ? 'over' : ''} style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
+          {pay > SALARY_CAP && pay <= LUXURY_TAX ? (
+            <GuideTooltip
+              tipKey="cap_near_tax"
+              text="You're approaching the luxury tax line. Going over costs money and strains owner patience — especially in back-to-back seasons."
+              block
+            >
+              <div className="cap-bar" data-tour="cap-bar"><div className="near" style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
+            </GuideTooltip>
+          ) : (
+            <div className="cap-bar" data-tour="cap-bar"><div className={pay > LUXURY_TAX ? 'over' : ''} style={{ width: `${Math.min(100, (pay / LUXURY_TAX) * 100)}%` }} /></div>
+          )}
           <h3 style={{ marginTop: 14 }}>Top Players</h3>
           <table>
             <tbody>
@@ -386,7 +402,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
         </div>
       )}
 
-      <div className="panel">
+      <div className="panel" data-tour="news-feed">
         <h2>Top Stories</h2>
         {league.news.slice(0, 8).map((n, i) => (
           <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />

@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { SAVE_VERSION, checkSave } from '../engine/save.js';
 
-export default function Settings({ league, importLeague }) {
+export default function Settings({ league, importLeague, onResetTutorial }) {
   const fileRef = useRef(null);
   const [importError, setImportError] = useState(null);
+  const [tutorialReset, setTutorialReset] = useState(false);
 
   const exportSave = () => {
     const blob = new Blob([JSON.stringify(league)], { type: 'application/json' });
@@ -58,6 +59,20 @@ export default function Settings({ league, importLeague }) {
         />
       </div>
       {importError && <p style={{ color: 'var(--red)', marginTop: 12 }}>⚠️ {importError}</p>}
+
+      <h2 style={{ marginTop: 24 }}>Tutorial</h2>
+      <p style={{ color: 'var(--muted)', marginTop: 8 }}>
+        Replay the first-session walkthrough and every first-encounter tooltip.
+      </p>
+      <div className="controls" style={{ marginTop: 12 }}>
+        <button
+          className="btn secondary"
+          onClick={() => { onResetTutorial?.(); setTutorialReset(true); }}
+        >
+          Reset Tutorial
+        </button>
+      </div>
+      {tutorialReset && <p style={{ color: 'var(--green)', marginTop: 12 }}>Tutorial reset — the walkthrough will start now, and tooltips will reappear as you encounter them.</p>}
     </div>
   );
 }

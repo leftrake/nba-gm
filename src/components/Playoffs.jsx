@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { getTeam, standings, makeRoundMatchups } from '../engine/league.js';
-import { TeamLink, NewsText } from './shared.jsx';
+import { TeamLink, NewsText, GuideTooltip } from './shared.jsx';
 import SeriesModal from './SeriesModal.jsx';
 
 export const ROUND_NAMES = ['First Round', 'Conference Semifinals', 'Conference Finals', 'NBA Finals'];
@@ -225,7 +225,13 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
     <div>
       {!po.champion && (
         <div className="panel">
-          <h2>Current Round: {roundName}</h2>
+          <GuideTooltip
+            tipKey="playoffs_entered"
+            text="Best-of-7 series, home court goes to the higher seed. Rest and rotation matter more than ever — tired stars in the fourth quarter lose series."
+            block
+          >
+            <h2>Current Round: {roundName}</h2>
+          </GuideTooltip>
           <p style={{ color: 'var(--muted)' }}>"Sim Next Playoff Game" plays one game in every active series; "Sim Playoff Round" fast-forwards the round. Click a series for game-by-game results and stat leaders.</p>
         </div>
       )}

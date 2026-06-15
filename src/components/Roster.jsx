@@ -6,7 +6,8 @@ import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, li
 import { scoutedOverall } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
-import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
+import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 
 // Visual cap breakdown: each contract as a proportional block colored by
 // years remaining (green = 1yr, yellow = 2-3yr, red = 4yr+), dead money as
@@ -65,7 +66,13 @@ function FrontOfficeSnapshot({ league, team, pay, dead, recent, openPlayer }) {
 
   return (
     <div className="panel" style={{ borderLeft: '4px solid var(--team-color)' }}>
-      <h2>Front Office Snapshot</h2>
+      <GuideTooltip
+        tipKey="fogged_ratings"
+        text="Rating ranges reflect your scouting knowledge — tighter ranges mean more certainty. Scout players before the draft or trade deadline to get better information."
+        block
+      >
+        <h2>Front Office Snapshot</h2>
+      </GuideTooltip>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         {stars.map((p) => (
           <div key={p.id} className="panel" style={{ flex: '1 1 150px', margin: 0, padding: 10, borderTop: '3px solid var(--team-color)' }}>
@@ -260,6 +267,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   // Group starters before bench (preserving the chosen sort within each
   // group) so the table can show a divider between the two.
   const starterIds = isUser ? new Set(POSITIONS.map((pos) => lineup.starters[pos].id).filter((id) => id != null)) : new Set();
+
+  const hasMoraleWarning = team.roster.some((p) => !p.tradeDemand && (p.moraleLowStreak ?? 0) >= MORALE_WARNING_STREAK);
+  const hasExtensionEligible = isUser && team.roster.some((p) => !p.extension && extensionType(p) && extensionType(p) !== 'final');
   const rosterRows = isUser
     ? [...sorted.filter((p) => starterIds.has(p.id)), ...sorted.filter((p) => !starterIds.has(p.id))]
     : sorted;
@@ -574,9 +584,28 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th>
               <th className="num" title="Stamina — how many minutes a night he can handle">Sta</th>
               <th className="num" title="Condition — drains with heavy minutes, recovers on rest days">Cond</th>
-              <th title="Morale — team chemistry and happiness">Morale</th>
+              <th title="Morale — team chemistry and happiness">
+                {hasMoraleWarning ? (
+                  <GuideTooltip
+                    tipKey="morale_warning"
+                    text="This player is unhappy. Sustained low morale leads to a trade demand. Address it before it becomes public."
+                  >
+                    Morale
+                  </GuideTooltip>
+                ) : 'Morale'}
+              </th>
               <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th><th className="num">FG%</th>
-              <th className="num">Salary</th><th className="num">Yrs</th><th></th>
+              <th className="num">Salary</th><th className="num">Yrs</th>
+              <th>
+                {hasExtensionEligible ? (
+                  <GuideTooltip
+                    tipKey="extension_eligible"
+                    text="You can lock this player up before he hits free agency. Let the rookie window close and other teams can make offer sheets you must match or lose him."
+                  >
+                    {' '}
+                  </GuideTooltip>
+                ) : null}
+              </th>
               {isUser && <th></th>}
               <th></th>
             </tr>
@@ -725,7 +754,13 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
 
       {team.deadMoney.length > 0 && (
         <div className="panel">
-          <h2>Dead Money</h2>
+          <GuideTooltip
+            tipKey="dead_money"
+            text="Dead money is the remaining salary of a waived player, still counting against your cap. It clears when their original contract would have expired."
+            block
+          >
+            <h2>Dead Money</h2>
+          </GuideTooltip>
           <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
             Cap hits from waived contracts. Each entry counts against the cap until the original contract would have expired.
           </p>

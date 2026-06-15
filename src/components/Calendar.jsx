@@ -114,7 +114,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   return (
     <div>
       {league.phase === 'regular' && (
-        <div className="controls">
+        <div className="controls" data-tour="sim-controls">
           <button className="btn" disabled={animating} onClick={() => animatedSimTo(league.dayIndex + 1)}>
             {todayHasGame ? 'Simulate Game' : 'Next Day'}
           </button>

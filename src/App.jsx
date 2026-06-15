@@ -24,6 +24,8 @@ import DevelopmentReport from './components/DevelopmentReport.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
 import GameModal from './components/BoxScore.jsx';
+import Walkthrough from './components/Walkthrough.jsx';
+import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/shared.jsx';
 import { checkSave } from './engine/save.js';
 import { readCrossSaveLegacy } from './engine/legacy.js';
 
@@ -47,6 +49,10 @@ function loadSave() {
 
 const initialSave = loadSave();
 
+// An existing save predates the walkthrough feature (or was loaded before
+// the user ever saw it) — don't surface the first-session tour mid-game.
+if (initialSave.league && !isWalkthroughDone()) markWalkthroughDone();
+
 export default function App() {
   const [league, setLeagueState] = useState(initialSave.league);
   const [screen, setScreen] = useState('dashboard');
@@ -59,6 +65,7 @@ export default function App() {
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
 
   const openTeam = useCallback((teamId) => {
     setViewPlayer(null);
@@ -120,6 +127,12 @@ export default function App() {
   const newGame = (teamId, fantasyDraft) => {
     setLeagueState(createLeague(teamId, Date.now(), { fantasyDraft }));
     setScreen(fantasyDraft ? 'fantasydraft' : 'dashboard');
+    if (!isWalkthroughDone()) setShowWalkthrough(true);
+  };
+
+  const handleResetTutorial = () => {
+    resetTutorial();
+    setShowWalkthrough(true);
   };
 
   // Replace the running game with an imported save (already validated by Settings)
@@ -307,6 +320,7 @@ export default function App() {
             <button
               key={key}
               className={screen === key ? 'active' : ''}
+              data-tour={key === 'roster' ? 'roster-tab' : key === 'scouting' ? 'scouting-tab' : undefined}
               onClick={() => {
                 // The Roster tab always opens on the user's team; only
                 // explicit team links (openTeam) show another roster.
@@ -441,11 +455,12 @@ export default function App() {
           : <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />)}
         {screen === 'legacy' && <Legacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
-        {screen === 'settings' && <Settings league={league} importLeague={importLeague} />}
+        {screen === 'settings' && <Settings league={league} importLeague={importLeague} onResetTutorial={handleResetTutorial} />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
       </main>
+      {showWalkthrough && <Walkthrough onDone={() => setShowWalkthrough(false)} />}
     </div>
   );
 }
