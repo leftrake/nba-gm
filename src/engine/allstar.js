@@ -1,12 +1,14 @@
 // ---------- All-Star Weekend ----------
-// A lightweight mid-season event: "fan vote" starters/reserves picked from
-// each conference's statistical leaders, a quick scoring-only exhibition
-// game (not the full sim — All-Star rosters don't have real rotations), and
-// a First-Half Honors snapshot of the league's per-game leaders so far.
+// A mid-season event: "fan vote" starters and coach-selected reserves drawn
+// from each conference's statistical leaders, a real possession-based
+// exhibition game (relaxed defense — see RELAX_DEFENSE), and a First-Half
+// Honors snapshot of the league's per-game leaders so far.
 // Everything stored on league.allStar is plain data (serializable).
 
 import { pg, valueScore, statLeaders, LEADER_CATS } from './awards.js';
-import { overall } from './players.js';
+import { simGame, encodeBox, starLines } from './sim.js';
+import { makeRng } from './rng.js';
+import { pushNews } from './save.js';
 
 const STARTERS_PER_CONF = 5;
 const RESERVES_PER_CONF = 7;
@@ -24,8 +26,9 @@ function eligiblePlayers(league, conf) {
   return rows.sort((a, b) => b.score - a.score);
 }
 
-// Top 5 per conference are "starters", next 7 are "reserves" — a simple
-// stand-in for the real All-Star voting/selection process.
+// Top 5 per conference (by overall value, a stand-in for the fan vote) are
+// "starters"; the next 7 (a stand-in for the coaches' reserve selections)
+// are "reserves".
 export function selectAllStars(league) {
   const out = {};
   for (const conf of ['East', 'West']) {
@@ -46,41 +49,17 @@ export function getPlayerById(league, playerId) {
   return null;
 }
 
-// A quick, non-rotation scoring exhibition: each roster's 12 players split a
-// high-scoring team total roughly by overall rating, with some game-to-game
-// variance. Reserves contribute too, just less.
-function simAllStarTeam(league, roster, rng) {
-  const weights = roster.map(({ playerId }) => {
-    const found = getPlayerById(league, playerId);
-    return Math.max(1, found ? overall(found.player) - 30 : 30);
-  });
-  const totalWeight = weights.reduce((s, w) => s + w, 0);
-  const teamPts = Math.round(155 + rng() * 45); // 155-200
-  const lines = roster.map(({ playerId, teamId }, i) => {
-    const share = weights[i] / totalWeight;
-    const pts = Math.max(0, Math.round(teamPts * share * (0.8 + rng() * 0.4)));
-    const reb = Math.max(0, Math.round(8 * share * 12 * (0.6 + rng() * 0.8)));
-    const ast = Math.max(0, Math.round(6 * share * 12 * (0.6 + rng() * 0.8)));
-    return { playerId, teamId, pts, reb, ast };
-  });
-  const actualPts = lines.reduce((s, l) => s + l.pts, 0);
-  return { pts: actualPts, lines };
-}
-
-export function simAllStarGame(league, starters, reserves, rng) {
-  const sides = {};
+// True if any of the user's players were selected as an All-Star (starter
+// or reserve, either conference) — used to give the moment extra weight.
+export function userHasAllStar(league) {
+  if (!league.allStar || !league.userTeamId) return false;
   for (const conf of ['East', 'West']) {
-    sides[conf] = simAllStarTeam(league, [...starters[conf], ...reserves[conf]], rng);
+    const roster = league.allStar.rosters[conf];
+    for (const r of [...roster.starters, ...roster.reserves]) {
+      if (r.teamId === league.userTeamId) return true;
+    }
   }
-  const winner = sides.East.pts >= sides.West.pts ? 'East' : 'West';
-  const allLines = [...sides.East.lines, ...sides.West.lines];
-  const mvp = allLines.reduce((best, l) => (!best || l.pts > best.pts ? l : best), null);
-  return {
-    East: { pts: sides.East.pts, lines: sides.East.lines },
-    West: { pts: sides.West.pts, lines: sides.West.lines },
-    winner,
-    mvp,
-  };
+  return false;
 }
 
 // Top-3 per category league-wide at the All-Star break.
@@ -93,19 +72,89 @@ export function firstHalfHonors(league) {
   }));
 }
 
-export function buildAllStarEvent(league, rng) {
+// Rosters are announced and First-Half Honors locked in immediately; the
+// game itself is simulated on demand from AllStarScreen (so the user can
+// see the rosters first, especially if one of their own players is in it).
+export function buildAllStarEvent(league) {
   const rosters = selectAllStars(league);
-  const game = simAllStarGame(
-    league,
-    { East: rosters.East.starters, West: rosters.West.starters },
-    { East: rosters.East.reserves, West: rosters.West.reserves },
-    rng
-  );
+  for (const conf of ['East', 'West']) {
+    for (const r of [...rosters[conf].starters, ...rosters[conf].reserves]) {
+      const found = getPlayerById(league, r.playerId);
+      if (!found) continue;
+      const p = found.player;
+      if (!p.awards) p.awards = [];
+      p.awards.push({ season: league.season, award: 'All-Star' });
+    }
+  }
   return {
     season: league.season,
     rosters,
-    game,
+    game: null,
     honors: firstHalfHonors(league),
     shown: false,
   };
+}
+
+// Exhibition-style defense: each player's defense rating is heavily damped,
+// which (via the existing sim formulas) both raises shooting percentages and
+// lowers turnover rates — a higher-scoring, sloppier-defense game without
+// touching sim.js itself.
+const RELAX_DEFENSE = 0.55;
+
+function exhibitionRoster(league, roster) {
+  return roster.map(({ playerId }) => {
+    const { player: p } = getPlayerById(league, playerId);
+    return {
+      ...p,
+      condition: 100,
+      injury: null,
+      ratings: { ...p.ratings, defense: Math.max(25, Math.round(p.ratings.defense * RELAX_DEFENSE)) },
+    };
+  });
+}
+
+// Runs the real possession sim for the All-Star Game, stores a full box
+// score on league.allStar.game, and records the MVP award.
+export function simAllStarGame(league) {
+  const as = league.allStar;
+  const rng = makeRng(league.seed + league.season * 67_867 + 444_001);
+  const eastRoster = exhibitionRoster(league, [...as.rosters.East.starters, ...as.rosters.East.reserves]);
+  const westRoster = exhibitionRoster(league, [...as.rosters.West.starters, ...as.rosters.West.reserves]);
+  const eastTeam = { id: 'EAST', name: 'Team East', conf: 'East', roster: eastRoster, lineup: null };
+  const westTeam = { id: 'WEST', name: 'Team West', conf: 'West', roster: westRoster, lineup: null };
+
+  const result = simGame(eastTeam, westTeam, rng);
+  const allLines = [...result.homeBox, ...result.awayBox];
+  const mvpLine = starLines(allLines, 1)[0];
+  const mvpFound = mvpLine ? getPlayerById(league, mvpLine.playerId) : null;
+
+  as.game = {
+    home: 'EAST',
+    away: 'WEST',
+    homePts: result.homePts,
+    awayPts: result.awayPts,
+    homeBox: encodeBox(result.homeBox),
+    awayBox: encodeBox(result.awayBox),
+    homeQtrs: result.homeQtrs,
+    awayQtrs: result.awayQtrs,
+    events: result.events,
+    winner: result.homePts >= result.awayPts ? 'East' : 'West',
+    mvpPlayerId: mvpFound ? mvpFound.player.id : null,
+  };
+
+  if (mvpFound) {
+    const p = mvpFound.player;
+    if (!p.awards) p.awards = [];
+    p.awards.push({ season: league.season, award: 'All-Star MVP' });
+  }
+
+  const winnerConf = as.game.winner;
+  const mvpText = mvpFound ? ` ${mvpFound.player.name} (${mvpFound.team.name}) takes home All-Star Game MVP.` : '';
+  pushNews(league, {
+    day: league.dayIndex, category: 'award', major: true,
+    teamIds: mvpFound ? [mvpFound.team.id] : undefined,
+    text: `⭐ Team ${winnerConf} wins the All-Star Game, ${Math.max(result.homePts, result.awayPts)}-${Math.min(result.homePts, result.awayPts)}.${mvpText}`,
+  });
+
+  return as.game;
 }

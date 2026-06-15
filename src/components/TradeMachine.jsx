@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeam, payroll, TRADE_DEADLINE_DAY } from '../engine/league.js';
+import { getTeam, payroll, tradesLocked } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall } from '../engine/scouting.js';
 import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade, resolveMultiTradeLegs } from '../engine/trade.js';
@@ -352,7 +352,10 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
     commit();
   };
 
-  const deadlinePassed = league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY;
+  const deadlinePassed = tradesLocked(league);
+  const lockedText = league.phase === 'playoffs'
+    ? 'Trades are locked for the playoffs. They reopen once the offseason begins.'
+    : 'Trades are now locked until next season. Any moves you wanted to make had to happen before today.';
 
   return (
     <div className="warroom" style={{ '--team-color': getTeam(league, userId).color }}>
@@ -360,7 +363,7 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
         {deadlinePassed ? (
           <GuideTooltip
             tipKey="trade_deadline"
-            text="Trades are now locked until next season. Any moves you wanted to make had to happen before today."
+            text={lockedText}
             block
           >
             <h2>Trade Machine</h2>
@@ -369,7 +372,7 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
           <h2>Trade Machine</h2>
         )}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn" onClick={propose} disabled={!hasAnyAsset}>Propose Trade</button>
+          <button className="btn" onClick={propose} disabled={!hasAnyAsset || deadlinePassed}>Propose Trade</button>
           {teamIds.length < 4 && (
             <button className="btn secondary" onClick={addTeam}>Add Team</button>
           )}

@@ -16,12 +16,8 @@ just delete it — git history keeps the record).
 
 ## New features
 
-- Training Plans: let the user assign a focus skill to each player during the offseason (scoring, playmaking, defense, rebounding, athleticism) that gives a weighted bonus to that attribute's development roll in `developPlayer()`, at the cost of slight regression in a neglected attribute — adds meaningful offseason decision-making without new systems.
-- Make the All-Star Game a fully simulated game rather than a placeholder event. East/West rosters are players selected to the All-Star teams (starters voted by fans weighted by stats, reserves selected by coaches weighted by remaining stat leaders). Simulate using the existing possession sim with relaxed defense (higher scoring, fewer turnovers — exhibition-style), producing a real box score viewable from the schedule and news feed. MVP awarded to the top performer by points/entertainment value. If one of the user's players is selected, pause before the game and show the roster with a "Simulate All-Star Game" button so the moment gets appropriate weight. The box score is stored and accessible from the calendar and schedule like any other game. All-Star selections are recorded in player awards (p.awards) and displayed on player cards and the Legacy screen's historical records.
 
 ## Trade
-
-- Enforce the trade deadline strictly: trades lock the moment the deadline day passes and remain locked through the end of the playoffs. The trade machine should show a clear "trades locked" state with the reason (deadline passed / playoffs active) and the date they reopen (day after the championship). Trades re-enable at the start of the following offseason only.
 
 ## Player Profile
 

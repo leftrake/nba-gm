@@ -338,6 +338,17 @@ export function similarPlayers(league, target, count = 5) {
   return rows.sort((a, b) => a.dist - b.dist).slice(0, count);
 }
 
+// Training focus: the user can assign one of these per player (p.trainingFocus)
+// to weight that player's development roll toward a skill area, at the cost
+// of slight regression in a neglected attribute.
+export const TRAINING_FOCUS_OPTIONS = [
+  { id: 'scoring', label: 'Scoring', boost: ['inside', 'mid', 'three'], neglect: 'defense' },
+  { id: 'playmaking', label: 'Playmaking', boost: ['passing'], neglect: 'rebounding' },
+  { id: 'defense', label: 'Defense', boost: ['defense'], neglect: 'three' },
+  { id: 'rebounding', label: 'Rebounding', boost: ['rebounding'], neglect: 'three' },
+  { id: 'athleticism', label: 'Athleticism', boost: ['athleticism'], neglect: 'passing' },
+];
+
 // Yearly development. Growth is ceiling-driven: high-potential players under
 // 25 close on their ceiling fast (3–6 overall a year, with occasional
 // breakout leaps), modest ceilings inch along and plateau early. Decline is
@@ -364,8 +375,13 @@ export function developPlayer(p, rng = rand) {
     delta = gauss(-3.5 - (p.age - 34) * 0.6, 1.0, rng); // falling off the cliff
   }
   delta = adjustGrowthDelta(p, delta, room, rng);
+  const focus = TRAINING_FOCUS_OPTIONS.find((f) => f.id === p.trainingFocus);
   for (const key of Object.keys(p.ratings)) {
     let d = delta + gauss(0, 1.2, rng);
+    if (focus) {
+      if (focus.boost.includes(key)) d += 0.8;
+      else if (key === focus.neglect) d -= 0.5;
+    }
     d = adjustRatingDelta(p, d, key, room, rng);
     if (d > 0 && room <= 0) d = 0; // the ceiling is a ceiling
     p.ratings[key] = Math.round(clamp(p.ratings[key] + d, 25, 99));

@@ -240,6 +240,11 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                     {openEvent === 'trade-deadline' && league.dayIndex > TRADE_DEADLINE_DAY && (
                       <TradeDeadlineSummary league={league} openTeam={openTeam} />
                     )}
+                    {openEvent === 'all-star-game' && league.allStar?.season === league.season && league.allStar.game && (
+                      <button className="btn small" onClick={(e) => { e.stopPropagation(); setOpenEvent(null); setScreen('allstar'); }}>
+                        View All-Star Game
+                      </button>
+                    )}
                     <button className="btn small secondary" onClick={(e) => { e.stopPropagation(); setOpenEvent(null); }}>Close</button>
                   </div>
                 )}

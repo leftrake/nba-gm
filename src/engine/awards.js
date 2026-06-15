@@ -147,6 +147,7 @@ export function computeAwards(league) {
 const AWARD_ORDER = [
   'Finals MVP',
   'MVP',
+  'All-Star MVP',
   'Defensive Player of the Year',
   'Rookie of the Year',
   'Sixth Man of the Year',
@@ -155,6 +156,7 @@ const AWARD_ORDER = [
   'All-NBA Third Team',
   'All-Defensive First Team',
   'All-Defensive Second Team',
+  'All-Star',
 ];
 
 // Group a player's award list by honor, ordered by prestige:

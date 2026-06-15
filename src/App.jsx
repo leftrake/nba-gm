@@ -463,6 +463,7 @@ export default function App() {
         {screen === 'allstar' && (
           <AllStarScreen
             league={league}
+            commit={commit}
             openPlayer={openPlayer}
             openTeam={openTeam}
             onContinue={() => { league.allStar.shown = true; commit(); setScreen('dashboard'); }}
@@ -482,7 +483,7 @@ export default function App() {
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} onResetTutorial={handleResetTutorial} theme={theme} setTheme={updateTheme} accentColor={accentColor} setAccentColor={updateAccent} />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
-        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
+        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} commit={commit} />}
         {league.phase === 'offseason/finals-mvp' && (
           <FinalsMVP
             league={league}

@@ -194,6 +194,14 @@ export function getLeagueEvents() {
   ];
 }
 
+// Trades lock once the deadline passes and remain locked through the
+// playoffs, reopening only when the next offseason begins.
+export function tradesLocked(league) {
+  if (league.phase === 'playoffs') return true;
+  if (league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY) return true;
+  return false;
+}
+
 // Real NBA formula, per team: 4 division opponents x4 (16 games),
 // 6 in-conference opponents x4 + 4 in-conference opponents x3 (36),
 // all 15 other-conference opponents x2, one home one away (30) = 82.
@@ -309,8 +317,16 @@ export function makeSchedule(teams, rng) {
   return schedule;
 }
 
+// Synthetic "teams" for the All-Star Game box score — not real franchises,
+// so they're not in league.teams, but getTeam needs to resolve them for
+// shared box-score components (TeamBadge/TeamLink/LineScore).
+const ALLSTAR_TEAMS = {
+  EAST: { id: 'EAST', city: 'Team', name: 'East', color: '#1d428a', conf: 'East' },
+  WEST: { id: 'WEST', city: 'Team', name: 'West', color: '#c8102e', conf: 'West' },
+};
+
 export function getTeam(league, id) {
-  return league.teams.find((t) => t.id === id);
+  return league.teams.find((t) => t.id === id) || ALLSTAR_TEAMS[id];
 }
 
 // The migration path for the JSON-serialized save (see save.js): every field
@@ -688,7 +704,7 @@ export function simDay(league) {
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '🔒 The trade deadline has passed. All trades are locked until the offseason.' });
   }
   if (league.dayIndex === ALL_STAR_DAYS[0] && league.allStar?.season !== league.season) {
-    league.allStar = buildAllStarEvent(league, rng);
+    league.allStar = buildAllStarEvent(league);
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '⭐ All-Star rosters have been announced — the league pauses for All-Star Weekend.' });
   }
   if (league.dayIndex >= league.schedule.length) {

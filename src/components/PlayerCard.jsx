@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
-import { durabilityNote, ratingRow, posLabel, similarPlayers } from '../engine/players.js';
+import { durabilityNote, ratingRow, posLabel, similarPlayers, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange } from '../engine/scouting.js';
@@ -191,7 +191,7 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
   );
 }
 
-export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor }) {
+export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor, commit }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -275,6 +275,31 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
         })}
 
         {!fogged && <Progression league={league} p={p} />}
+
+        {!fogged && (
+          <p style={{ margin: '10px 0' }}>
+            <label style={{ color: 'var(--muted)' }}>
+              Training Focus:{' '}
+              <select
+                value={p.trainingFocus || ''}
+                onChange={(e) => {
+                  p.trainingFocus = e.target.value || null;
+                  commit?.();
+                }}
+              >
+                <option value="">None</option>
+                {TRAINING_FOCUS_OPTIONS.map((f) => (
+                  <option key={f.id} value={f.id}>{f.label}</option>
+                ))}
+              </select>
+            </label>
+            {p.trainingFocus && (
+              <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--muted)' }}>
+                Boosts development in {TRAINING_FOCUS_OPTIONS.find((f) => f.id === p.trainingFocus).boost.join(', ')} at the cost of slight regression in {TRAINING_FOCUS_OPTIONS.find((f) => f.id === p.trainingFocus).neglect}.
+              </span>
+            )}
+          </p>
+        )}
 
         <h3 style={{ marginTop: 14 }}>This Season ({league.season})</h3>
         <StatLine stats={p.stats} />
