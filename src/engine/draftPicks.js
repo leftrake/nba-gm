@@ -77,7 +77,7 @@ export function projectedSlot(league, originalTeamId, yearsOut = 0) {
     const drift = team.strategy === 'rebuilding' ? 0.04 : team.strategy === 'contending' ? -0.04 : 0;
     winPct = clamp(winPct + drift * yearsOut, 0.1, 0.9);
   }
-  return clamp(Math.round(1 + (1 - winPct) * 29), 1, 30);
+  return clamp(Math.round(1 + winPct * 29), 1, 30);
 }
 
 // Trade value of a future pick: a 1st projects to a prospect somewhere
