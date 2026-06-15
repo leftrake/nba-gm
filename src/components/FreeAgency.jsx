@@ -22,7 +22,7 @@ function loadFilters() {
 export default function FreeAgency({ league, commit, openPlayer }) {
   const team = getTeam(league, league.userTeamId);
   const room = SALARY_CAP - payroll(team);
-  const isOpen = league.phase === 'freeagency';
+  const isOpen = league.phase === 'offseason/freeagency';
   const isSeason = league.phase === 'regular';
   const [negotiatingId, setNegotiatingId] = useState(null);
   const [salaryM, setSalaryM] = useState(5);
@@ -111,6 +111,12 @@ export default function FreeAgency({ league, commit, openPlayer }) {
 
   return (
     <div className="panel">
+      {isOpen && (
+        <div style={{ marginBottom: 14, padding: 10, border: '1px solid var(--accent)', borderRadius: 6, textAlign: 'center' }}>
+          <strong>Free Agency is now open</strong>
+          <span style={{ color: 'var(--muted)' }}> · {league.faDaysLeft} round{league.faDaysLeft === 1 ? '' : 's'} remaining</span>
+        </div>
+      )}
       {myRfas.length > 0 && (
         <div style={{ marginBottom: 14, padding: 10, border: '1px solid var(--accent)', borderRadius: 6 }}>
           <h3 style={{ marginTop: 0 }}>Your Restricted Free Agents</h3>

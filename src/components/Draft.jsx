@@ -23,7 +23,7 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
     );
   }
 
-  const live = league.phase === 'draft';
+  const live = league.phase === 'offseason/draft';
   const clockTeamId = live ? onTheClock(league) : null;
   const myTurn = clockTeamId === league.userTeamId;
   const pickNo = d.pickIndex + 1;

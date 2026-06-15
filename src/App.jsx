@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { TEAMS } from './data/teams.js';
-import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, backfillPlayers } from './engine/league.js';
+import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason, backfillPlayers } from './engine/league.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
@@ -21,6 +21,9 @@ import Legacy from './components/Legacy.jsx';
 import Playoffs from './components/Playoffs.jsx';
 import PlayoffPostGame from './components/PlayoffPostGame.jsx';
 import DevelopmentReport from './components/DevelopmentReport.jsx';
+import FinalsMVP from './components/FinalsMVP.jsx';
+import DraftLottery from './components/DraftLottery.jsx';
+import SeasonPreview from './components/SeasonPreview.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
 import GameModal from './components/BoxScore.jsx';
@@ -302,7 +305,9 @@ export default function App() {
   // The Dev Report tab only shows while this offseason's report is fresh
   // (between development and the next season tipping off)
   const hasDevReport = !!league.devReport?.entries?.length
-    && (league.phase === 'draft' || league.phase === 'freeagency');
+    && (league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
+
+  const inOffseason = league.phase.startsWith('offseason/');
 
   const NAV = [
     ['dashboard', 'Dashboard'],
@@ -314,7 +319,7 @@ export default function App() {
     ['stats', 'Stats'],
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
-    ...(league.phase === 'offseason' ? [['scouting', 'Scouting']] : []),
+    ...(inOffseason ? [['scouting', 'Scouting']] : []),
     ['draft', 'Draft'],
     ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
     ['freeagency', 'Free Agency'],
@@ -332,9 +337,13 @@ export default function App() {
           {league.season} · {userTeam.wins}-{userTeam.losses} ·{' '}
           {league.phase === 'regular' ? `Day ${league.dayIndex + 1}/${league.schedule.length}`
             : league.phase === 'playoffs' ? 'Playoffs'
-            : league.phase === 'draft' ? (onTheClock(league) ? `Draft (Pick ${league.draft.pickIndex + 1}/${league.draft.order.length})` : 'Draft complete')
+            : league.phase === 'offseason/finals-mvp' ? 'Finals MVP'
+            : league.phase === 'offseason/development' ? 'Development Report'
+            : league.phase === 'offseason/lottery' ? 'Draft Lottery'
+            : league.phase === 'offseason/draft' ? (onTheClock(league) ? `Draft (Pick ${league.draft.pickIndex + 1}/${league.draft.order.length})` : 'Draft complete')
             : league.phase === 'fantasydraft' ? (onFantasyClock(league) ? `Fantasy Draft (Pick ${league.fantasyDraft.pickIndex + 1}/${league.fantasyDraft.order.length})` : 'Fantasy Draft complete')
-            : league.phase === 'freeagency' ? `Free Agency (${league.faDaysLeft} rounds left)`
+            : league.phase === 'offseason/freeagency' ? `Free Agency (${league.faDaysLeft} rounds left)`
+            : league.phase === 'offseason/preview' ? 'Season Preview'
             : 'Offseason'}
         </span>
         <nav>
@@ -363,14 +372,7 @@ export default function App() {
             <button className="btn secondary" onClick={handleSimPlayoffRound}>Sim Playoff Round</button>
           </div>
         )}
-        {league.phase === 'offseason' && (
-          <div className="controls">
-            <button className="btn" onClick={() => { advanceOffseason(league); commit(); setScreen(league.devReport?.entries?.length ? 'devreport' : 'draft'); }}>
-              Advance to Offseason (player development + draft)
-            </button>
-          </div>
-        )}
-        {league.phase === 'draft' && (
+        {league.phase === 'offseason/draft' && (
           <div className="controls">
             {!onTheClock(league) ? (
               <button className="btn" onClick={() => { finishDraft(league); commit(); setScreen('freeagency'); }}>
@@ -425,10 +427,10 @@ export default function App() {
             )}
           </div>
         )}
-        {league.phase === 'freeagency' && (
+        {league.phase === 'offseason/freeagency' && (
           <div className="controls">
             <button className="btn" onClick={() => { simFreeAgencyDay(league); commit(); }}>
-              {league.faDaysLeft > 1 ? `Next FA Round (${league.faDaysLeft} left)` : 'Finish FA & Start Season'}
+              {league.faDaysLeft > 1 ? `Next FA Round (${league.faDaysLeft} left)` : 'Finish Free Agency'}
             </button>
           </div>
         )}
@@ -476,11 +478,40 @@ export default function App() {
           ? <PlayoffPostGame league={league} played={playoffDay} onBack={() => setScreen('playoffs')} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
           : <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />)}
         {screen === 'legacy' && <Legacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
-        {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} onContinue={() => setScreen(league.phase === 'freeagency' ? 'freeagency' : 'draft')} />}
+        {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} onResetTutorial={handleResetTutorial} theme={theme} setTheme={updateTheme} accentColor={accentColor} setAccentColor={updateAccent} />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
+        {league.phase === 'offseason/finals-mvp' && (
+          <FinalsMVP
+            league={league}
+            openPlayer={openPlayer}
+            openTeam={openTeam}
+            onContinue={() => { advanceOffseason(league); commit(); }}
+          />
+        )}
+        {league.phase === 'offseason/development' && (
+          <DevelopmentReport
+            league={league}
+            openPlayer={openPlayer}
+            onContinue={() => { league.phase = 'offseason/lottery'; commit(); }}
+          />
+        )}
+        {league.phase === 'offseason/lottery' && (
+          <DraftLottery
+            league={league}
+            openTeam={openTeam}
+            onContinue={() => { league.phase = 'offseason/draft'; commit(); setScreen('draft'); }}
+          />
+        )}
+        {league.phase === 'offseason/preview' && (
+          <SeasonPreview
+            league={league}
+            openPlayer={openPlayer}
+            onStart={() => { startNewSeason(league); commit(); setScreen('dashboard'); }}
+          />
+        )}
       </main>
       {showWalkthrough && <Walkthrough onDone={() => setShowWalkthrough(false)} />}
     </div>

@@ -145,6 +145,7 @@ export function computeAwards(league) {
 }
 
 const AWARD_ORDER = [
+  'Finals MVP',
   'MVP',
   'Defensive Player of the Year',
   'Rookie of the Year',

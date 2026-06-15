@@ -21,7 +21,7 @@ export function rookieContractYears(pick) {
 const CLASS_SIZE = 68; // 60 get drafted; the rest go to free agency
 
 // NBA lottery odds (chances out of 1000) for the 14 lottery seats, worst record first
-const LOTTERY_WEIGHTS = [140, 140, 140, 125, 105, 90, 75, 60, 45, 30, 20, 15, 10, 5];
+export const LOTTERY_WEIGHTS = [140, 140, 140, 125, 105, 90, 75, 60, 45, 30, 20, 15, 10, 5];
 
 // Rookie scale: ~$10M for the #1 pick sliding to the minimum by the end of
 // round 1; every second-rounder signs for the minimum.
@@ -208,7 +208,7 @@ export function finishDraft(league) {
     d.prospects = [];
     league.freeAgents.sort((a, b) => overall(b) - overall(a));
   }
-  league.phase = 'freeagency';
+  league.phase = 'offseason/freeagency';
   league.faDaysLeft = 5;
   league.negotiations = {};
   // fresh market: every team gets its mid-level exception back, and asking

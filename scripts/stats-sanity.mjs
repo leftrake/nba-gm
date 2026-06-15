@@ -21,7 +21,7 @@
 // efficiency (in-game fatigue), so big minutes are never free.
 
 import {
-  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay,
+  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, startNewSeason,
 } from '../src/engine/league.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
@@ -126,7 +126,8 @@ for (let s = 0; s < SEASONS; s++) {
   simDraftToUser(league); // no user team, so this runs the whole draft
   finishDraft(league);
   guard = 0;
-  while (league.phase === 'freeagency' && guard++ < 50) simFreeAgencyDay(league);
+  while (league.phase === 'offseason/freeagency' && guard++ < 50) simFreeAgencyDay(league);
+  if (league.phase === 'offseason/preview') startNewSeason(league);
   if (league.phase !== 'regular') throw new Error(`stuck in phase ${league.phase}`);
 }
 

@@ -6,7 +6,7 @@
 // Run: node scripts/sim-talent-pipeline.mjs [seed]
 
 import { TEAMS } from '../src/data/teams.js';
-import { createLeague, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay, getTeam } from '../src/engine/league.js';
+import { createLeague, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason, getTeam } from '../src/engine/league.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
 
@@ -61,7 +61,8 @@ for (let s = 0; s < SEASONS; s++) {
   simDraftToUser(league); // no human team on the clock, so this runs the whole draft
   finishDraft(league);
   guard = 0;
-  while (league.phase === 'freeagency' && guard++ < 30) simFreeAgencyDay(league);
+  while (league.phase === 'offseason/freeagency' && guard++ < 30) simFreeAgencyDay(league);
+  if (league.phase === 'offseason/preview') startNewSeason(league);
   if (league.phase !== 'regular') { failures.push(`${season}: stuck in phase '${league.phase}'`); break; }
 }
 

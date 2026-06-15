@@ -50,7 +50,9 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     schedule: makeSchedule(teams, rng),
     dayIndex: 0,
     resultsByDay: [],
-    phase: fantasy ? 'fantasydraft' : 'regular', // regular | playoffs | offseason | draft | freeagency | fantasydraft
+    phase: fantasy ? 'fantasydraft' : 'regular',
+    // regular | playoffs | fantasydraft | offseason/finals-mvp | offseason/development
+    // | offseason/lottery | offseason/draft | offseason/freeagency | offseason/preview
     playoffs: null,
     freeAgents: fantasy ? [] : Array.from({ length: 60 }, () => {
       // unsigned for a reason: the open market skews toward fringe talent
@@ -404,6 +406,16 @@ export function backfillPlayers(league) {
       draftWatchlist: [], faWatchlist: [],
     };
   }
+  if (!league.gmLegacy.finalsMVPs) league.gmLegacy.finalsMVPs = [];
+  // Saves predating the offseason phase sequence: map the old flat phases
+  // onto their equivalent sub-phase. 'offseason' had no Finals MVP/dev
+  // report data computed yet, so it lands on the finals-mvp screen, which
+  // tolerates a missing league.finalsMVP.
+  if (league.phase === 'offseason') league.phase = 'offseason/finals-mvp';
+  else if (league.phase === 'draft') league.phase = 'offseason/draft';
+  else if (league.phase === 'freeagency') league.phase = 'offseason/freeagency';
+  if (league.finalsMVP === undefined) league.finalsMVP = null;
+  if (!league.offseasonRosterSnapshot) league.offseasonRosterSnapshot = [];
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
@@ -795,7 +807,24 @@ export function simPlayoffGame(league) {
       const champ = getTeam(league, po.champion);
       bumpRosterMorale(champ, 10);
       pushNews(league, { day: league.dayIndex, category: 'league', major: true, teamIds: [champ.id], text: `🏆 The ${champ.city} ${champ.name} are NBA Champions!` });
-      league.phase = 'offseason';
+
+      const mvp = computeFinalsMVP(league);
+      league.finalsMVP = mvp;
+      if (mvp) {
+        const mvpPlayer = getTeam(league, mvp.teamId).roster.find((x) => x.id === mvp.playerId);
+        mvpPlayer.awards = mvpPlayer.awards || [];
+        mvpPlayer.awards.push({ season: league.season, award: 'Finals MVP' });
+        if (mvp.teamId === league.userTeamId) {
+          league.gmLegacy.finalsMVPs ??= [];
+          league.gmLegacy.finalsMVPs.push({ playerId: mvp.playerId, name: mvp.name, season: league.season });
+        }
+      }
+      // Snapshot the user's roster before development/draft/FA reshape it,
+      // so the Season Preview screen can summarize what changed this summer.
+      const userTeamNow = getTeam(league, league.userTeamId);
+      league.offseasonRosterSnapshot = userTeamNow ? userTeamNow.roster.map((p) => p.id) : [];
+
+      league.phase = 'offseason/finals-mvp';
       // Pre-draft scouting window opens: seed the prospect pool and let the
       // AI spend its scouting budgets before the user advances the offseason.
       initScoutingPhase(league, makeRng(league.seed + league.season * 70_007 + 555_001));
@@ -867,6 +896,46 @@ export function simPlayoffRound(league) {
   const played = [];
   while (!po.champion && po.round === startRound && guard++ < 100) played.push(...simPlayoffGame(league));
   return played;
+}
+
+const round1 = (n) => Math.round(n * 10) / 10;
+
+// The top performer across the Finals series by points, efficiency, and a
+// bonus weight on the series-clinching game.
+function computeFinalsMVP(league) {
+  const finals = league.playoffs?.finals;
+  if (!finals?.games?.length) return null;
+  const lastGame = finals.games[finals.games.length - 1];
+  const totals = new Map();
+  for (const game of finals.games) {
+    for (const [teamId, encoded] of [[game.home, game.homeBox], [game.away, game.awayBox]]) {
+      for (const line of decodeBox(encoded)) {
+        if (line.min <= 0) continue;
+        let t = totals.get(line.playerId);
+        if (!t) {
+          t = { playerId: line.playerId, teamId, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, gp: 0, clutch: 0 };
+          totals.set(line.playerId, t);
+        }
+        t.pts += line.pts; t.reb += line.reb; t.ast += line.ast; t.stl += line.stl; t.blk += line.blk; t.gp += 1;
+        if (game === lastGame) t.clutch = line.pts + 0.7 * (line.reb + line.ast) + line.stl + line.blk;
+      }
+    }
+  }
+  let best = null;
+  let bestScore = -Infinity;
+  for (const t of totals.values()) {
+    const score = t.pts / t.gp + 0.7 * (t.reb + t.ast) / t.gp + (t.stl + t.blk) / t.gp
+      + (t.teamId === league.playoffs.champion ? 4 : 0)
+      + t.clutch * 0.5;
+    if (score > bestScore) { bestScore = score; best = t; }
+  }
+  if (!best) return null;
+  const p = league.teams.flatMap((tm) => tm.roster).find((x) => x.id === best.playerId);
+  if (!p) return null;
+  return {
+    playerId: p.id, name: p.name, pos: p.pos, teamId: best.teamId,
+    ppg: round1(best.pts / best.gp), rpg: round1(best.reb / best.gp), apg: round1(best.ast / best.gp), gp: best.gp,
+  };
 }
 
 // ---------- Offseason ----------
@@ -944,7 +1013,15 @@ export function advanceOffseason(league) {
       // Retirement comes for everyone, contract or not; a retired contract
       // simply comes off the books.
       if (shouldRetire(p, rng) || (p.age >= 30 && overall(p) < 40)) {
-        if (entry) entry.retired = true;
+        if (entry) {
+          entry.retired = true;
+          const seasons = new Set((p.careerStats || []).map((s) => s.season)).size;
+          const seasonsWithTeam = (p.careerStats || []).filter((s) => s.team === team.id).length;
+          if (seasons > 0) {
+            entry.farewell = `After ${seasons} season${seasons === 1 ? '' : 's'} ${p.name} has retired.`
+              + (seasonsWithTeam > 0 ? ` He spent ${seasonsWithTeam} of those season${seasonsWithTeam === 1 ? '' : 's'} with you.` : '');
+          }
+        }
         retiring.push({ team, p });
         continue;
       }
@@ -1091,9 +1168,10 @@ export function advanceOffseason(league) {
   }
 
   league.season += 1;
-  // Draft first, then free agency (finishDraft opens it)
+  // Draft order (including the lottery) is resolved now so the Draft Lottery
+  // screen can reveal it; the draft itself doesn't open until that phase ends.
   initDraft(league, rng);
-  league.phase = 'draft';
+  league.phase = 'offseason/development';
   pushNews(league, { day: 0, category: 'league', text: `Welcome to the ${league.season} offseason. The draft is up first, then free agency.` });
 }
 
@@ -1232,7 +1310,7 @@ export function simFreeAgencyDay(league) {
 
   if (league.faDaysLeft <= 0) {
     finalizeFreeAgency(league);
-    startNewSeason(league);
+    league.phase = 'offseason/preview';
   }
 }
 
@@ -1586,7 +1664,7 @@ export function signingException(league, teamId, salary) {
 // league.negotiations so they survive reloads — but the player stays on
 // the open market and can sign elsewhere between rounds.
 export function makeOffer(league, teamId, playerId, salary, years) {
-  if (league.phase !== 'freeagency') return { ok: false, error: 'Free agency is not open.' };
+  if (league.phase !== 'offseason/freeagency') return { ok: false, error: 'Free agency is not open.' };
   const team = getTeam(league, teamId);
   const p = league.freeAgents.find((x) => x.id === playerId);
   if (!p) return { ok: false, error: 'That player is no longer a free agent.' };

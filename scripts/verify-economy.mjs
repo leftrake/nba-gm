@@ -5,7 +5,7 @@
 //           per offseason without first clearing salary?
 // Run with: node scripts/verify-economy.mjs [seed]
 import {
-  createLeague, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay,
+  createLeague, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason,
   payroll, getTeam, signFreeAgent, makeOffer, offerDemand, preferredYears,
 } from '../src/engine/league.js';
 import { onTheClock, makeDraftPick, simDraftToUser, finishDraft } from '../src/engine/draft.js';
@@ -87,7 +87,8 @@ console.log('\n================ RUN A: all-AI league ================');
     console.log(`quality FAs at open: ${qualityFAs(league)}`);
     simFreeAgencyDay(league);
     console.log(`quality FAs after round 1: ${qualityFAs(league)}`);
-    while (league.phase === 'freeagency') simFreeAgencyDay(league);
+    while (league.phase === 'offseason/freeagency') simFreeAgencyDay(league);
+    startNewSeason(league);
     console.log(`quality FAs after all 5 rounds: ${qualityFAs(league)} (pool size ${league.freeAgents.length})`);
     avgs.push(payrollReport(league, `payrolls entering ${league.season}`));
   }
@@ -123,7 +124,7 @@ console.log('\n================ RUN B: greedy user (CHI) ================');
     // Greedy: every round, before the AI moves, chase every 70+ free agent
     // we can pay for at their demand — no salary clearing allowed.
     let signedQuality = 0;
-    while (league.phase === 'freeagency') {
+    while (league.phase === 'offseason/freeagency') {
       for (const p of [...league.freeAgents]) {
         if (overall(p) < QUALITY) continue;
         if (user().roster.length >= 15) break;
@@ -140,6 +141,7 @@ console.log('\n================ RUN B: greedy user (CHI) ================');
       }
       simFreeAgencyDay(league);
     }
+    startNewSeason(league);
     console.log(`quality starters signed without clearing salary: ${signedQuality} ${signedQuality <= 1 ? 'PASS' : 'FAIL'}`);
 
     // fill out the roster with minimum guys, redo the lineup

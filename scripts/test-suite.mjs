@@ -22,7 +22,7 @@
 // stats/fatigue check, including the forced-44-minutes experiment.
 
 import {
-  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, payroll, projectedPayroll,
+  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, startNewSeason, payroll, projectedPayroll,
 } from '../src/engine/league.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall, salaryFor } from '../src/engine/players.js';
@@ -281,7 +281,8 @@ for (let s = 0; s < SEASONS; s++) {
   simDraftToUser(league); // no user team, so this runs the whole draft
   finishDraft(league);
   guard = 0;
-  while (league.phase === 'freeagency' && guard++ < 50) simFreeAgencyDay(league);
+  while (league.phase === 'offseason/freeagency' && guard++ < 50) simFreeAgencyDay(league);
+  if (league.phase === 'offseason/preview') startNewSeason(league);
   if (league.phase !== 'regular') throw new Error(`stuck in phase ${league.phase}`);
 
   // "Undrafted gem" pricing (engine/backstory.js askingPriceMult): a gem who
@@ -357,7 +358,8 @@ console.log('\nOwnership system (6 seasons, small-market low-patience vs large-m
     simDraftToUser(lg);
     finishDraft(lg);
     guard = 0;
-    while (lg.phase === 'freeagency' && guard++ < 50) simFreeAgencyDay(lg);
+    while (lg.phase === 'offseason/freeagency' && guard++ < 50) simFreeAgencyDay(lg);
+    if (lg.phase === 'offseason/preview') startNewSeason(lg);
     if (lg.phase !== 'regular') throw new Error(`ownership sim: stuck in phase ${lg.phase}`);
   }
 
