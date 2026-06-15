@@ -27,9 +27,6 @@ just delete it — git history keeps the record).
 
 ## Sim Flow
 
-- Pause the sim when a player is injured during a game: do not interrupt mid-game/mid-possession — finish the current game first, then show the full box score with the injury flagged (severity and timeline), and prompt the user to adjust their lineup/rotation before the next game starts. Similarly pause when an injured player's return date is reached so the user can add them back into the rotation before the next game.
-- Always pause the sim and surface an incoming trade offer immediately when one arrives, rather than letting it sit in the inbox while games continue simming; the user should never miss a time-sensitive offer because they were simming.
-
 ## News
 
 - Audit the news feed for gaps and add game-generated items: notable individual game performances (40+ points, triple-doubles, player milestones), weekly league transaction summaries, coaching changes, rivalry game results, and end-of-month standings shifts.

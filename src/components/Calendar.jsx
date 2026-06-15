@@ -4,6 +4,7 @@ import {
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
+import { injuryTimeline } from '../engine/injuries.js';
 import { fmtDate, TeamLink, TeamBadge, NewsText } from './shared.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,7 +36,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   const [animating, setAnimating] = useState(false);
   const [openEvent, setOpenEvent] = useState(null);
   const [confirmDay, setConfirmDay] = useState(null);
+  const [injuryAlert, setInjuryAlert] = useState(null); // { injured: [...], returned: [...] }
   const skipRef = useRef(false);
+  const stopRef = useRef(false);
   const animatingRef = useRef(false);
 
   const events = getLeagueEvents();
@@ -53,6 +56,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     animatingRef.current = true;
     setAnimating(true);
     skipRef.current = false;
+    stopRef.current = false;
     setConfirmDay(null);
     const current = leagueRef.current;
     const offersBefore = current.tradeOffers.length;
@@ -61,6 +65,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     const stepDelay = clamp(1500 / steps, 40, 250);
     let results = [];
     while (leagueRef.current.phase === 'regular' && (target == null || leagueRef.current.dayIndex < target)) {
+      const injuredBefore = new Map(getTeam(leagueRef.current, me).roster.filter((p) => p.injury).map((p) => [p.id, p.injury]));
       results = simDay(leagueRef.current);
       const mine = results.find((r) => r.home === me || r.away === me);
       trackFeatured(results);
@@ -68,8 +73,18 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
       setFlashDay(leagueRef.current.dayIndex - 1);
       if (stopAtGame && mine) break;
       if (leagueRef.current.tradeOffers.length > offersBefore) break;
+      const rosterAfter = getTeam(leagueRef.current, me).roster;
+      const injured = rosterAfter.filter((p) => p.injury && !injuredBefore.has(p.id))
+        .map((p) => ({ id: p.id, name: p.name, pos: p.pos, injury: p.injury }));
+      const returned = rosterAfter.filter((p) => !p.injury && injuredBefore.has(p.id))
+        .map((p) => ({ id: p.id, name: p.name, pos: p.pos }));
+      if (injured.length || returned.length) {
+        setInjuryAlert({ injured, returned });
+        break;
+      }
       if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
       if (leagueRef.current.dayIndex >= leagueRef.current.schedule.length) break;
+      if (stopRef.current) break;
       // pause a little longer on a day with one of the user's games, so the
       // FeaturedGame card has time to register before sliding on
       if (!skipRef.current) await delay(mine ? Math.max(stepDelay, 700) : stepDelay);
@@ -122,6 +137,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
           <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
           <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
           {animating && <button className="btn secondary" onClick={() => { skipRef.current = true; }}>Skip ▸▸</button>}
+          {animating && <button className="btn secondary" onClick={() => { stopRef.current = true; }}>Stop ⏹</button>}
         </div>
       )}
 
@@ -253,6 +269,30 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
           })}
         </div>
       </div>
+
+      {injuryAlert && (
+        <div className="modal-overlay" onClick={() => setInjuryAlert(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h2>🩹 Injury Update</h2>
+            {injuryAlert.injured.map((p) => (
+              <p key={`hurt-${p.id}`}>
+                <b>{p.name}</b> ({p.pos}) goes down with {p.injury.type.toLowerCase()} —{' '}
+                <span style={{ color: 'var(--red)' }}>{injuryTimeline(p.injury)}</span>.
+              </p>
+            ))}
+            {injuryAlert.returned.map((p) => (
+              <p key={`back-${p.id}`}>
+                <b>{p.name}</b> ({p.pos}) is <span style={{ color: 'var(--green)' }}>back and available</span> for tonight's game.
+              </p>
+            ))}
+            <p style={{ color: 'var(--muted)' }}>You may want to adjust your rotation before the next game.</p>
+            <div className="controls" style={{ marginBottom: 0 }}>
+              <button className="btn" onClick={() => { setInjuryAlert(null); setScreen('roster'); }}>Go to Roster</button>
+              <button className="btn secondary" onClick={() => setInjuryAlert(null)}>Dismiss</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
