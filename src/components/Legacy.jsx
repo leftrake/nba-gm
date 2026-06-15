@@ -3,6 +3,7 @@ import { getTeam } from '../engine/league.js';
 import {
   SINGLE_SEASON_CATS, CAREER_CATS, GAME_HIGH_CATS, formatCatValue, findPlayerById, PACE_CATS,
 } from '../engine/legacy.js';
+import { groupAwards } from '../engine/awards.js';
 import { TeamLink, PlayerLink, money } from './shared.jsx';
 
 const TABS = [
@@ -10,6 +11,7 @@ const TABS = [
   ['hof', 'Hall of Fame'],
   ['dynasties', 'Dynasties'],
   ['legacy', 'My Legacy'],
+  ['honors', 'Honors'],
 ];
 
 function HolderCell({ league, entry, openPlayer, openTeam }) {
@@ -267,6 +269,165 @@ function MyLegacy({ league, openPlayer, openTeam }) {
   );
 }
 
+// Every player who has ever appeared in this save: active rosters, free
+// agents, and retirees — the only places a player's `.awards` list survives.
+function allPlayersEver(league) {
+  const out = [];
+  for (const t of league.teams) for (const p of t.roster) out.push(p);
+  for (const p of league.freeAgents) out.push(p);
+  for (const p of league.retiredPlayers) out.push(p);
+  return out;
+}
+
+// One award-winner row: entries come from league.history[i].awards, shaped
+// { playerId, name, teamId, line }.
+function AwardRow({ league, label, entry, openPlayer, openTeam }) {
+  if (!entry) return null;
+  const p = findPlayerById(league, entry.playerId);
+  return (
+    <tr>
+      <td>{label}</td>
+      <td>{p ? <PlayerLink p={p} openPlayer={openPlayer}>{entry.name}</PlayerLink> : entry.name}</td>
+      <td><TeamLink team={getTeam(league, entry.teamId)} openTeam={openTeam} /></td>
+      <td style={{ color: 'var(--muted)' }}>{entry.line}</td>
+    </tr>
+  );
+}
+
+function Honors({ league, openPlayer, openTeam }) {
+  const seasons = (league.history || [])
+    .filter((h) => h.awards)
+    .map((h) => h.season)
+    .sort((a, b) => b - a);
+  const [season, setSeason] = useState(seasons[0] ?? null);
+  const [query, setQuery] = useState('');
+
+  const searchBar = (
+    <input
+      type="text"
+      placeholder="Search player by name…"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      style={{ width: '100%', maxWidth: 320, marginTop: 8 }}
+    />
+  );
+
+  const q = query.trim().toLowerCase();
+  if (q) {
+    const matches = allPlayersEver(league).filter((p) => (p.awards || []).length && p.name.toLowerCase().includes(q));
+    return (
+      <div className="panel">
+        <h2>Honors</h2>
+        {searchBar}
+        {matches.length === 0 && <p style={{ color: 'var(--muted)' }}>No award history for "{query}".</p>}
+        {matches.map((p) => (
+          <div key={p.id} style={{ marginTop: 14 }}>
+            <h3><PlayerLink p={p} openPlayer={openPlayer} /></h3>
+            <table>
+              <thead><tr><th>Award</th><th>Seasons</th></tr></thead>
+              <tbody>
+                {groupAwards(p.awards).map((g) => (
+                  <tr key={g.award}>
+                    <td>{g.award}</td>
+                    <td>{g.seasons.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!season) {
+    return (
+      <div className="panel">
+        <h2>Honors</h2>
+        {searchBar}
+        <p style={{ color: 'var(--muted)' }}>No award history yet — honors are recorded at the end of each season.</p>
+      </div>
+    );
+  }
+
+  const a = league.history.find((h) => h.season === season)?.awards;
+  const allStars = [];
+  let asMvp = null;
+  for (const p of allPlayersEver(league)) {
+    for (const honor of p.awards || []) {
+      if (honor.season !== season) continue;
+      if (honor.award === 'All-Star') allStars.push(p);
+      if (honor.award === 'All-Star MVP') asMvp = p;
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h2>Honors</h2>
+      <div className="controls" style={{ marginBottom: 0 }}>
+        <select value={season} onChange={(e) => setSeason(Number(e.target.value))}>
+          {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      {searchBar}
+
+      <h3 style={{ marginTop: 14 }}>Major Awards</h3>
+      <table>
+        <thead><tr><th>Award</th><th>Player</th><th>Team</th><th>Stats</th></tr></thead>
+        <tbody>
+          <AwardRow league={league} label="MVP" entry={a?.mvp} openPlayer={openPlayer} openTeam={openTeam} />
+          <AwardRow league={league} label="Defensive Player of the Year" entry={a?.dpoy} openPlayer={openPlayer} openTeam={openTeam} />
+          <AwardRow league={league} label="Rookie of the Year" entry={a?.roy} openPlayer={openPlayer} openTeam={openTeam} />
+          <AwardRow league={league} label="Sixth Man of the Year" entry={a?.sixth} openPlayer={openPlayer} openTeam={openTeam} />
+          {asMvp && (
+            <tr>
+              <td>All-Star MVP</td>
+              <td><PlayerLink p={asMvp} openPlayer={openPlayer} /></td>
+              <td colSpan={2} />
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <h3 style={{ marginTop: 14 }}>All-NBA Teams</h3>
+      <table>
+        <thead><tr><th>Team</th><th>Player</th><th>Team</th><th>Stats</th></tr></thead>
+        <tbody>
+          {['First', 'Second', 'Third'].map((label, i) => (
+            (a?.allNba?.[i] || []).map((entry) => (
+              <AwardRow key={`${label}-${entry.playerId}`} league={league} label={`All-NBA ${label}`} entry={entry} openPlayer={openPlayer} openTeam={openTeam} />
+            ))
+          ))}
+        </tbody>
+      </table>
+
+      <h3 style={{ marginTop: 14 }}>All-Defensive Teams</h3>
+      <table>
+        <thead><tr><th>Team</th><th>Player</th><th>Team</th><th>Stats</th></tr></thead>
+        <tbody>
+          {['First', 'Second'].map((label, i) => (
+            (a?.allDef?.[i] || []).map((entry) => (
+              <AwardRow key={`${label}-${entry.playerId}`} league={league} label={`All-Defensive ${label}`} entry={entry} openPlayer={openPlayer} openTeam={openTeam} />
+            ))
+          ))}
+        </tbody>
+      </table>
+
+      <h3 style={{ marginTop: 14 }}>All-Stars</h3>
+      {allStars.length === 0 ? (
+        <p style={{ color: 'var(--muted)' }}>No All-Star roster recorded for {season}.</p>
+      ) : (
+        <p>{allStars.map((p, i) => (
+          <React.Fragment key={p.id}>
+            {i > 0 && ', '}
+            <PlayerLink p={p} openPlayer={openPlayer} />
+          </React.Fragment>
+        ))}</p>
+      )}
+    </div>
+  );
+}
+
 export default function Legacy({ league, openPlayer, openTeam }) {
   const [tab, setTab] = useState('records');
   return (
@@ -285,6 +446,7 @@ export default function Legacy({ league, openPlayer, openTeam }) {
       {tab === 'hof' && <HallOfFame league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'dynasties' && <Dynasties league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'legacy' && <MyLegacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+      {tab === 'honors' && <Honors league={league} openPlayer={openPlayer} openTeam={openTeam} />}
     </div>
   );
 }
