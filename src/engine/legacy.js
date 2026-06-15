@@ -18,6 +18,10 @@ export const SINGLE_SEASON_CATS = [
   { key: 'ppg', label: 'PPG (Season)', statKey: 'pts', perGame: true, minGp: 50 },
   { key: 'ast', label: 'Assists (Season)', statKey: 'ast', minGp: 50 },
   { key: 'reb', label: 'Rebounds (Season)', statKey: 'reb', minGp: 50 },
+  { key: 'stl', label: 'Steals (Season)', statKey: 'stl', minGp: 50 },
+  { key: 'spg', label: 'SPG (Season)', statKey: 'stl', perGame: true, minGp: 50 },
+  { key: 'blk', label: 'Blocks (Season)', statKey: 'blk', minGp: 50 },
+  { key: 'bpg', label: 'BPG (Season)', statKey: 'blk', perGame: true, minGp: 50 },
   { key: 'fgPct', label: 'FG% (Season)', minFga: 200 },
   { key: 'teamWins', label: 'Wins (Team Season)', team: true },
 ];
@@ -26,8 +30,24 @@ export const CAREER_CATS = [
   { key: 'pts', label: 'Career Points', statKey: 'pts' },
   { key: 'reb', label: 'Career Rebounds', statKey: 'reb' },
   { key: 'ast', label: 'Career Assists', statKey: 'ast' },
+  { key: 'stl', label: 'Career Steals', statKey: 'stl' },
+  { key: 'blk', label: 'Career Blocks', statKey: 'blk' },
   { key: 'gp', label: 'Career Games Played', statKey: 'gp' },
   { key: 'championships', label: 'Career Championships' },
+];
+
+// All-time single-game bests, updated after every game in simDay (see
+// checkGameHighs). Each entry in league.recordBook.gameHighs is keyed by
+// `key` below: { playerId, name, value, team, opponent, season, teamScore,
+// oppScore }.
+export const GAME_HIGH_CATS = [
+  { key: 'pts', label: 'Points', statKey: 'pts' },
+  { key: 'reb', label: 'Rebounds', statKey: 'reb' },
+  { key: 'ast', label: 'Assists', statKey: 'ast' },
+  { key: 'stl', label: 'Steals', statKey: 'stl' },
+  { key: 'blk', label: 'Blocks', statKey: 'blk' },
+  { key: 'tpm', label: 'Three-Pointers Made', statKey: 'tpm' },
+  { key: 'min', label: 'Minutes', statKey: 'min' },
 ];
 
 // Categories with a meaningful "on pace this season" projection — rate
@@ -36,7 +56,7 @@ export const PACE_CATS = SINGLE_SEASON_CATS.filter((c) => !c.team && c.key !== '
 
 export function formatCatValue(catKey, value) {
   if (catKey === 'fgPct') return `${(value * 100).toFixed(1)}%`;
-  if (catKey === 'ppg') return value.toFixed(1);
+  if (catKey === 'ppg' || catKey === 'spg' || catKey === 'bpg' || catKey === 'min') return value.toFixed(1);
   return Math.round(value).toLocaleString();
 }
 
@@ -102,7 +122,7 @@ export function snapshotRetiree(p, league, teamId) {
 
 export function computeRecordBook(league) {
   const players = allPlayersForRecords(league);
-  const newBook = { singleSeason: {}, career: {} };
+  const newBook = { singleSeason: {}, career: {}, gameHighs: league.recordBook?.gameHighs || {} };
 
   for (const cat of SINGLE_SEASON_CATS) {
     if (cat.team) continue;
@@ -216,6 +236,52 @@ export function checkRecordPace(league) {
         teamIds: [cand.teamId],
         text,
       });
+    }
+  }
+}
+
+// ---------- Game highs ----------
+
+// Called once per game from simDay, after box stats are applied to players.
+// Compares each player's line against the all-time single-game bests and
+// updates/announces any new records. `home`/`away` are team objects;
+// `r` is the simGame result (homeBox/awayBox/homePts/awayPts).
+export function checkGameHighs(league, r, home, away) {
+  if (!league.recordBook) league.recordBook = { singleSeason: {}, career: {} };
+  if (!league.recordBook.gameHighs) league.recordBook.gameHighs = {};
+  const highs = league.recordBook.gameHighs;
+  const sides = [
+    { box: r.homeBox, team: home, opp: away, teamScore: r.homePts, oppScore: r.awayPts },
+    { box: r.awayBox, team: away, opp: home, teamScore: r.awayPts, oppScore: r.homePts },
+  ];
+  for (const side of sides) {
+    for (const line of side.box) {
+      if (line.min <= 0) continue;
+      const p = side.team.roster.find((x) => x.id === line.playerId);
+      if (!p) continue;
+      for (const cat of GAME_HIGH_CATS) {
+        const value = line[cat.statKey];
+        if (value <= 0) continue;
+        const prev = highs[cat.key];
+        if (prev && value <= prev.value) continue;
+        highs[cat.key] = {
+          playerId: p.id, name: p.name, value,
+          team: side.team.id, opponent: side.opp.id,
+          season: league.season,
+          teamScore: side.teamScore, oppScore: side.oppScore,
+        };
+        if (!prev) continue; // nothing to "break" the first time a category gets populated
+        const isUserGame = side.team.id === league.userTeamId || side.opp.id === league.userTeamId;
+        let text = `🌟 GAME HIGH: ${p.name} (${teamName(side.team.id)}) recorded ${formatCatValue(cat.key, value)} ${cat.label.toLowerCase()} `
+          + `vs. the ${teamName(side.opp.id)} (final: ${side.teamScore}-${side.oppScore}), a new all-time single-game record`;
+        text += ` (previously ${prev.name}, ${formatCatValue(cat.key, prev.value)}).`;
+        pushNews(league, {
+          day: league.dayIndex, category: 'milestone',
+          major: isUserGame,
+          teamIds: [side.team.id, side.opp.id],
+          text,
+        });
+      }
     }
   }
 }

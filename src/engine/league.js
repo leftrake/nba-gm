@@ -20,7 +20,7 @@ import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
 import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives, exceedsOwnerBudget, applyBudgetOverageEffect } from './owner.js';
 import {
-  snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace,
+  snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace, checkGameHighs,
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
 } from './legacy.js';
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
@@ -69,7 +69,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     history: [],
     saveId: `${seed}_${Date.now()}`,
     retiredPlayers: [], // trimmed snapshots — see engine/legacy.js
-    recordBook: { singleSeason: {}, career: {} },
+    recordBook: { singleSeason: {}, career: {}, gameHighs: {} },
     hallOfFame: [],
     dynasties: [],
     teamSeasonRecords: [], // { season, teamId, wins, losses } — one row/team/season
@@ -391,6 +391,7 @@ export function backfillPlayers(league) {
   if (!league.saveId) league.saveId = `${league.seed}_${Date.now()}`;
   if (!league.retiredPlayers) league.retiredPlayers = [];
   if (!league.recordBook) league.recordBook = { singleSeason: {}, career: {} };
+  if (!league.recordBook.gameHighs) league.recordBook.gameHighs = {};
   if (!league.hallOfFame) league.hallOfFame = [];
   if (!league.dynasties) league.dynasties = [];
   if (!league.teamSeasonRecords) league.teamSeasonRecords = [];
@@ -623,6 +624,7 @@ export function simDay(league) {
     ];
     applyBoxToStats(home.roster, r.homeBox);
     applyBoxToStats(away.roster, r.awayBox);
+    checkGameHighs(league, r, home, away);
     const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, gamesLeft: p.injury.gamesLeft }));
     for (const p of hurt) {
       r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });

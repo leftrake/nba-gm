@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { getTeam } from '../engine/league.js';
 import {
-  SINGLE_SEASON_CATS, CAREER_CATS, formatCatValue, findPlayerById, PACE_CATS,
+  SINGLE_SEASON_CATS, CAREER_CATS, GAME_HIGH_CATS, formatCatValue, findPlayerById, PACE_CATS,
 } from '../engine/legacy.js';
 import { TeamLink, PlayerLink, money } from './shared.jsx';
 
@@ -83,10 +83,52 @@ function RecordTable({ league, cat, entries, scope, openPlayer, openTeam }) {
   );
 }
 
+function GameHighs({ league, openPlayer, openTeam }) {
+  const highs = league.recordBook?.gameHighs || {};
+  return (
+    <div className="panel">
+      <h2>Game Highs</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th><th>Player</th><th>Team</th><th>Opponent</th><th>Season</th><th>Final Score</th><th className="num">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {GAME_HIGH_CATS.map((cat) => {
+            const entry = highs[cat.key];
+            if (!entry) {
+              return (
+                <tr key={cat.key}>
+                  <td>{cat.label}</td>
+                  <td colSpan={6} style={{ color: 'var(--muted)' }}>No qualifying games yet.</td>
+                </tr>
+              );
+            }
+            const p = findPlayerById(league, entry.playerId);
+            return (
+              <tr key={cat.key}>
+                <td>{cat.label}</td>
+                <td>{p ? <PlayerLink p={p} openPlayer={openPlayer}>{entry.name}</PlayerLink> : entry.name}</td>
+                <td><TeamLink team={getTeam(league, entry.team)} openTeam={openTeam} /></td>
+                <td><TeamLink team={getTeam(league, entry.opponent)} openTeam={openTeam} /></td>
+                <td>{entry.season}</td>
+                <td>{entry.teamScore}-{entry.oppScore}</td>
+                <td className="num">{formatCatValue(cat.key, entry.value)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function RecordBook({ league, openPlayer, openTeam }) {
   const book = league.recordBook || { singleSeason: {}, career: {} };
   return (
     <>
+      <GameHighs league={league} openPlayer={openPlayer} openTeam={openTeam} />
       <div className="panel">
         <h2>Single-Season Records</h2>
         {SINGLE_SEASON_CATS.map((cat) => (
