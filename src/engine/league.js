@@ -1633,9 +1633,10 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   const idx = league.freeAgents.findIndex((p) => p.id === playerId);
   if (idx === -1 || team.roster.length >= ROSTER_MAX) return false;
   const p = league.freeAgents[idx];
+  const rng = makeRng(league.seed + league.season * 1009 + p.id * 13);
   p.contract = {
     salary: salary ?? askingPrice(p),
-    years: years ?? clamp(Math.round(gauss(2.5, 1)), 1, 4),
+    years: years ?? clamp(Math.round(gauss(2.5, 1, rng)), 1, 4),
   };
   recordContract(p, league.season, team.id, p.contract);
   if (teamId === league.userTeamId) {
