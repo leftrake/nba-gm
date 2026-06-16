@@ -31,7 +31,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Twemoji Country Flags', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Twemoji Country Flags', 'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
 }
 
@@ -282,11 +282,11 @@ button.btn.small { padding: 4px 10px; font-size: 12px; }
 .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 
 .ovr { font-weight: 700; }
-.ovr.elite { color: #d2a8ff; }
-.ovr.great { color: var(--green); }
-.ovr.good { color: #58a6ff; }
-.ovr.ok { color: var(--text); }
-.ovr.bad { color: var(--muted); }
+.ovr.elite { color: var(--color-elite, #d2a8ff); }
+.ovr.great { color: var(--color-success, var(--green)); }
+.ovr.good  { color: var(--color-info, #58a6ff); }
+.ovr.ok    { color: var(--text-primary, var(--text)); }
+.ovr.bad   { color: var(--text-muted, var(--muted)); }
 
 .news-item {
   padding: 8px 0;

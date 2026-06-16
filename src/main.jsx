@@ -5,6 +5,8 @@ import { polyfillCountryFlagEmojis } from 'country-flag-emoji-polyfill';
 import flagsFontUrl from './assets/TwemojiCountryFlags.woff2?url';
 import App from './App.jsx';
 import './styles.css';
+import './styles/tokens.css';
+import './styles/ui.css';
 
 // Windows has no flag emoji glyphs — this registers a flags-only font
 // ('Twemoji Country Flags', first in the CSS font stack) where needed.

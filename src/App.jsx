@@ -28,6 +28,7 @@ import DraftLottery from './components/DraftLottery.jsx';
 import SeasonPreview from './components/SeasonPreview.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
+import StyleGuide from './components/StyleGuide.jsx';
 import GameModal from './components/BoxScore.jsx';
 import Walkthrough from './components/Walkthrough.jsx';
 import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/shared.jsx';
@@ -327,6 +328,7 @@ export default function App() {
     ['legacy', 'Legacy'],
     ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
     ['settings', 'Settings'],
+    ['styleguide', '🎨'],
   ];
 
   return (
@@ -483,6 +485,7 @@ export default function App() {
         {screen === 'legacy' && <Legacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'devreport' && <DevelopmentReport league={league} openPlayer={openPlayer} />}
         {screen === 'settings' && <Settings league={league} importLeague={importLeague} onResetTutorial={handleResetTutorial} theme={theme} setTheme={updateTheme} accentColor={accentColor} setAccentColor={updateAccent} />}
+        {screen === 'styleguide' && <StyleGuide />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} commit={commit} />}

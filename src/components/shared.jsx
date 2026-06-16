@@ -74,7 +74,7 @@ export function Sta({ p, league, fogged }) {
 // Condition dot: green fresh → red gassed. Not fogged — it tracks publicly
 // visible minutes played, so everyone's is common knowledge.
 export function condColor(c) {
-  return c >= 85 ? 'var(--green)' : c >= 70 ? '#d29922' : c >= 50 ? '#f0883e' : 'var(--red)';
+  return c >= 85 ? 'var(--color-success)' : c >= 70 ? 'var(--color-warning)' : c >= 50 ? 'var(--color-primary)' : 'var(--color-danger)';
 }
 
 export function condLabel(c) {
@@ -94,7 +94,7 @@ export function Cond({ p, label }) {
 // Morale dot: green happy → red disgruntled. Not fogged — every team's
 // chemistry is common knowledge, even if the underlying ratings aren't.
 export function moraleColor(m) {
-  return m >= 70 ? 'var(--green)' : m >= 50 ? 'var(--accent)' : m >= 30 ? '#d29922' : 'var(--red)';
+  return m >= 70 ? 'var(--color-success)' : m >= 50 ? 'var(--color-primary)' : m >= 30 ? 'var(--color-warning)' : 'var(--color-danger)';
 }
 
 function moraleEmoji(m) {
@@ -137,7 +137,7 @@ export function InjuryTag({ p }) {
 }
 
 // Front-office strategy badge (see engine/strategy.js)
-const STRATEGY_COLORS = { contending: 'var(--green)', retooling: 'var(--accent)', rebuilding: 'var(--red)' };
+const STRATEGY_COLORS = { contending: 'var(--color-success)', retooling: 'var(--color-primary)', rebuilding: 'var(--color-danger)' };
 export function StrategyTag({ team }) {
   if (!team.strategy) return null;
   return <span className="tag" style={{ color: STRATEGY_COLORS[team.strategy] }}>{team.strategy}</span>;
@@ -145,7 +145,7 @@ export function StrategyTag({ team }) {
 
 // 0-100 owner approval meter, colored the same thresholds as ownerStance/seatStatus.
 export function approvalColor(a) {
-  return a >= 60 ? 'var(--green)' : a >= 40 ? 'var(--accent)' : a >= 25 ? '#d29922' : 'var(--red)';
+  return a >= 60 ? 'var(--color-success)' : a >= 40 ? 'var(--color-primary)' : a >= 25 ? 'var(--color-warning)' : 'var(--color-danger)';
 }
 
 export function ApprovalMeter({ value }) {
@@ -163,7 +163,7 @@ export function turmoilLabel(t) {
 }
 
 export function turmoilColor(t) {
-  return t >= 1.5 ? 'var(--red)' : t >= 0.5 ? '#d29922' : 'var(--green)';
+  return t >= 1.5 ? 'var(--color-danger)' : t >= 0.5 ? 'var(--color-warning)' : 'var(--color-success)';
 }
 
 export function money(n) {
@@ -190,7 +190,7 @@ export function OvrArc({ value, size = 38 }) {
   const r = (size - 6) / 2;
   const c = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, value)) / 100;
-  const color = value >= 85 ? '#d2a8ff' : value >= 75 ? 'var(--green)' : value >= 65 ? '#58a6ff' : value >= 55 ? 'var(--text)' : 'var(--muted)';
+  const color = value >= 85 ? 'var(--color-elite)' : value >= 75 ? 'var(--color-success)' : value >= 65 ? 'var(--color-info)' : value >= 55 ? 'var(--text-primary)' : 'var(--text-muted)';
   return (
     <span className="ovr-arc" style={{ width: size, height: size }}>
       <svg viewBox={`0 0 ${size} ${size}`}>
