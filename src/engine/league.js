@@ -395,9 +395,9 @@ export function backfillPlayers(league) {
   ensureDraftPicks(league);
   // Saves predating front-office strategies
   if (league.teams.some((t) => !t.strategy)) evaluateStrategies(league);
-  // Saves predating lineups
+  // Saves predating lineups (skip during mid-fantasy-draft when roster is still empty)
   const user = getTeam(league, league.userTeamId);
-  if (!user.lineup) user.lineup = autoLineup(user.roster);
+  if (!user.lineup && user.roster.length) user.lineup = autoLineup(user.roster);
   // Saves predating the news cap
   if (league.news.length > NEWS_MAX) league.news.length = NEWS_MAX;
   // Saves predating the trade history log

@@ -45,7 +45,13 @@ Engine functions **mutate the league object in place**. `App.jsx` holds the leag
 
 ### Persistence constraint
 
-The whole league object is serialized to localStorage (`nba-gm-save` key) via `JSON.stringify` and restored with `JSON.parse` on load. Anything added to league/team/player state must be JSON-serializable — no class instances, functions, Maps/Sets, or Dates. Note that player IDs come from a module-level counter in `players.js` that is *not* restored when a save loads, so don't assume freshly generated IDs are unique against a loaded save.
+The whole league object is serialized to localStorage (`nba-gm-save` key) via `JSON.stringify` and restored with `JSON.parse` on load. Anything added to league/team/player state must be JSON-serializable — no class instances, functions, Maps/Sets, or Dates.
+
+Player IDs are assigned by a module-level counter in `players.js` (`nextPlayerId`) that **does not survive page reloads**. The counter is persisted as `league.nextPlayerId` and restored by `backfillPlayers` on save load. Rules:
+
+- Never call `resetPlayerIds()` with a hardcoded value or `1`. It must only be called from `backfillPlayers` (on load) and from draft initialization (`initDraft`, `initFantasyDraft`) using `league.nextPlayerId`.
+- Any code that calls `generatePlayer` in a batch must call `league.nextPlayerId = getNextPlayerId()` afterward so the counter stays in sync.
+- This ensures every player generated across all seasons gets a globally unique ID and retired player snapshots are never shadowed by a live player with a colliding ID.
 
 ### Game flow
 
