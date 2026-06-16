@@ -100,7 +100,10 @@ export function initDraft(league, rng) {
   // straight through to the big board. Fall back to a fresh class for saves
   // that skipped that phase.
   const prospects = league.scouting?.prospects ?? generateDraftClass(rng);
-  league.scouting = null;
+  // Drafted prospects move to team rosters; clear the pool but keep the
+  // season's scouting budget/reports/watchlists usable for the rest of the
+  // year (trade targets, free agents, etc.).
+  if (league.scouting) league.scouting.prospects = [];
 
   league.draft = {
     season: draftSeason,

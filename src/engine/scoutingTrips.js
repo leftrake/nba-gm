@@ -5,12 +5,15 @@ import { scoutedOverallRange, scoutedOverall, scoutedPotential, potentialGrade }
 import { regionFor, SCOUT_REGIONS, personalityNote, scoutBackstoryNote } from './backstory.js';
 
 // ---------- Scouting trips ----------
-// Runs during the offseason phase, between the playoffs ending and the
-// draft. league.scouting holds a pre-generated draft class (the same one
-// initDraft will consume) plus a per-team budget, scout reports, and
-// watchlists. Spending here mutates each prospect's `scout.watched` counter,
-// which engine/scouting.js's scoutUncertainty reads to tighten fog — so
-// progress carries straight through to the draft big board.
+// league.scouting holds a per-team annual budget, scout reports, and
+// watchlists, plus (once the playoffs end) a pre-generated draft class (the
+// same array initDraft will consume). The budget is set once per season
+// (initSeasonScouting, called from startNewSeason/createLeague) and can be
+// spent any time during the season — on draft prospects once the class
+// exists, or on any other player in the league (trade targets, free agents,
+// rival rosters) at any point. Spending mutates a player's `scout.watched`
+// counter, which engine/scouting.js's scoutUncertainty reads to tighten fog
+// — so progress carries through to every fogged view of that player.
 
 export const SCOUT_COSTS = {
   watch: { Domestic: 50_000, Europe: 100_000, 'Latin America': 100_000, Africa: 150_000, 'Asia-Pacific': 150_000 },
@@ -63,12 +66,10 @@ export function generateScoutReport(p, season, rng) {
   return `Extended report on ${p.name}: a true ${ovr} overall right now with ${strengths.join(' and ')} as his best tools and ${weakestSkill(p)} as the clear weakness. Potential grade: ${potentialGrade(p.potential)}. ${scoutBackstoryNote(p)}`;
 }
 
-// Called when the playoffs end and league.phase becomes 'offseason'. Seeds
-// the draft prospect pool early (initDraft consumes this same array, scouting
-// progress and all), assigns every team a budget, and lets the AI spend
-// theirs immediately.
-export function initScoutingPhase(league, rng) {
-  const prospects = generateDraftClass(rng);
+// Called from startNewSeason (and createLeague, for season one): resets the
+// annual scouting budget and clears reports/watchlists/prospects for the new
+// season. Any unspent budget from last season does not roll over.
+export function initSeasonScouting(league, rng) {
   const budgets = {};
   const reports = {};
   const watchlists = {};
@@ -77,10 +78,33 @@ export function initScoutingPhase(league, rng) {
     reports[team.id] = [];
     watchlists[team.id] = [];
   }
-  league.scouting = { prospects, budgets, reports, watchlists };
+  league.scouting = { prospects: [], budgets, reports, watchlists };
+}
+
+// Called when the playoffs end and league.phase becomes 'offseason'. Seeds
+// the draft prospect pool (initDraft consumes this same array, scouting
+// progress and all) and lets the AI spend its remaining season budget on it.
+// Budgets/reports/watchlists were already set up for the season by
+// initSeasonScouting, so they carry over whatever the user spent mid-season.
+export function initScoutingPhase(league, rng) {
+  if (!league.scouting) initSeasonScouting(league, rng);
+  league.scouting.prospects = generateDraftClass(rng);
   for (const team of league.teams) {
     if (team.id !== league.userTeamId) aiScoutTurn(league, team, rng);
   }
+}
+
+// Finds any player the user could scout: draft prospects, any team's roster
+// (including the user's own — harmless, just never fogged), or free agents.
+function findScoutTarget(league, playerId) {
+  const s = league.scouting;
+  const fromProspects = s.prospects.find((x) => x.id === playerId);
+  if (fromProspects) return fromProspects;
+  for (const team of league.teams) {
+    const p = team.roster.find((x) => x.id === playerId);
+    if (p) return p;
+  }
+  return league.freeAgents.find((x) => x.id === playerId);
 }
 
 export function addReport(league, teamId, text, playerId = null) {
@@ -90,12 +114,14 @@ export function addReport(league, teamId, text, playerId = null) {
 }
 
 // One "watch player" assignment: $50K-150K depending on region, ticks the
-// prospect's scout.watched counter (3 = extended watch = full reveal).
+// player's scout.watched counter (3 = extended watch = full reveal). Works
+// on draft prospects as well as any rostered or free-agent player.
 export function watchPlayer(league, teamId, playerId) {
   const s = league.scouting;
   if (!s) return { ok: false, error: 'Scouting is not available right now.' };
-  const p = s.prospects.find((x) => x.id === playerId);
-  if (!p) return { ok: false, error: 'Prospect not found.' };
+  const p = findScoutTarget(league, playerId);
+  if (!p) return { ok: false, error: 'Player not found.' };
+  p.scout ??= { watched: 0 };
   if ((p.scout.watched ?? 0) >= EXTENDED_WATCH_COUNT) return { ok: false, error: `${p.name} is already fully scouted.` };
   const region = regionFor(p);
   const cost = SCOUT_COSTS.watch[region] ?? SCOUT_COSTS.watch.Domestic;

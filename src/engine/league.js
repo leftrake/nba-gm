@@ -24,7 +24,7 @@ import {
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
 } from './legacy.js';
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
-import { initScoutingPhase } from './scoutingTrips.js';
+import { initScoutingPhase, initSeasonScouting } from './scoutingTrips.js';
 import { generateCoach, devBonus } from './coach.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
@@ -102,6 +102,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     userTeam.owner = generateOwner(rng, userTeam);
     issueDirectives(league, userTeam, rng);
   }
+  initSeasonScouting(league, rng);
   return league;
 }
 
@@ -402,6 +403,14 @@ export function backfillPlayers(league) {
   if (!league.tradeHistory) league.tradeHistory = [];
   // Saves predating incoming trade offers
   if (!league.tradeOffers) league.tradeOffers = [];
+  // Saves predating year-round scouting budgets
+  if (!league.scouting) initSeasonScouting(league, rng);
+  // If reloaded mid-allstar weekend with the event already built and the
+  // day past, mark it shown so the sim loop doesn't get stuck on redirect.
+  if (league.allStar && !league.allStar.shown && league.phase === 'regular'
+      && league.dayIndex > ALL_STAR_DAYS[ALL_STAR_DAYS.length - 1]) {
+    league.allStar.shown = true;
+  }
   if (!league.tradeOfferCooldowns) league.tradeOfferCooldowns = {};
   // Saves predating free-agency negotiations / RFA offer sheets / extensions
   if (!league.negotiations) league.negotiations = {};
@@ -1846,5 +1855,6 @@ export function startNewSeason(league) {
   league.resultsByDay = [];
   league.phase = 'regular';
   league.playoffs = null;
+  initSeasonScouting(league, rng);
   pushNews(league, { day: 0, category: 'league', text: `The ${league.season} season begins!` });
 }

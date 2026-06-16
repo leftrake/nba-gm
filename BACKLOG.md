@@ -23,8 +23,6 @@ just delete it — git history keeps the record).
 
 ## Scouting
 
-- Allow scouting trips to be initiated during the regular season, not just the pre-draft offseason window; budget is still annual but can be spent any time, useful for evaluating trade targets and free agents mid-season as well as draft prospects.
-
 ## Sim Flow
 
 ## News

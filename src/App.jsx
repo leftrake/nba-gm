@@ -309,8 +309,6 @@ export default function App() {
   const hasDevReport = !!league.devReport?.entries?.length
     && (league.phase === 'offseason/coaching' || league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
 
-  const inOffseason = league.phase.startsWith('offseason/');
-
   const NAV = [
     ['dashboard', 'Dashboard'],
     ['news', 'News'],
@@ -321,7 +319,7 @@ export default function App() {
     ['stats', 'Stats'],
     ['schedule', 'Schedule'],
     ['trade', 'Trade'],
-    ...(inOffseason ? [['scouting', 'Scouting']] : []),
+    ['scouting', 'Scouting'],
     ['draft', 'Draft'],
     ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
     ['freeagency', 'Free Agency'],
