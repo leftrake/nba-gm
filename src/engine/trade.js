@@ -322,6 +322,9 @@ export function executeMultiTrade(league, teamIds, sends) {
   }
   for (const leg of legs) {
     leg.team.roster = leg.team.roster.concat(leg.inPlayers);
+    if (leg.team.id === league.userTeamId) {
+      for (const p of leg.inPlayers) p.everOnUserTeam = true;
+    }
   }
   const allMoved = legs.flatMap((l) => l.outPlayers);
   for (const p of allMoved) {

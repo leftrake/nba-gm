@@ -35,23 +35,26 @@ export function rookieSalary(pickNumber) {
 // the top, a band of future starters, and role players the rest of the way
 // down. Prospects arrive far below their ceiling — the younger they are,
 // the wider the gap — and grow into it via developPlayer.
-export function generateDraftClass(rng) {
+// opts.boardSeason: if set, prospects get stable negative IDs derived from
+// (boardSeason * CLASS_SIZE + i + 1) instead of consuming the global counter.
+// These IDs are remapped to real positive IDs in initScoutingPhase when the
+// class is promoted to the active draft pool.
+export function generateDraftClass(rng, opts = {}) {
   const prospects = [];
-  // Sized so the league's talent pyramid holds steady year over year: more
-  // superstar/starter prospects than this and star counts inflate the
-  // league-wide average rating across seasons.
   const superstars = randInt(1, 3, rng);
   const starters = superstars + randInt(4, 7, rng);
   for (let i = 0; i < CLASS_SIZE; i++) {
-    // the better the prospect, the younger he declares
     let age, potential;
     if (i < superstars) { age = randInt(18, 20, rng); potential = randInt(88, 97, rng); }
     else if (i < starters) { age = randInt(18, 21, rng); potential = randInt(76, 87, rng); }
     else { age = randInt(18, 22, rng); potential = Math.round(clamp(gauss(60, 9, rng), 42, 74)); }
     const gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
     const base = clamp(potential - gap, 30, 76);
-    const p = generatePlayer(rng, { age, base, exp: 0, potential });
-    p.contract = null; // signs a rookie deal when drafted
+    const playerOpts = { age, base, exp: 0, potential };
+    if (opts.boardSeason != null) playerOpts._forcedId = -(opts.boardSeason * CLASS_SIZE + i + 1);
+    const p = generatePlayer(rng, playerOpts);
+    p.contract = null;
+    p.scout = { draftPoints: 0 };
     prospects.push(p);
   }
   return prospects;
@@ -160,8 +163,11 @@ export function makeDraftPick(league, prospectId) {
   p.draftYear = d.season;
   p.draftRound = pick <= 30 ? 1 : 2;
   p.draftPick = pick;
+  // Carry draft scouting into the pro track so heavily scouted rookies start partially known
+  if (p.scout) p.scout.priorDraftPoints = p.scout.draftPoints ?? 0;
   if (teamId === league.userTeamId) {
     league.gmLegacy.draftWatchlist.push({ playerId: p.id, season: d.season, pick });
+    p.everOnUserTeam = true;
   }
   if (team.roster.length < ROSTER_MAX) {
     p.contract = { salary: rookieSalary(pick), years: rookieContractYears(pick) };
@@ -215,6 +221,11 @@ export function simDraftToUser(league) {
 export function finishDraft(league) {
   const d = league.draft;
   if (d && d.prospects.length) {
+    // Carry draft scouting into the pro track so knowledge isn't lost when
+    // an undrafted prospect eventually signs as a free agent.
+    for (const p of d.prospects) {
+      if (p.scout) p.scout.priorDraftPoints = p.scout.draftPoints ?? 0;
+    }
     league.freeAgents.push(...d.prospects); // contracts are already null
     d.prospects = [];
     league.freeAgents.sort((a, b) => overall(b) - overall(a));

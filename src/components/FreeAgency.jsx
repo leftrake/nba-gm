@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet } from '../engine/league.js';
-import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
+import { scoutedOverall, isHidden } from '../engine/scouting.js';
+import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
 import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { Ovr, Pot, money, PlayerLink, GuideTooltip } from './shared.jsx';
@@ -78,8 +79,12 @@ export default function FreeAgency({ league, commit, openPlayer }) {
 
   // ---- Filter & sort
   const SORT_VALUE = {
-    ovr: (p) => scoutedOverall(p, league.season),
-    pot: (p) => scoutedPotential(p, league.season, true),
+    ovr: (p) => {
+      const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
+      if (isHidden(p, proGames)) return -Infinity;
+      return scoutedOverall(p, league.season, proGames);
+    },
+    pot: (p) => traitSortValue(p, league.season, league.scouting?.proWatching?.[p.id] ?? 0, true),
     age: (p) => p.age,
     asking: (p) => askingPrice(p),
     pos: (p) => POSITIONS.indexOf(p.pos),
@@ -95,8 +100,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     && askingPrice(p) <= maxAsking
   );
   const shown = [...filtered]
-    .sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul)
-    .slice(0, 50);
+    .sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul);
 
   const myRfas = league.freeAgents.filter((p) => p.restrictedFA && p.formerTeamId === team.id);
   const offerSheets = league.offerSheets;
@@ -238,8 +242,8 @@ export default function FreeAgency({ league, commit, openPlayer }) {
               return (
                 <React.Fragment key={p.id}>
                   <tr style={holdingOut ? { opacity: 0.55 } : undefined}>
-                    <td><Ovr p={p} league={league} fogged /></td>
-                    <td><Pot p={p} league={league} fogged /></td>
+                    <td><Ovr p={p} league={league} fogged={!p.everOnUserTeam} /></td>
+                    <td><Pot p={p} league={league} fogged={!p.everOnUserTeam} /></td>
                     <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
                     <td>{p.pos}</td>
                     <td className="num">{p.age}</td>

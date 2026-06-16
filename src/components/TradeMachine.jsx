@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getTeam, payroll, tradesLocked } from '../engine/league.js';
 import { overall } from '../engine/players.js';
-import { scoutedOverall } from '../engine/scouting.js';
+import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade, resolveMultiTradeLegs } from '../engine/trade.js';
 import { getTeamPicks, pickValue, pickLabel } from '../engine/draftPicks.js';
 import { applyShoppedPenalty } from '../engine/morale.js';
@@ -11,6 +11,50 @@ import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { Ovr, Pot, StrategyTag, money, PlayerLink, GuideTooltip } from './shared.jsx';
 
 const YELLOW = '#d29922';
+
+// Map raw trade value to 0.5–5 star rating in 0.5 increments.
+// Thresholds derived from the actual league-wide trade value distribution
+// (420 rostered players): each tier covers roughly ~35–55 players so every
+// band feels meaningfully different. Picks share the same scale.
+const STAR_THRESHOLDS = [
+  [8000, 5],   // superstar / elite young player   (~top 10%)
+  [5500, 4.5], // franchise star                   (~top 18%)
+  [3800, 4],   // clear All-Star                   (~top 28%)
+  [2800, 3.5], // quality starter / borderline AS  (~top 38%)
+  [1900, 3],   // solid starter                    (~top 50%)
+  [1200, 2.5], // average starter                  (~top 63%)
+  [700, 2],    // rotation player                  (~top 72%)
+  [400, 1.5],  // depth piece                      (~top 80%)
+  [100, 1],    // bench / 2nd-round pick            (~top 89%)
+  [0, 0.5],    // fringe / throwaway               (bottom ~10%)
+];
+
+function valueToStars(v) {
+  return (STAR_THRESHOLDS.find(([min]) => v >= min) ?? [0, 0.5])[1];
+}
+
+// Clips the ★ glyph to its left half — a clean half-star with no special Unicode.
+function HalfStar() {
+  return (
+    <span style={{
+      background: `linear-gradient(to right, ${YELLOW} 50%, transparent 50%)`,
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+    }}>★</span>
+  );
+}
+
+function StarRating({ value }) {
+  const stars = valueToStars(value);
+  const full = Math.floor(stars);
+  const half = stars % 1 !== 0;
+  return (
+    <span title={`Trade value: ${value}`} style={{ color: YELLOW, whiteSpace: 'nowrap', letterSpacing: 1 }}>
+      {'★'.repeat(full)}{half ? <HalfStar /> : null}
+    </span>
+  );
+}
 
 // Value of a leg from its own team's perspective: outgoing assets are
 // valued by whoever would receive them (their needs/strategy), incoming
@@ -40,8 +84,13 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
   const teamSends = sends[team.id] || { players: {}, picks: {} };
   const otherTeams = teamIds.filter((id) => id !== team.id).map((id) => getTeam(league, id));
   const picks = getTeamPicks(league, team.id);
-  const fogged = team.id !== userId;
-  const seenOvr = (p) => (fogged ? scoutedOverall(p, league.season) : overall(p));
+  const fogged = (p) => team.id !== userId && !p.everOnUserTeam;
+  const seenOvr = (p) => {
+    if (!fogged(p)) return overall(p);
+    const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
+    if (isHidden(p, proGames)) return -Infinity;
+    return scoutedOverall(p, league.season, proGames);
+  };
   const sortedRoster = [...team.roster].sort((a, b) => seenOvr(b) - seenOvr(a));
   const needs = team.id !== userId ? teamNeeds(team) : null;
   // Value an outgoing asset from the perspective of whoever would receive
@@ -89,13 +138,13 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
             return (
               <tr key={p.id} className="clickable" onClick={() => toggleAsset(team.id, 'players', p.id)}>
                 <td><input type="checkbox" readOnly checked={checked} /></td>
-                <td><Ovr p={p} league={league} fogged={fogged} /></td>
-                <td><Pot p={p} league={league} fogged={fogged} /></td>
+                <td><Ovr p={p} league={league} fogged={fogged(p)} /></td>
+                <td><Pot p={p} league={league} fogged={fogged(p)} /></td>
                 <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
                 <td>{p.pos}</td>
                 <td className="num">{p.age}</td>
                 <td className="num">{money(p.contract.salary)}</td>
-                <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p, undefined, destTeam(p.id, 'players'))}</td>
+                <td className="num"><StarRating value={tradeValue(p, undefined, destTeam(p.id, 'players'))} /></td>
                 {teamIds.length > 2 && (
                   <td onClick={(e) => e.stopPropagation()}>
                     {checked && (
@@ -123,7 +172,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
                 <tr key={pick.id} className="clickable" onClick={() => toggleAsset(team.id, 'picks', pick.id)}>
                   <td><input type="checkbox" readOnly checked={checked} /></td>
                   <td>{pickLabel(pick)}</td>
-                  <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, destTeam(pick.id, 'picks')?.strategy)}</td>
+                  <td className="num"><StarRating value={pickValue(league, pick, destTeam(pick.id, 'picks')?.strategy)} /></td>
                   {teamIds.length > 2 && (
                     <td onClick={(e) => e.stopPropagation()}>
                       {checked && (
@@ -150,7 +199,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
             <tbody>
               {leg.inPlayers.map((p) => {
                 const owner = legs.find((l) => l.outPlayers.includes(p))?.team;
-                const pFogged = owner?.id !== userId;
+                const pFogged = owner?.id !== userId && !p.everOnUserTeam;
                 return (
                   <tr key={p.id} className="trade-asset-enter">
                     <td><Ovr p={p} league={league} fogged={pFogged} /></td>
@@ -159,7 +208,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
                     <td>{p.pos}</td>
                     <td className="num">{p.age}</td>
                     <td className="num">{money(p.contract.salary)}</td>
-                    <td className="num" style={{ color: 'var(--muted)' }}>{tradeValue(p, undefined, team)}</td>
+                    <td className="num"><StarRating value={tradeValue(p, undefined, team)} /></td>
                     <td>{owner?.name}</td>
                   </tr>
                 );
@@ -169,7 +218,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
                 return (
                   <tr key={pick.id} className="trade-asset-enter">
                     <td colSpan={6}>{pickLabel(pick)}</td>
-                    <td className="num" style={{ color: 'var(--muted)' }}>{pickValue(league, pick, team.strategy)}</td>
+                    <td className="num"><StarRating value={pickValue(league, pick, team.strategy)} /></td>
                     <td>{owner?.name}</td>
                   </tr>
                 );
@@ -384,19 +433,45 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
             ))}
           </div>
         )}
-        {hasAnyAsset && (
-          <div style={{ marginTop: 14 }}>
+      </div>
+      {hasAnyAsset && (
+        <div className="panel">
+          <h2>Deal Summary</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(300px, 1fr))`, gap: 16 }}>
+            {legs.map((leg) => {
+              const isUser = leg.team.id === userId;
+              const salOut = leg.outPlayers.reduce((s, p) => s + p.contract.salary, 0);
+              const assets = [
+                ...leg.outPlayers.map((p) => `${p.name} (${money(p.contract.salary)})`),
+                ...leg.outPicks.map((pick) => pickLabel(pick)),
+              ];
+              return (
+                <div key={leg.team.id} style={{ borderTop: `3px solid ${leg.team.color}`, paddingTop: 10 }}>
+                  <div style={{ fontWeight: 700, color: isUser ? 'var(--team-color)' : leg.team.color, marginBottom: 6, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {isUser ? 'You send' : `${leg.team.name} sends`}
+                  </div>
+                  {assets.length > 0 ? (
+                    <>
+                      <div style={{ fontSize: 13 }}>{assets.join(', ')}</div>
+                      {leg.outPlayers.length > 0 && (
+                        <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>{money(salOut)} in salary</div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--muted)', fontStyle: 'italic', fontSize: 13 }}>Nothing sent</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 12 }}>
             <div className="value-meter">
               <div className="side-a" style={{ width: `${givePct}%` }} />
               <div className="side-b" style={{ width: `${100 - givePct}%` }} />
             </div>
-            <div className="value-meter-labels">
-              <span>You give · {myGive}</span>
-              <span>You receive · {myGet}</span>
-            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(300px, 1fr))`, gap: 16 }}>
         {teamIds.map((id, i) => (
           <TeamPanel
@@ -414,24 +489,6 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
             userId={userId}
           />
         ))}
-      </div>
-      <div className="panel">
-        <h2>Trade Value Summary</h2>
-        {legs.map((leg) => {
-          const { giveVal, getVal } = legValue(league, legs, leg);
-          if (!giveVal && !getVal) return null;
-          const lopsided = giveVal > 0 && getVal < giveVal * 0.85;
-          return (
-            <p className="result-row" key={leg.team.id}>
-              <span>{leg.team.name}</span>
-              <span>
-                Gives {giveVal} · Receives {getVal}
-                {lopsided && <span className="tag" style={{ color: 'var(--red)', marginLeft: 6 }}>GIVING UP MORE</span>}
-              </span>
-            </p>
-          );
-        })}
-        {!hasAnyAsset && <p style={{ color: 'var(--muted)' }}>Select players or picks to send to see trade value.</p>}
       </div>
     </div>
   );

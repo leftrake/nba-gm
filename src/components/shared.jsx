@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { overall, flagFor } from '../engine/players.js';
-import { scoutRange, scoutedOverallRange, scoutedPotential, potentialGrade } from '../engine/scouting.js';
+import { scoutRange, scoutedOverallRange, scoutUncertainty, isHidden, fogColor } from '../engine/scouting.js';
+import { traitBand, traitShort, TRAIT_COLORS } from '../engine/devTraits.js';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 import { TEAMS } from '../data/teams.js';
 
@@ -12,18 +13,38 @@ function ovrClass(o) {
 // else, uncolored so the tier color doesn't give anything away.
 export function Ovr({ p, league, fogged }) {
   if (fogged) {
-    const [lo, hi] = scoutedOverallRange(p, league.season);
-    return <span className="ovr">{lo}–{hi}</span>;
+    const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
+    if (isHidden(p, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+    const [lo, hi] = scoutedOverallRange(p, league.season, proGames);
+    const u = scoutUncertainty(p, proGames);
+    return (
+      <span className="ovr" title={`Scouting uncertainty ±${u}`}>
+        {lo}–{hi}{' '}
+        <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: fogColor(u), verticalAlign: 'middle' }} />
+      </span>
+    );
   }
   const o = overall(p);
   return <span className={`ovr ${ovrClass(o)}`}>{o}</span>;
 }
 
-// Potential is never shown as a number — letter grade only, fuzzed for
-// players the GM can't scout exactly. The grade is all you get: no color.
+// Potential as a dev-trait band. Own players show the exact tier; opponents
+// show a possibly-wide band that collapses as scouting/minutes accumulate.
+// "?" when there's no scouting information at all.
 export function Pot({ p, league, fogged }) {
-  const v = scoutedPotential(p, league.season, fogged);
-  return <span className="ovr" style={{ color: 'var(--muted)' }}>{potentialGrade(v)}</span>;
+  const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
+  const band = traitBand(p, league.season, proGames, fogged);
+  if (band === null) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+  if (band.lo === band.hi) {
+    return <span className="ovr" style={{ color: TRAIT_COLORS[band.lo] }}>{band.lo}</span>;
+  }
+  return (
+    <span className="ovr" style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }} title={`${band.lo}–${band.hi}`}>
+      <span style={{ color: TRAIT_COLORS[band.lo] }}>{traitShort(band.lo)}</span>
+      {'–'}
+      <span style={{ color: TRAIT_COLORS[band.hi] }}>{traitShort(band.hi)}</span>
+    </span>
+  );
 }
 
 // Where a player is from: "🇺🇸 Duke" / "🇷🇸 Serbia", or the longer
@@ -42,7 +63,9 @@ export function Origin({ p, full }) {
 export function Sta({ p, league, fogged }) {
   if (p.stamina == null) return <span className="ovr">–</span>;
   if (fogged) {
-    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta');
+    const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
+    if (isHidden(p, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta', proGames);
     return <span className="ovr">{lo}–{hi}</span>;
   }
   return <span className="ovr">{p.stamina}</span>;

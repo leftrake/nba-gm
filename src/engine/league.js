@@ -24,7 +24,8 @@ import {
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
 } from './legacy.js';
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
-import { initScoutingPhase, initSeasonScouting } from './scoutingTrips.js';
+import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting } from './scoutingTrips.js';
+import { computeQualitySeasons, TRAIT_NEWS_REVEAL_TIERS, traitFromPotential } from './devTraits.js';
 import { generateCoach, devBonus } from './coach.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
@@ -103,6 +104,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     issueDirectives(league, userTeam, rng);
   }
   initSeasonScouting(league, rng);
+  initDraftBoard(league, rng); // pre-generate 2 future draft classes for multi-year scouting
   league.nextPlayerId = getNextPlayerId();
   return league;
 }
@@ -368,6 +370,12 @@ export function backfillPlayers(league) {
     if (!p.seasonStints) p.seasonStints = [];
     // saves predating the legacy/records system
     if (p.championships == null) p.championships = 0;
+    // saves predating dev-trait fog collapse counter
+    if (p.qualitySeasons == null) p.qualitySeasons = computeQualitySeasons(p);
+    // saves predating the "was on user team" no-fog flag
+    if (!p.everOnUserTeam && league.userTeamId) {
+      if (p.careerStats?.some((s) => s.team === league.userTeamId)) p.everOnUserTeam = true;
+    }
   };
   for (const team of league.teams) team.roster.forEach(fill);
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
@@ -406,6 +414,15 @@ export function backfillPlayers(league) {
   if (!league.tradeOffers) league.tradeOffers = [];
   // Saves predating year-round scouting budgets
   if (!league.scouting) initSeasonScouting(league, rng);
+  // Saves predating multi-year draft board and pro scouting track
+  if (!league.scouting.draftBoard) {
+    const bfRng = makeRng(league.seed + league.season * 70_007 + 888_001);
+    initDraftBoard(league, bfRng);
+    league.nextPlayerId = getNextPlayerId();
+  }
+  if (!league.scouting.proWatching)  league.scouting.proWatching  = {};
+  if (!league.scouting.proWatchList) league.scouting.proWatchList = [];
+  if (!league.scouting.proReports)   league.scouting.proReports   = [];
   // If reloaded mid-allstar weekend with the event already built and the
   // day past, mark it shown so the sim loop doesn't get stuck on redirect.
   if (league.allStar && !league.allStar.shown && league.phase === 'regular'
@@ -459,6 +476,7 @@ export function backfillPlayers(league) {
       ...(league.retiredPlayers || []).map((p) => p.id),
       ...(league.scouting?.prospects || []).map((p) => p.id),
       ...(league.draft?.prospects || []).map((p) => p.id),
+      ...(league.scouting?.draftBoard || []).flatMap((dc) => dc.prospects.map((p) => p.id)),
     ];
     league.nextPlayerId = (allIds.length ? Math.max(...allIds) : 0) + 1;
   }
@@ -730,6 +748,7 @@ export function simDay(league) {
     maybeOwnerInterference(league, userTeam, rng);
   }
   if (league.dayIndex % 7 === 0) checkRecordPace(league);
+  tickProScouting(league); // pro-scouting film accumulates each simmed game-day
   league.dayIndex += 1;
   if (league.dayIndex === TRADE_DEADLINE_DAY + 1) {
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '🔒 The trade deadline has passed. All trades are locked until the offseason.' });
@@ -1053,6 +1072,19 @@ export function advanceOffseason(league) {
       p.stats = emptyStats();
       p.condition = 100; // a summer off heals everything
       p.injury = null; // ...including last spring's torn ACL
+      // Track qualifying seasons for dev-trait fog collapse.
+      const prevQS = p.qualitySeasons ?? 0;
+      p.qualitySeasons = computeQualitySeasons(p);
+      // Fire news when a Star+ trait first becomes confirmable (collapses to a single tier).
+      if (p.qualitySeasons >= 3 && prevQS < 3) {
+        const tier = traitFromPotential(p.potential);
+        if (TRAIT_NEWS_REVEAL_TIERS.has(tier)) {
+          pushNews(league, {
+            category: 'scouting',
+            text: `Scouts have confirmed ${p.name} has ${tier === 'Generational' ? 'generational' : tier === 'Superstar' ? 'superstar' : 'star'} potential.`,
+          });
+        }
+      }
       snapshotRatings(p, league.season); // progression history: ratings before this summer's development
       const oldRow = ratingRow(p);
       developPlayer(p, rng, devBonus(team.coach));
@@ -1472,6 +1504,7 @@ export function signMidSeasonFA(league, teamId, playerId) {
   p.contract = { salary: proratedMinSalary(league), years: 1 };
   recordContract(p, league.season, team.id, p.contract);
   league.freeAgents.splice(idx, 1);
+  if (team.id === league.userTeamId) p.everOnUserTeam = true;
   team.roster.push(p); // on the roster now — available for the next game
   bumpTurmoil(team, 0.5);
   pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.` });
@@ -1795,6 +1828,7 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   p.offerSheetPending = false;
   delete p.formerTeamId;
   league.freeAgents.splice(idx, 1);
+  if (teamId === league.userTeamId) p.everOnUserTeam = true;
   team.roster.push(p);
   if (league.negotiations?.[playerId] && teamId !== league.userTeamId) {
     pushNews(league, { day: 0, category: 'signing', teamIds: [team.id, league.userTeamId], text: `${p.name} broke off negotiations with you to sign elsewhere.` });
@@ -1823,6 +1857,7 @@ export function matchOfferSheet(league, playerId) {
   p.offerSheetPending = false;
   delete p.formerTeamId;
   league.freeAgents = league.freeAgents.filter((x) => x.id !== playerId);
+  p.everOnUserTeam = true;
   team.roster.push(p);
   league.offerSheets.splice(idx, 1);
   pushNews(league, { day: 0, category: 'signing', major: true, teamIds: [team.id], text: `The ${team.city} ${team.name} match the offer sheet and retain ${p.name} (${fmtM(sheet.salary)}/yr x ${sheet.years}yr).` });

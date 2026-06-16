@@ -3,7 +3,8 @@ import { askingPrice, getTeam } from '../engine/league.js';
 import { durabilityNote, ratingRow, posLabel, similarPlayers, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
-import { scoutRange } from '../engine/scouting.js';
+import { scoutRange, isHidden } from '../engine/scouting.js';
+import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
 import { personalityNote, scoutBackstoryNote } from '../engine/backstory.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
 import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, PlayerLink, Origin } from './shared.jsx';
@@ -152,6 +153,7 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
 
         <h3 style={{ marginTop: 14 }}>Career Totals</h3>
         <p>
+          {p.peakOverall != null && <><span className={`ovr ${p.peakOverall >= 85 ? 'elite' : p.peakOverall >= 75 ? 'great' : p.peakOverall >= 65 ? 'good' : 'ok'}`}>{p.peakOverall}</span> peak overall · </>}
           {totals.gp} GP · {perGame(totals, 'pts')} ppg · {perGame(totals, 'reb')} rpg · {perGame(totals, 'ast')} apg
         </p>
 
@@ -203,7 +205,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
   }
 
   const team = league.teams.find((t) => t.roster.some((x) => x.id === p.id));
-  const fogged = team?.id !== league.userTeamId;
+  const fogged = team?.id !== league.userTeamId && !p.everOnUserTeam;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -217,6 +219,22 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           {team && onTradeFor && (
             <button className="btn small secondary" onClick={() => onTradeFor(p)}>Trade</button>
           )}
+          {fogged && commit && (() => {
+            const isWatching = league.scouting?.proWatchList?.includes(p.id);
+            const games = league.scouting?.proWatching?.[p.id] ?? 0;
+            return (
+              <button
+                className={`btn small secondary${isWatching ? ' active' : ''}`}
+                onClick={() => {
+                  if (isWatching) removeProWatch(league, p.id);
+                  else markProWatch(league, p.id);
+                  commit();
+                }}
+              >
+                {isWatching ? `Watching (${games} days)` : 'Watch'}
+              </button>
+            );
+          })()}
           <button className="btn small secondary" onClick={onClose}>✕</button>
         </div>
 
@@ -263,13 +281,17 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
         {[...RATINGS, ['stamina', 'Stamina']].map(([key, label]) => {
           // stamina lives outside p.ratings but scouts like any other rating
           const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
-          const [lo, hi] = fogged ? scoutRange(p, v, league.season, key) : [v, v];
+          const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
+          const hidden = fogged && isHidden(p, proGames);
+          const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, proGames) : [v, v];
           const mid = (lo + hi) / 2;
           return (
             <div className="rating-row" key={key}>
               <span style={{ color: 'var(--muted)' }}>{label}</span>
-              <div className="rating-bar"><div style={{ width: `${mid}%`, background: fogged ? 'var(--muted)' : barColor(v) }} /></div>
-              <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fogged ? `${lo}–${hi}` : v}</span>
+              <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--muted)' : barColor(v) }} /></div>
+              <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--muted)' : undefined }}>
+                {hidden ? '?' : fogged ? `${lo}–${hi}` : v}
+              </span>
             </div>
           );
         })}

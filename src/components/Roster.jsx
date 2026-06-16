@@ -3,7 +3,7 @@ import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay,
 import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
-import { scoutedOverall } from '../engine/scouting.js';
+import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
@@ -55,7 +55,8 @@ function CapBreakdown({ team, pay, dead }) {
 // Rival scouting view: star players (fogged), cap situation, strategy, and
 // recent form as W/L dots, shown in place of a detailed roster table.
 function FrontOfficeSnapshot({ league, team, pay, dead, recent, openPlayer }) {
-  const stars = [...team.roster].sort((a, b) => scoutedOverall(b, league.season) - scoutedOverall(a, league.season)).slice(0, 4);
+  const fogOvr = (p) => { const g = league.scouting?.proWatching?.[p.id] ?? 0; return isHidden(p, g) ? -Infinity : scoutedOverall(p, league.season, g); };
+  const stars = [...team.roster].sort((a, b) => fogOvr(b) - fogOvr(a)).slice(0, 4);
   const form = recent.map(({ g, r }) => {
     if (!r) return null;
     const home = g.home === team.id;
@@ -261,7 +262,12 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     commit();
   };
 
-  const seenOvr = (p) => (isUser ? overall(p) : scoutedOverall(p, league.season));
+  const seenOvr = (p) => {
+    if (isUser) return overall(p);
+    const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
+    if (isHidden(p, proGames)) return -Infinity;
+    return scoutedOverall(p, league.season, proGames);
+  };
   const filtered = posFilter === 'all'
     ? team.roster
     : team.roster.filter((p) => p.pos === posFilter || p.pos2 === posFilter);

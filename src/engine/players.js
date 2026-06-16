@@ -178,7 +178,7 @@ export function generatePlayer(rng = rand, opts = {}) {
 
   const mk = (mod) => Math.round(clamp(base + mod + gauss(0, 7, rng), 25, 99));
 
-  const id = nextPlayerId++;
+  const id = opts._forcedId !== undefined ? opts._forcedId : nextPlayerId++;
   const country = pickCountry(rng);
   const backstory = assignBackstory(rng);
   const p = {
@@ -214,6 +214,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     contract: null,
     stats: emptyStats(),
     careerStats: [],
+    qualitySeasons: 0, // count of seasons with 1000+ minutes — collapses dev-trait fog
     awards: [], // { season, award } — filled by engine/awards.js
     seasonStints: [], // { team, stats } — filled by engine/league.js on trades
     championships: 0, // count of titles won while on the roster — engine/legacy.js
