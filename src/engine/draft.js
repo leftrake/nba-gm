@@ -1,6 +1,6 @@
 import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, overall, recordContract } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract } from './players.js';
 import { pushNews } from './save.js';
 import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
 
@@ -58,15 +58,21 @@ export function generateDraftClass(rng) {
 }
 
 export function initDraft(league, rng) {
-  // The player-id counter isn't restored on save load, so freshly generated
-  // ids can collide with existing players. Pick results reference prospects
-  // by id, so push the counter past everyone currently in the league first.
-  const maxId = Math.max(
-    0,
-    ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
-    ...league.freeAgents.map((p) => p.id),
-  );
-  resetPlayerIds(maxId + 1);
+  // Push the player-id counter past every existing player — including retired
+  // snapshots — so prospect IDs never collide. league.nextPlayerId is the
+  // monotonic counter maintained across saves; fall back to a max-id scan
+  // (including retiredPlayers) for saves predating that field.
+  if (league.nextPlayerId != null) {
+    resetPlayerIds(league.nextPlayerId);
+  } else {
+    const maxId = Math.max(
+      0,
+      ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+      ...league.freeAgents.map((p) => p.id),
+      ...(league.retiredPlayers || []).map((p) => p.id),
+    );
+    resetPlayerIds(maxId + 1);
+  }
 
   // Worst record first; lastWins holds the just-completed season. The
   // sub-1 jitter only breaks ties.
@@ -104,6 +110,8 @@ export function initDraft(league, rng) {
   // season's scouting budget/reports/watchlists usable for the rest of the
   // year (trade targets, free agents, etc.).
   if (league.scouting) league.scouting.prospects = [];
+  // Keep league.nextPlayerId in sync in case generateDraftClass was called.
+  league.nextPlayerId = getNextPlayerId();
 
   league.draft = {
     season: draftSeason,

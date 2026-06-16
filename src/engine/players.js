@@ -141,6 +141,7 @@ export function durabilityNote(p) {
 
 let nextPlayerId = 1;
 export function resetPlayerIds(start = 1) { nextPlayerId = start; }
+export function getNextPlayerId() { return nextPlayerId; }
 
 // Yearly retirement roll, made after a player ages a season. Most careers
 // end between 34 and 37; stars hang on a year or two longer, but almost

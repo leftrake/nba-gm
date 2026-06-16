@@ -1,6 +1,6 @@
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, overall, salaryFor, recordContract } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, salaryFor, recordContract } from './players.js';
 import { autoLineup } from './lineup.js';
 import { evaluateStrategies } from './strategy.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -52,17 +52,19 @@ export function generateFantasyPool(rng) {
 // Sets up league.fantasyDraft: a randomized snake order (so the user's slot
 // isn't fixed) and the combined player pool.
 export function initFantasyDraft(league, rng) {
-  // The player-id counter (players.js) is a module-level variable that
-  // doesn't survive a save load — it always restarts at 1. Mirror
-  // initDraft's guard here: push it past every id already on a roster or
-  // in free agency before minting the 540-player fantasy pool, so a fantasy
-  // draft can never hand out ids that collide with existing players.
-  const maxId = Math.max(
-    0,
-    ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
-    ...league.freeAgents.map((p) => p.id),
-  );
-  resetPlayerIds(maxId + 1);
+  // Push the player-id counter past every existing player so the 540-player
+  // fantasy pool gets globally unique IDs. league.nextPlayerId is the
+  // monotonic counter; fall back to a max-id scan for saves predating it.
+  if (league.nextPlayerId != null) {
+    resetPlayerIds(league.nextPlayerId);
+  } else {
+    const maxId = Math.max(
+      0,
+      ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+      ...league.freeAgents.map((p) => p.id),
+    );
+    resetPlayerIds(maxId + 1);
+  }
 
   const teamIds = league.teams.map((t) => t.id);
   const shuffled = [...teamIds];
@@ -80,6 +82,7 @@ export function initFantasyDraft(league, rng) {
     pool: generateFantasyPool(rng),
     results: [], // { pick, round, teamId, playerId, playerName, pos, ovr, age }
   };
+  league.nextPlayerId = getNextPlayerId();
 }
 
 // Team id currently on the clock, or null if the draft is over (or not running)

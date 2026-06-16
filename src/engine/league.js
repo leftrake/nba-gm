@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
@@ -103,6 +103,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     issueDirectives(league, userTeam, rng);
   }
   initSeasonScouting(league, rng);
+  league.nextPlayerId = getNextPlayerId();
   return league;
 }
 
@@ -449,6 +450,19 @@ export function backfillPlayers(league) {
   else if (league.phase === 'freeagency') league.phase = 'offseason/freeagency';
   if (league.finalsMVP === undefined) league.finalsMVP = null;
   if (!league.offseasonRosterSnapshot) league.offseasonRosterSnapshot = [];
+  // Restore the player-id counter so any players generated after load get IDs
+  // that can never collide with existing or retired players in this save.
+  if (league.nextPlayerId == null) {
+    const allIds = [
+      ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+      ...league.freeAgents.map((p) => p.id),
+      ...(league.retiredPlayers || []).map((p) => p.id),
+      ...(league.scouting?.prospects || []).map((p) => p.id),
+      ...(league.draft?.prospects || []).map((p) => p.id),
+    ];
+    league.nextPlayerId = (allIds.length ? Math.max(...allIds) : 0) + 1;
+  }
+  resetPlayerIds(league.nextPlayerId);
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
@@ -861,6 +875,7 @@ export function simPlayoffGame(league) {
       // Pre-draft scouting window opens: seed the prospect pool and let the
       // AI spend its scouting budgets before the user advances the offseason.
       initScoutingPhase(league, makeRng(league.seed + league.season * 70_007 + 555_001));
+      league.nextPlayerId = getNextPlayerId();
     }
   }
   return played;
@@ -1207,6 +1222,7 @@ export function advanceOffseason(league) {
   // The pool would otherwise grow without bound (each draft class outnumbers
   // retirements); the unsigned tail quietly heads overseas
   if (league.freeAgents.length > 70) league.freeAgents.length = 70;
+  league.nextPlayerId = getNextPlayerId();
 
   // Front offices reassess direction each summer
   const labels = { contending: 'win-now mode', rebuilding: 'a full rebuild', retooling: 'a retool' };

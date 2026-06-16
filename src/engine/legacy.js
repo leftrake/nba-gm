@@ -68,13 +68,16 @@ function teamName(teamId) {
 // ---------- Lookups across rosters / free agents / retirees ----------
 
 export function findPlayerById(league, id) {
+  // Check retiredPlayers first: if a retired snapshot exists for this ID,
+  // always return it — a live player whose ID happens to match (due to old
+  // saves predating the monotonic counter) must not shadow the retiree.
+  const retired = league.retiredPlayers.find((x) => x.id === id);
+  if (retired) return retired;
   for (const t of league.teams) {
     const p = t.roster.find((x) => x.id === id);
     if (p) return p;
   }
-  const fa = league.freeAgents.find((x) => x.id === id);
-  if (fa) return fa;
-  return league.retiredPlayers.find((x) => x.id === id) || null;
+  return league.freeAgents.find((x) => x.id === id) || null;
 }
 
 function allPlayersForRecords(league) {
