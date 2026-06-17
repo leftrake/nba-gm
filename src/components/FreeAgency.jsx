@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet } from '../engine/league.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
+import { overall } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
 import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
 import { Ovr, Pot, money, PlayerLink, GuideTooltip } from './shared.jsx';
+import { Card, Button, Badge, Section, SectionHeader, Divider, Table } from './ui/index.js';
 
 const OFFERS_PER_ROUND = 3;
 const FILTERS_KEY = 'nba-gm-fa-filters';
-
 const DEFAULT_FILTERS = { sortKey: 'ovr', sortDir: 'desc', pos: 'all', minAge: '', maxAge: '', maxAskingM: '' };
 
 function loadFilters() {
@@ -28,8 +29,8 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   const [negotiatingId, setNegotiatingId] = useState(null);
   const [salaryM, setSalaryM] = useState(5);
   const [years, setYears] = useState(2);
-  const [responses, setResponses] = useState({}); // playerId -> last makeOffer result
-  const [message, setMessage] = useState(null); // top-level note (signings)
+  const [responses, setResponses] = useState({});
+  const [message, setMessage] = useState(null);
   const [filters, setFilters] = useState(loadFilters);
 
   const setFilter = (patch) => {
@@ -41,12 +42,10 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   };
 
   const negotiations = league.negotiations;
+  const offerSheets = league.offerSheets;
 
   const toggleNegotiation = (p) => {
-    if (negotiatingId === p.id) {
-      setNegotiatingId(null);
-      return;
-    }
+    if (negotiatingId === p.id) { setNegotiatingId(null); return; }
     setNegotiatingId(p.id);
     setSalaryM(askingPrice(p) / 1e6);
     setYears(2);
@@ -77,9 +76,18 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     commit();
   };
 
-  // ---- Filter & sort
+  const matchSheet = (p) => {
+    const res = matchOfferSheet(league, p.id);
+    setMessage(res.ok
+      ? { type: 'ok', text: `${p.name} re-signed — offer sheet matched.` }
+      : { type: 'err', text: res.error });
+    commit();
+  };
+
+  // Sort + filter
   const SORT_VALUE = {
     ovr: (p) => {
+      if (p.everOnUserTeam) return overall(p);
       const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
       if (isHidden(p, proGames)) return -Infinity;
       return scoutedOverall(p, league.season, proGames);
@@ -99,235 +107,261 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     && p.age >= minAge && p.age <= maxAge
     && askingPrice(p) <= maxAsking
   );
-  const shown = [...filtered]
-    .sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul);
+  const shown = [...filtered].sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul);
+
+  const handleSort = (key) => {
+    if (filters.sortKey === key) {
+      setFilter({ sortDir: filters.sortDir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      setFilter({ sortKey: key, sortDir: 'desc' });
+    }
+  };
+  const arrow = (key) => filters.sortKey === key ? (filters.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   const myRfas = league.freeAgents.filter((p) => p.restrictedFA && p.formerTeamId === team.id);
-  const offerSheets = league.offerSheets;
+  const negotiatingPlayer = negotiatingId != null ? shown.find((p) => p.id === negotiatingId) ?? null : null;
 
-  const matchSheet = (p) => {
-    const res = matchOfferSheet(league, p.id);
-    setMessage(res.ok
-      ? { type: 'ok', text: `${p.name} re-signed — offer sheet matched.` }
-      : { type: 'err', text: res.error });
-    commit();
-  };
+  // RFA table
+  const rfaCols = [
+    { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
+    { key: 'pos', label: 'Pos' },
+    { key: 'age', label: 'Age', numeric: true },
+    { key: 'asking', label: 'Asking', numeric: true, render: (row) => money(askingPrice(row._p)) },
+    { key: 'status', label: 'Status', render: (row) => {
+      const sheet = offerSheets.find((s) => s.playerId === row._p.id);
+      const roundsLeft = sheet ? sheet.deadlineRound + 1 - league.faDaysLeft : null;
+      return sheet
+        ? <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)' }}>Offer sheet: {money(sheet.salary)}/yr × {sheet.years}yr — {roundsLeft > 0 ? `match within ${roundsLeft} round${roundsLeft === 1 ? '' : 's'} or lose him` : 'last round to match'}</span>
+        : <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>On the open market — no offer sheets yet</span>;
+    }},
+    { key: 'action', label: '', render: (row) => {
+      const sheet = offerSheets.find((s) => s.playerId === row._p.id);
+      if (!sheet) return null;
+      return <Button size="sm" variant="secondary" disabled={team.roster.length >= ROSTER_MAX} onClick={() => matchSheet(row._p)}>Match Offer</Button>;
+    }},
+  ];
+  const rfaRows = myRfas.map((p) => ({ _key: p.id, _p: p, pos: p.pos, age: p.age }));
+
+  // FA table columns (sort arrows injected into labels; onSort toggles direction)
+  const faCols = [
+    { key: 'ovr', label: `Ovr${arrow('ovr')}`, numeric: true, sortable: true,
+      render: (row) => <Ovr p={row._p} league={league} fogged={!row._p.everOnUserTeam} /> },
+    { key: 'pot', label: `Pot${arrow('pot')}`, numeric: true, sortable: true,
+      render: (row) => <Pot p={row._p} league={league} fogged={!row._p.everOnUserTeam} /> },
+    { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
+    { key: 'pos', label: `Pos${arrow('pos')}`, sortable: true },
+    { key: 'age', label: `Age${arrow('age')}`, numeric: true, sortable: true },
+    { key: 'asking', label: `Asking${arrow('asking')}`, numeric: true, sortable: true,
+      render: (row) => money(askingPrice(row._p)) },
+    { key: 'action', label: '', render: (row) => {
+      if (isSeason) {
+        if (!midSeasonSignable(row._p)) {
+          return (
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}
+                  title="Won't take a minimum deal — available in offseason free agency">
+              Holding out
+            </span>
+          );
+        }
+        return (
+          <Button size="sm" variant="secondary"
+            disabled={team.roster.length >= ROSTER_MAX}
+            title={team.roster.length >= ROSTER_MAX ? 'Roster full (15)' : `Rest-of-season min: ${money(proratedMinSalary(league))}`}
+            onClick={() => signMin(row._p)}
+          >
+            Sign Min
+          </Button>
+        );
+      }
+      const isActive = negotiatingId === row._p.id;
+      const counter = negotiations[row._p.id]?.counter;
+      return (
+        <Button size="sm" variant={isActive ? 'primary' : 'secondary'} disabled={!isOpen} onClick={() => toggleNegotiation(row._p)}>
+          {isActive ? 'Close' : counter ? 'Counter…' : 'Negotiate'}
+        </Button>
+      );
+    }},
+  ];
+  const faRows = shown.map((p) => ({ _key: p.id, _p: p, pos: p.pos, age: p.age }));
 
   return (
-    <div className="panel">
+    <div className="page-fade">
       {isOpen && (
-        <div style={{ marginBottom: 14, padding: 10, border: '1px solid var(--accent)', borderRadius: 6, textAlign: 'center' }}>
-          <strong>Free Agency is now open</strong>
-          <span style={{ color: 'var(--muted)' }}> · {league.faDaysLeft} round{league.faDaysLeft === 1 ? '' : 's'} remaining</span>
-        </div>
+        <Card style={{ borderLeft: '3px solid var(--color-primary)', marginBottom: 'var(--sp-4)' }}>
+          <strong>Free Agency is open</strong>
+          <span style={{ color: 'var(--text-muted)', marginLeft: 'var(--sp-2)' }}>
+            {league.faDaysLeft} round{league.faDaysLeft === 1 ? '' : 's'} remaining
+          </span>
+        </Card>
       )}
+
+      {message && (
+        <Card
+          style={{
+            borderLeft: `3px solid var(--${message.type === 'ok' ? 'color-success' : 'color-danger'})`,
+            color: `var(--${message.type === 'ok' ? 'color-success' : 'color-danger'})`,
+            marginBottom: 'var(--sp-4)',
+          }}
+        >
+          {message.text}
+        </Card>
+      )}
+
       {myRfas.length > 0 && (
-        <div style={{ marginBottom: 14, padding: 10, border: '1px solid var(--accent)', borderRadius: 6 }}>
-          <h3 style={{ marginTop: 0 }}>Your Restricted Free Agents</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Asking</th><th>Status</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {myRfas.map((p) => {
-                const sheet = offerSheets.find((s) => s.playerId === p.id);
-                const roundsLeft = sheet ? sheet.deadlineRound + 1 - league.faDaysLeft : null;
-                return (
-                  <tr key={p.id}>
-                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-                    <td>{p.pos}</td>
-                    <td className="num">{p.age}</td>
-                    <td className="num">{money(askingPrice(p))}</td>
-                    <td>
-                      {sheet ? (
-                        <span style={{ color: 'var(--red)' }}>
-                          Offer sheet: {money(sheet.salary)}/yr x {sheet.years}yr — {roundsLeft > 0 ? `match within ${roundsLeft} round${roundsLeft === 1 ? '' : 's'} or lose him` : 'last round to match'}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--muted)' }}>On the open market — no offer sheets yet</span>
-                      )}
-                    </td>
-                    <td>
-                      {sheet && (
-                        <button className="btn small" disabled={team.roster.length >= ROSTER_MAX} onClick={() => matchSheet(p)}>
-                          Match Offer
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <Section title="Your Restricted Free Agents">
+            <Table columns={rfaCols} rows={rfaRows} />
+          </Section>
+          <Divider />
+        </>
       )}
-      <GuideTooltip
-        tipKey="fogged_ratings"
-        text="Rating ranges reflect your scouting knowledge — tighter ranges mean more certainty. Scout players before the draft or trade deadline to get better information."
-        block
-      >
-        <h2>Free Agents</h2>
-      </GuideTooltip>
-      <p style={{ marginBottom: 10, color: 'var(--muted)' }}>
-        Cap room: <b style={{ color: room > 0 ? 'var(--green)' : 'var(--red)' }}>{money(room)}</b> · Roster: {team.roster.length}/{ROSTER_MAX}
-        {room <= 0 && (
-          <> · Mid-level exception: <b style={{ color: team.usedMLE ? 'var(--red)' : 'var(--green)' }}>{team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}</b></>
-        )}
-        {isOpen
-          ? ' · Negotiate salary and years — players weigh money, your record, and their role. Other teams sign players every round, including ones you\'re talking to.'
-          : isSeason
-          ? ` · In-season market: rest-of-season minimum deals only (${money(proratedMinSalary(league))} right now), and you need an open roster spot. Anyone worth a real contract is holding out for the summer.`
-          : ' · Signings open during the Free Agency phase (after the offseason advance), but you can browse anytime.'}
-      </p>
-      {message && <p style={{ marginBottom: 10, color: message.type === 'ok' ? 'var(--green)' : 'var(--red)' }}>{message.text}</p>}
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-        <label>
-          Position:{' '}
-          <select value={filters.pos} onChange={(e) => setFilter({ pos: e.target.value })}>
-            <option value="all">All</option>
-            {POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
-          </select>
-        </label>
-        <label>
-          Age:{' '}
-          <input type="number" min={18} max={45} value={filters.minAge} placeholder="min"
-                 onChange={(e) => setFilter({ minAge: e.target.value })} style={{ width: 56 }} />
-          {' – '}
-          <input type="number" min={18} max={45} value={filters.maxAge} placeholder="max"
-                 onChange={(e) => setFilter({ maxAge: e.target.value })} style={{ width: 56 }} />
-        </label>
-        <label>
-          Max Asking ($M):{' '}
-          <input type="number" min={0} value={filters.maxAskingM} placeholder="any"
-                 onChange={(e) => setFilter({ maxAskingM: e.target.value })} style={{ width: 70 }} />
-        </label>
-        {(filters.pos !== 'all' || filters.minAge !== '' || filters.maxAge !== '' || filters.maxAskingM !== '') && (
-          <button className="btn secondary small" onClick={() => setFilter({ pos: 'all', minAge: '', maxAge: '', maxAskingM: '' })}>
-            Clear Filters
-          </button>
-        )}
-        <span className="meta" style={{ color: 'var(--muted)' }}>
-          {filtered.length}{filtered.length !== league.freeAgents.length ? ` of ${league.freeAgents.length}` : ''} free agents
-        </span>
-      </div>
+      <Section>
+        <GuideTooltip
+          tipKey="fogged_ratings"
+          text="Rating ranges reflect your scouting knowledge — tighter ranges mean more certainty. Scout players before the draft or trade deadline to get better information."
+          block
+        >
+          <SectionHeader
+            title="Free Agents"
+            subtitle={
+              <span>
+                Cap room: <b style={{ color: room > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{money(room)}</b>
+                {' · '}Roster: {team.roster.length}/{ROSTER_MAX}
+                {room <= 0 && (
+                  <> · MLE: <b style={{ color: team.usedMLE ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                    {team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}
+                  </b></>
+                )}
+              </span>
+            }
+          />
+        </GuideTooltip>
 
-      <table>
-        <thead>
-          <tr>
-            {[['ovr', 'Ovr'], ['pot', 'Pot'], [null, 'Player'], ['pos', 'Pos'], ['age', 'Age'], ['asking', 'Asking']].map(([key, label]) => (
-              <th
-                key={label}
-                className={key === 'age' || key === 'asking' || key === 'ovr' || key === 'pot' ? 'num' : undefined}
-                style={key ? { cursor: 'pointer' } : undefined}
-                onClick={key ? () => setFilter(filters.sortKey === key
-                  ? { sortDir: filters.sortDir === 'asc' ? 'desc' : 'asc' }
-                  : { sortKey: key, sortDir: 'desc' }) : undefined}
-                title={key ? 'Click to sort' : undefined}
-              >
-                {label}{filters.sortKey === key ? (filters.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
-              </th>
-            ))}
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((p) => {
-              const res = responses[p.id];
-              const counter = negotiations[p.id]?.counter;
-              const left = OFFERS_PER_ROUND - offersUsed(p);
-              const holdingOut = isSeason && !midSeasonSignable(p);
+        <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-3)' }}>
+          {isOpen
+            ? "Negotiate salary and years — players weigh money, your record, and their role. Other teams sign players every round, including ones you're talking to."
+            : isSeason
+            ? `In-season market: rest-of-season minimum deals only (${money(proratedMinSalary(league))}), and you need an open roster spot.`
+            : 'Signings open during the Free Agency phase (after the offseason advance), but you can browse anytime.'}
+        </p>
+
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', marginBottom: 'var(--sp-3)', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Pos</span>
+            <select value={filters.pos} onChange={(e) => setFilter({ pos: e.target.value })}>
+              <option value="all">All</option>
+              {POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Age</span>
+            <input type="number" min={18} max={45} value={filters.minAge} placeholder="min"
+                   onChange={(e) => setFilter({ minAge: e.target.value })} style={{ width: 56 }} />
+            <span style={{ color: 'var(--text-muted)' }}>–</span>
+            <input type="number" min={18} max={45} value={filters.maxAge} placeholder="max"
+                   onChange={(e) => setFilter({ maxAge: e.target.value })} style={{ width: 56 }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Max Asking ($M)</span>
+            <input type="number" min={0} value={filters.maxAskingM} placeholder="any"
+                   onChange={(e) => setFilter({ maxAskingM: e.target.value })} style={{ width: 70 }} />
+          </label>
+          {(filters.pos !== 'all' || filters.minAge !== '' || filters.maxAge !== '' || filters.maxAskingM !== '') && (
+            <Button size="sm" variant="ghost" onClick={() => setFilter({ pos: 'all', minAge: '', maxAge: '', maxAskingM: '' })}>
+              Clear Filters
+            </Button>
+          )}
+          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginLeft: 'auto' }}>
+            {filtered.length}{filtered.length !== league.freeAgents.length ? ` of ${league.freeAgents.length}` : ''} free agents
+          </span>
+        </div>
+
+        <Table columns={faCols} rows={faRows} onSort={handleSort} />
+      </Section>
+
+      {/* Negotiation panel — appears below the table when a player is selected */}
+      {negotiatingPlayer && isOpen && (
+        <>
+          <Divider space="sm" />
+          <Card elevation="raised" style={{ borderLeft: '3px solid var(--color-primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: 'var(--sp-3)' }}>
+              <span style={{ fontWeight: 'var(--weight-semibold)' }}>
+                Negotiating with <PlayerLink p={negotiatingPlayer} openPlayer={openPlayer} />
+              </span>
+              {negotiations[negotiatingPlayer.id]?.counter && (
+                <Badge variant="warning">Counter on table</Badge>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap', marginBottom: 'var(--sp-2)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Salary ($M)</span>
+                <input
+                  type="number"
+                  min={MIN_SALARY / 1e6}
+                  max={MAX_SALARY / 1e6}
+                  step={0.5}
+                  value={salaryM}
+                  onChange={(e) => setSalaryM(Number(e.target.value))}
+                  style={{ width: 80 }}
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Years</span>
+                <select value={years} onChange={(e) => setYears(Number(e.target.value))}>
+                  {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              {(() => {
+                const left = OFFERS_PER_ROUND - offersUsed(negotiatingPlayer);
+                return (
+                  <>
+                    <Button size="sm" variant="primary" disabled={left <= 0} onClick={() => offer(negotiatingPlayer, salaryM, years)}>
+                      Submit Offer
+                    </Button>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                      {left > 0 ? `${left} offer${left === 1 ? '' : 's'} left this round` : 'Agent unavailable until next round'}
+                    </span>
+                  </>
+                );
+              })()}
+              {(() => {
+                const exc = signingException(league, team.id, Math.round(salaryM * 10) * 100_000);
+                if (exc === 'mle') return <Badge variant="warning">Uses mid-level exception</Badge>;
+                if (exc === 'minimum') return <Badge variant="info">Uses minimum-salary exception</Badge>;
+                if (!exc) return <Badge variant="danger">Not enough cap room or exceptions</Badge>;
+                return null;
+              })()}
+            </div>
+
+            {(() => {
+              const counter = negotiations[negotiatingPlayer.id]?.counter;
+              if (!counter) return null;
               return (
-                <React.Fragment key={p.id}>
-                  <tr style={holdingOut ? { opacity: 0.55 } : undefined}>
-                    <td><Ovr p={p} league={league} fogged={!p.everOnUserTeam} /></td>
-                    <td><Pot p={p} league={league} fogged={!p.everOnUserTeam} /></td>
-                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-                    <td>{p.pos}</td>
-                    <td className="num">{p.age}</td>
-                    <td className="num">{money(askingPrice(p))}</td>
-                    <td>
-                      {isSeason ? (
-                        holdingOut ? (
-                          <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }} title="Won't take a minimum deal — available in offseason free agency">
-                            Holding out for a real contract
-                          </span>
-                        ) : (
-                          <button
-                            className="btn small"
-                            disabled={team.roster.length >= ROSTER_MAX}
-                            title={team.roster.length >= ROSTER_MAX ? 'Roster full (15)' : `Rest-of-season minimum: ${money(proratedMinSalary(league))}`}
-                            onClick={() => signMin(p)}
-                          >
-                            Sign Min
-                          </button>
-                        )
-                      ) : (
-                        <button className="btn small" disabled={!isOpen} onClick={() => toggleNegotiation(p)}>
-                          {negotiatingId === p.id ? 'Close' : counter ? 'Counter…' : 'Negotiate'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                  {negotiatingId === p.id && isOpen && (
-                    <tr>
-                      <td colSpan={7} style={{ background: 'var(--bg)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 4px' }}>
-                          <label>
-                            Salary ($M):{' '}
-                            <input
-                              type="number"
-                              min={MIN_SALARY / 1e6}
-                              max={MAX_SALARY / 1e6}
-                              step={0.5}
-                              value={salaryM}
-                              onChange={(e) => setSalaryM(Number(e.target.value))}
-                              style={{ width: 80 }}
-                            />
-                          </label>
-                          <label>
-                            Years:{' '}
-                            <select value={years} onChange={(e) => setYears(Number(e.target.value))}>
-                              {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                          </label>
-                          <button className="btn small" disabled={left <= 0} onClick={() => offer(p, salaryM, years)}>
-                            Submit Offer
-                          </button>
-                          <span style={{ color: 'var(--muted)' }}>
-                            {left > 0 ? `${left} offer${left === 1 ? '' : 's'} left this round` : 'Agent unavailable until next round'}
-                          </span>
-                          {(() => {
-                            const exc = signingException(league, team.id, Math.round(salaryM * 10) * 100_000);
-                            if (exc === 'mle') return <span style={{ color: 'var(--accent)' }}>Uses mid-level exception</span>;
-                            if (exc === 'minimum') return <span style={{ color: 'var(--accent)' }}>Uses minimum-salary exception</span>;
-                            if (!exc) return <span style={{ color: 'var(--red)' }}>Not enough cap room or exceptions for this offer</span>;
-                            return null;
-                          })()}
-                          {counter && (
-                            <span style={{ color: 'var(--accent)' }}>
-                              Counter on the table: {money(counter.salary)} x {counter.years}yr{' '}
-                              <button className="btn small" onClick={() => offer(p, counter.salary / 1e6, counter.years)}>
-                                Accept Counter
-                              </button>
-                            </span>
-                          )}
-                        </div>
-                        {res && !(res.ok && res.decision === 'accept') && (
-                          <div style={{ padding: '0 4px 6px', color: !res.ok || res.decision === 'reject' ? 'var(--red)' : 'var(--accent)' }}>
-                            {res.ok ? res.reason : res.error}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: 'var(--sp-2)' }}>
+                  <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)' }}>
+                    Counter: {money(counter.salary)} × {counter.years}yr
+                  </span>
+                  <Button size="sm" variant="secondary" onClick={() => offer(negotiatingPlayer, counter.salary / 1e6, counter.years)}>
+                    Accept Counter
+                  </Button>
+                </div>
               );
-            })}
-        </tbody>
-      </table>
+            })()}
+
+            {(() => {
+              const res = responses[negotiatingPlayer.id];
+              if (!res || (res.ok && res.decision === 'accept')) return null;
+              return (
+                <p style={{ color: !res.ok || res.decision === 'reject' ? 'var(--color-danger)' : 'var(--color-primary)', fontSize: 'var(--text-sm)', marginTop: 'var(--sp-1)' }}>
+                  {res.ok ? res.reason : res.error}
+                </p>
+              );
+            })()}
+          </Card>
+        </>
+      )}
     </div>
   );
 }

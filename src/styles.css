@@ -750,13 +750,11 @@ button.slot-pick:hover { border-color: var(--accent); }
 
 /* ---------- Trade Machine war room ---------- */
 .warroom {
-  background: #05070a;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
 }
-.warroom h2 { color: var(--team-color-safe); }
 .value-meter {
   height: 22px;
   border-radius: 11px;

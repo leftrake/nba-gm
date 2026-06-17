@@ -12,6 +12,7 @@ import {
 } from '../engine/scoutingTrips.js';
 import { regionFor, SCOUT_REGIONS } from '../engine/backstory.js';
 import { Ovr, Pot, PlayerLink, Origin, GuideTooltip } from './shared.jsx';
+import { Card, Button, Badge, Section, SectionHeader, Divider, Tabs, ProgressBar, Table, Stat } from './ui/index.js';
 
 const INTL_REGIONS = SCOUT_REGIONS.filter((r) => r !== 'Domestic');
 
@@ -19,20 +20,16 @@ function dollars(n) {
   return n >= 1_000_000 ? `$${(n / 1e6).toFixed(1)}M` : `$${Math.round(n / 1000)}K`;
 }
 
-// ---- Shared helpers ----
-
 function FogDot({ u }) {
   return (
     <span
       title={`Scouting uncertainty ±${u}`}
-      style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: fogColor(u), verticalAlign: 'middle', marginLeft: 3, flexShrink: 0 }}
+      style={{
+        display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+        background: fogColor(u), verticalAlign: 'middle', marginLeft: 3, flexShrink: 0,
+      }}
     />
   );
-}
-
-function run(fn, league, ...args) {
-  const res = fn(league, ...args);
-  return res;
 }
 
 // ---- Draft Board tab ----
@@ -46,23 +43,24 @@ function LockedRegionRow({ region, count, budget, league, userId, scouts, colCou
     else alert(res.error);
   };
   return (
-    <tr style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
+    <tr style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
       <td colSpan={colCount - 1}>
         🔒 {count} undiscovered prospect{count !== 1 ? 's' : ''} in {region}
       </td>
       <td>
-        {hasRegionalScout ? (
-          <span style={{ color: 'var(--muted)' }}>Regional scout covers this</span>
-        ) : (
-          <button
-            className="btn small secondary"
-            disabled={budget < cost}
-            onClick={doSweep}
-            title={`One-time sweep — discover all ${region} prospects in every class`}
-          >
-            Sweep ({dollars(cost)})
-          </button>
-        )}
+        {hasRegionalScout
+          ? <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Regional scout covers this</span>
+          : (
+            <Button
+              size="sm" variant="secondary"
+              disabled={budget < cost}
+              onClick={doSweep}
+              title={`One-time sweep — discover all ${region} prospects in every class`}
+            >
+              Sweep ({dollars(cost)})
+            </Button>
+          )
+        }
       </td>
     </tr>
   );
@@ -77,6 +75,7 @@ function ProspectRow({ p, league, budget, userId, hasBigBoard, hasSleeper, sleep
   const isSleeper = hasSleeper && sleeperIds.includes(p.id);
   const bbRank = hasBigBoard ? bigBoardIds.indexOf(p.id) : -1;
   const hidden = isHidden(p);
+  const pct = Math.min(100, Math.round((pts / DRAFT_POINTS_MAX) * 100));
 
   const doMission = (fn) => {
     const res = fn(league, userId, p.id);
@@ -86,10 +85,16 @@ function ProspectRow({ p, league, budget, userId, hasBigBoard, hasSleeper, sleep
 
   return (
     <tr>
-      {hasBigBoard && <td className="num" style={{ color: 'var(--muted)' }}>{bbRank >= 0 ? `#${bbRank + 1}` : '–'}</td>}
+      {hasBigBoard && (
+        <td className="num" style={{ color: 'var(--text-muted)' }}>
+          {bbRank >= 0 ? `#${bbRank + 1}` : '–'}
+        </td>
+      )}
       <td>
         <Ovr p={p} league={league} fogged />
-        {isSleeper && <span title="Sleeper pick — high upside, lightly scouted" style={{ marginLeft: 4, color: '#d29922' }}>★</span>}
+        {isSleeper && (
+          <span title="Sleeper pick — high upside, lightly scouted" style={{ marginLeft: 4, color: 'var(--color-warning)' }}>★</span>
+        )}
       </td>
       <td><Pot p={p} league={league} fogged /></td>
       <td><PlayerLink p={p} /></td>
@@ -97,34 +102,36 @@ function ProspectRow({ p, league, budget, userId, hasBigBoard, hasSleeper, sleep
       <td className="num">{p.age}</td>
       <td><Origin p={p} /></td>
       <td>{region}</td>
-      <td className="num">
+      <td>
         {hidden ? (
-          <span style={{ color: 'var(--muted)' }}>—</span>
+          <span style={{ color: 'var(--text-muted)' }}>—</span>
         ) : (
-          <span title={`${pts} of ${DRAFT_POINTS_MAX} scouting points`}>{pts}/{DRAFT_POINTS_MAX}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 80 }}
+               title={`${pts} of ${DRAFT_POINTS_MAX} scouting points`}>
+            <div style={{ width: 48, flexShrink: 0 }}>
+              <ProgressBar value={pct} variant={full ? 'success' : 'primary'} size="sm" />
+            </div>
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>
+              {pts}/{DRAFT_POINTS_MAX}
+            </span>
+          </div>
         )}
       </td>
       <td>
         {full ? (
-          <span style={{ color: 'var(--muted)' }}>Full read</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Full read</span>
         ) : (
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              className="btn small"
-              disabled={budget < wkCost}
-              onClick={() => doMission(workoutProspect)}
-              title={`Individual workout — +60 scouting points`}
-            >
+          <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
+            <Button size="sm" variant="primary" disabled={budget < wkCost}
+                    onClick={() => doMission(workoutProspect)}
+                    title="Individual workout — +60 scouting points">
               Workout ({dollars(wkCost)})
-            </button>
-            <button
-              className="btn small secondary"
-              disabled={budget < gwCost}
-              onClick={() => doMission(gameWatchProspect)}
-              title={`Game watch — +25 scouting points`}
-            >
+            </Button>
+            <Button size="sm" variant="secondary" disabled={budget < gwCost}
+                    onClick={() => doMission(gameWatchProspect)}
+                    title="Game watch — +25 scouting points">
               Watch ({dollars(gwCost)})
-            </button>
+            </Button>
           </div>
         )}
       </td>
@@ -142,7 +149,6 @@ function DraftClassSection({ dc, label, league, budget, userId, scouts, commit }
   const draftSortOvr = (p) => (isHidden(p) ? -Infinity : scoutedOverall(p, league.season));
   const sorted = [...discovered].sort((a, b) => draftSortOvr(b) - draftSortOvr(a));
 
-  // Group undiscovered international prospects by region
   const undiscoveredByRegion = {};
   for (const p of dc.prospects) {
     if (!isDiscovered(p, userId, league)) {
@@ -151,60 +157,60 @@ function DraftClassSection({ dc, label, league, budget, userId, scouts, commit }
     }
   }
 
+  // +1 for bigBoard rank column
   const colCount = 9 + (hasBigBoard ? 1 : 0);
 
   return (
-    <>
-      <h4 style={{ marginTop: 14, marginBottom: 6, color: 'var(--muted)', fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>
-        {label}
-      </h4>
-      <table>
-        <thead>
-          <tr>
-            {hasBigBoard && <th title="Big Board Analyst rank">#</th>}
-            <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th>
-            <th className="num">Age</th><th>From</th><th>Region</th>
-            <th className="num">Pts</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p) => (
-            <ProspectRow
-              key={p.id}
-              p={p}
-              league={league}
-              budget={budget}
-              userId={userId}
-              hasBigBoard={hasBigBoard}
-              hasSleeper={hasSleeper}
-              sleeperIds={sleeperIds}
-              bigBoardIds={bigBoardIds}
-              commit={commit}
-            />
-          ))}
-          {Object.entries(undiscoveredByRegion).map(([region, count]) => (
-            <LockedRegionRow
-              key={region}
-              region={region}
-              count={count}
-              budget={budget}
-              league={league}
-              userId={userId}
-              scouts={scouts}
-              colCount={colCount}
-              commit={commit}
-            />
-          ))}
-          {discovered.length === 0 && Object.keys(undiscoveredByRegion).length === 0 && (
+    <Section title={label} spacing="sm">
+      <div className="ui-table-wrap">
+        <table className="ui-table">
+          <thead>
             <tr>
-              <td colSpan={colCount} style={{ color: 'var(--muted)', textAlign: 'center', padding: 12 }}>
-                No prospects in this class yet.
-              </td>
+              {hasBigBoard && <th title="Big Board Analyst rank">#</th>}
+              <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th>
+              <th className="num">Age</th><th>From</th><th>Region</th>
+              <th>Scout</th><th>Missions</th>
             </tr>
-          )}
-        </tbody>
-      </table>
-    </>
+          </thead>
+          <tbody>
+            {sorted.map((p) => (
+              <ProspectRow
+                key={p.id}
+                p={p}
+                league={league}
+                budget={budget}
+                userId={userId}
+                hasBigBoard={hasBigBoard}
+                hasSleeper={hasSleeper}
+                sleeperIds={sleeperIds}
+                bigBoardIds={bigBoardIds}
+                commit={commit}
+              />
+            ))}
+            {Object.entries(undiscoveredByRegion).map(([region, count]) => (
+              <LockedRegionRow
+                key={region}
+                region={region}
+                count={count}
+                budget={budget}
+                league={league}
+                userId={userId}
+                scouts={scouts}
+                colCount={colCount}
+                commit={commit}
+              />
+            ))}
+            {discovered.length === 0 && Object.keys(undiscoveredByRegion).length === 0 && (
+              <tr>
+                <td colSpan={colCount} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--sp-8)' }}>
+                  No prospects in this class yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
 
@@ -232,54 +238,55 @@ function DraftBoardTab({ league, commit }) {
 
   return (
     <>
-      <div className="panel">
-        <GuideTooltip
-          tipKey="scouting_draft_board"
-          text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. The board spans 3 years so you can start building your board years in advance."
-          block
-        >
-          <h2>Draft Board</h2>
-        </GuideTooltip>
+      <GuideTooltip
+        tipKey="scouting_draft_board"
+        text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. The board spans 3 years so you can start building your board years in advance."
+        block
+      >
+        <SectionHeader
+          title="Draft Board"
+          subtitle={<>Budget: <b>{dollars(budget)}</b></>}
+          action={
+            <Button
+              size="sm" variant="secondary"
+              disabled={budget < POACH_COST}
+              onClick={doPoach}
+              title="Reveals which prospects 2 other teams have been scouting this offseason"
+            >
+              Poach Intel ({dollars(POACH_COST)})
+            </Button>
+          }
+        />
+      </GuideTooltip>
 
-        <div style={{ display: 'flex', gap: 16, alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap' }}>
-          <span>Budget: <b>{dollars(budget)}</b></span>
-          <button
-            className="btn small secondary"
-            disabled={budget < POACH_COST}
-            onClick={doPoach}
-            title="Reveals which prospects 2 other teams have been scouting this offseason"
-          >
-            Poach Intel ({dollars(POACH_COST)})
-          </button>
-        </div>
-
-        {allClasses.length === 0 ? (
-          <p style={{ color: 'var(--muted)' }}>
-            No upcoming draft classes loaded yet. The board populates at league start.
-          </p>
-        ) : (
-          allClasses.map((dc) => (
-            <DraftClassSection
-              key={dc.draftSeason}
-              dc={dc}
-              label={dc.label}
-              league={league}
-              budget={budget}
-              userId={userId}
-              scouts={scouts}
-              commit={commit}
-            />
-          ))
-        )}
-      </div>
+      {allClasses.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)', marginTop: 'var(--sp-4)' }}>
+          No upcoming draft classes loaded yet. The board populates at league start.
+        </p>
+      ) : (
+        allClasses.map((dc) => (
+          <DraftClassSection
+            key={dc.draftSeason}
+            dc={dc}
+            label={dc.label}
+            league={league}
+            budget={budget}
+            userId={userId}
+            scouts={scouts}
+            commit={commit}
+          />
+        ))
+      )}
 
       {reports.length > 0 && (
-        <div className="panel" style={{ marginTop: 14 }}>
-          <h3>Scout Reports</h3>
-          {reports.map((r, i) => (
-            <p key={i} style={{ marginBottom: 8 }}>{r.text}</p>
-          ))}
-        </div>
+        <>
+          <Divider />
+          <Section title="Scout Reports" spacing="sm">
+            {reports.map((r, i) => (
+              <p key={i} style={{ marginBottom: 'var(--sp-2)', color: 'var(--text-muted)' }}>{r.text}</p>
+            ))}
+          </Section>
+        </>
       )}
     </>
   );
@@ -313,18 +320,6 @@ function searchLeaguePlayers(league, query) {
   return out.slice(0, 25);
 }
 
-function FilmBar({ games }) {
-  const pct = Math.min(100, Math.round((games / PRO_SCOUT_GAMES_FULL) * 100));
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{ width: 60, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? 'var(--green)' : 'var(--accent)', borderRadius: 3 }} />
-      </div>
-      <span style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{games}/{PRO_SCOUT_GAMES_FULL}</span>
-    </div>
-  );
-}
-
 function ProScoutingTab({ league, commit, openPlayer }) {
   const s = league.scouting;
   const [query, setQuery] = useState('');
@@ -344,124 +339,134 @@ function ProScoutingTab({ league, commit, openPlayer }) {
     else alert(res.error);
   };
 
+  const watchCols = [
+    { key: 'ovr', label: 'Ovr', render: (row) => <Ovr p={row._p} league={league} fogged /> },
+    { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
+    { key: 'team', label: 'Team' },
+    { key: 'film', label: 'Film', render: (row) => {
+      const pct = Math.min(100, Math.round((row._games / PRO_SCOUT_GAMES_FULL) * 100));
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 90 }}>
+          <div style={{ width: 52, flexShrink: 0 }}>
+            <ProgressBar value={pct} variant={pct >= 100 ? 'success' : 'primary'} size="sm" />
+          </div>
+          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>
+            {row._games}/{PRO_SCOUT_GAMES_FULL}
+          </span>
+        </div>
+      );
+    }},
+    { key: 'fog', label: 'Fog', render: (row) => {
+      const u = row._u;
+      return u === null
+        ? <span style={{ color: 'var(--text-muted)' }} title="No read yet">?</span>
+        : <FogDot u={u} />;
+    }},
+    { key: 'action', label: '', render: (row) => (
+      <Button size="sm" variant="ghost" onClick={() => toggleWatch(row._key)}>Stop Watching</Button>
+    )},
+  ];
+
+  const watchRows = watchList.map((id) => {
+    const found = findLeaguePlayer(league, id);
+    if (!found) return null;
+    const { p, team } = found;
+    const games = proWatching[id] ?? 0;
+    const u = isHidden(p, games) ? null : scoutUncertainty(p, games);
+    return {
+      _key: id,
+      _p: p,
+      _games: games,
+      _u: u,
+      team: team ? `${team.city} ${team.name}` : 'Free Agent',
+    };
+  }).filter(Boolean);
+
+  const searchCols = [
+    { key: 'ovr', label: 'Ovr', render: (row) => <Ovr p={row._p} league={league} fogged /> },
+    { key: 'pot', label: 'Pot', render: (row) => <Pot p={row._p} league={league} fogged /> },
+    { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
+    { key: 'team', label: 'Team' },
+    { key: 'pos', label: 'Pos' },
+    { key: 'age', label: 'Age', numeric: true },
+    { key: 'action', label: '', render: (row) => {
+      const isWatching = watchList.includes(row._p.id);
+      return (
+        <Button
+          size="sm"
+          variant={isWatching ? 'secondary' : 'primary'}
+          disabled={!isWatching && slotsUsed >= PRO_WATCH_SLOTS}
+          title={!isWatching && slotsUsed >= PRO_WATCH_SLOTS ? `Watch list full (${PRO_WATCH_SLOTS} slots)` : undefined}
+          onClick={() => toggleWatch(row._p.id)}
+        >
+          {isWatching ? 'Watching ✓' : 'Watch'}
+        </Button>
+      );
+    }},
+  ];
+
+  const searchRows = matches.map(({ p, teamLabel }) => ({
+    _key: p.id,
+    _p: p,
+    team: teamLabel,
+    pos: p.pos,
+    age: p.age,
+  }));
+
   return (
     <>
-      <div className="panel">
-        <GuideTooltip
-          tipKey="scouting_pro"
-          text="Mark players as watched from here or from their player card. Each simmed game-day accumulates film — after 20 game-days your read reaches maximum tightness. Fog resets each offseason as players develop, but your watch list carries over. Rookies who were scouted pre-draft start with a head start based on their draft scouting points."
-          block
-        >
-          <h2>Pro Scouting</h2>
-        </GuideTooltip>
+      <GuideTooltip
+        tipKey="scouting_pro"
+        text="Mark players as watched from here or from their player card. Each simmed game-day accumulates film — after 20 game-days your read reaches maximum tightness. Fog resets each offseason as players develop, but your watch list carries over. Rookies who were scouted pre-draft start with a head start based on their draft scouting points."
+        block
+      >
+        <SectionHeader
+          title="Pro Scouting"
+          subtitle={
+            <span>
+              Watch slots: <b style={{ color: slotsUsed >= PRO_WATCH_SLOTS ? 'var(--color-danger)' : 'var(--text-primary)' }}>
+                {slotsUsed}/{PRO_WATCH_SLOTS} used
+              </b>
+            </span>
+          }
+        />
+      </GuideTooltip>
 
-        <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
-          Watch slots: <b style={{ color: slotsUsed >= PRO_WATCH_SLOTS ? 'var(--red)' : 'var(--text)' }}>{slotsUsed}/{PRO_WATCH_SLOTS} used</b>
+      {watchList.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-4)' }}>
+          No players on your watch list. Search below to add trade targets or free agents to track.
         </p>
+      ) : (
+        <>
+          <Table columns={watchCols} rows={watchRows} />
+          <Divider />
+        </>
+      )}
 
-        {watchList.length === 0 ? (
-          <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
-            No players on your watch list. Search below to add trade targets or free agents to track.
-          </p>
-        ) : (
-          <table style={{ marginBottom: 14 }}>
-            <thead>
-              <tr>
-                <th>Ovr</th><th>Player</th><th>Team</th>
-                <th>Film</th><th>Fog</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {watchList.map((id) => {
-                const found = findLeaguePlayer(league, id);
-                if (!found) return null;
-                const { p, team } = found;
-                const games = proWatching[id] ?? 0;
-                const u = isHidden(p, games) ? null : scoutUncertainty(p, games);
-                return (
-                  <tr key={id}>
-                    <td><Ovr p={p} league={league} fogged /></td>
-                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-                    <td>{team ? `${team.city} ${team.name}` : 'Free Agent'}</td>
-                    <td><FilmBar games={games} /></td>
-                    <td title={u === null ? 'No read yet' : `Uncertainty ±${u} — ${u <= 2 ? 'tight' : u <= 4 ? 'decent' : u <= 7 ? 'moderate' : 'wide'}`}>
-                      {u === null ? (
-                        <span style={{ color: 'var(--muted)' }}>?</span>
-                      ) : (
-                        <FogDot u={u} />
-                      )}
-                    </td>
-                    <td>
-                      <button className="btn small secondary" onClick={() => toggleWatch(id)}>
-                        Stop Watching
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        <h3 style={{ marginTop: 10 }}>Add Players to Watch</h3>
-        <p style={{ color: 'var(--muted)', marginBottom: 8 }}>
-          Search any other team's roster or free agents to track for trades or free agency.
-        </p>
+      <Section title="Add Players to Watch" subtitle="Search any other team's roster or free agents to track for trades or free agency.">
         <input
           type="text"
           placeholder="Search by player name..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          style={{ marginBottom: 10, maxWidth: 280 }}
+          style={{ marginBottom: 'var(--sp-3)', maxWidth: 280 }}
         />
         {query.trim().length >= 2 && (
-          matches.length === 0 ? (
-            <p style={{ color: 'var(--muted)', marginBottom: 10 }}>No matching players found.</p>
-          ) : (
-            <table style={{ marginBottom: 10 }}>
-              <thead>
-                <tr>
-                  <th>Ovr</th><th>Pot</th><th>Player</th><th>Team</th>
-                  <th>Pos</th><th className="num">Age</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {matches.map(({ p, teamLabel }) => {
-                  const isWatching = watchList.includes(p.id);
-                  return (
-                    <tr key={p.id}>
-                      <td><Ovr p={p} league={league} fogged /></td>
-                      <td><Pot p={p} league={league} fogged /></td>
-                      <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-                      <td>{teamLabel}</td>
-                      <td>{p.pos}</td>
-                      <td className="num">{p.age}</td>
-                      <td>
-                        <button
-                          className={`btn small${isWatching ? ' secondary' : ''}`}
-                          disabled={!isWatching && slotsUsed >= PRO_WATCH_SLOTS}
-                          onClick={() => toggleWatch(p.id)}
-                          title={!isWatching && slotsUsed >= PRO_WATCH_SLOTS ? `Watch list full (${PRO_WATCH_SLOTS} slots)` : undefined}
-                        >
-                          {isWatching ? 'Watching ✓' : 'Watch'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )
+          matches.length === 0
+            ? <p style={{ color: 'var(--text-muted)' }}>No matching players found.</p>
+            : <Table columns={searchCols} rows={searchRows} />
         )}
-      </div>
+      </Section>
 
       {proReports.length > 0 && (
-        <div className="panel" style={{ marginTop: 14 }}>
-          <h3>Pro Scout Reports</h3>
-          {proReports.map((r, i) => (
-            <p key={i} style={{ marginBottom: 8 }}>{r.text}</p>
-          ))}
-        </div>
+        <>
+          <Divider />
+          <Section title="Pro Scout Reports" spacing="sm">
+            {proReports.map((r, i) => (
+              <p key={i} style={{ marginBottom: 'var(--sp-2)', color: 'var(--text-muted)' }}>{r.text}</p>
+            ))}
+          </Section>
+        </>
       )}
     </>
   );
@@ -480,6 +485,7 @@ function StaffTab({ league, commit }) {
   const salary = totalScoutSalary(scouts);
   const budget = s?.budgets[userId] ?? 0;
   const canHire = league.phase?.startsWith('offseason');
+  const overBudget = salary > annual;
 
   const doHire = (type, qualifier = null) => {
     const res = hireScout(league, userId, type, qualifier);
@@ -493,160 +499,157 @@ function StaffTab({ league, commit }) {
     else alert(res.error);
   };
 
-  const overBudget = salary > annual;
+  const staffCols = [
+    { key: 'type', label: 'Scout Type', render: (row) => SCOUT_TYPES[row._sc.type]?.label ?? row._sc.type },
+    { key: 'specialty', label: 'Specialty', render: (row) => (
+      <span style={{ color: 'var(--text-muted)' }}>
+        {row._sc.region ?? (row._sc.range ? RANGE_LABELS[row._sc.range] : '—')}
+      </span>
+    )},
+    { key: 'salary', label: 'Salary', numeric: true, render: (row) => dollars(row._sc.salary) },
+    { key: 'action', label: '', render: (row) => (
+      <Button size="sm" variant="ghost" disabled={!canHire} onClick={() => doFire(row._sc)}>Release</Button>
+    )},
+  ];
+  const staffRows = scouts.map((sc, i) => ({ _key: i, _sc: sc }));
 
   return (
     <>
-      <div className="panel">
-        <h2>Scout Staff</h2>
-        <div style={{ marginBottom: 12 }}>
-          <span>Annual scouting budget: <b>{dollars(annual)}</b></span>
-          {' · '}
-          <span>Scout salaries: <b style={{ color: overBudget ? 'var(--red)' : 'var(--text)' }}>{dollars(salary)}</b></span>
-          {' · '}
-          <span>Available for missions: <b>{dollars(budget)}</b></span>
-          {' · '}
-          <span style={{ color: 'var(--muted)' }}>{scouts.length}/{MAX_SCOUTS} scouts</span>
-        </div>
+      <SectionHeader title="Scout Staff" />
 
-        {overBudget && (
-          <p style={{ color: 'var(--red)', marginBottom: 10 }}>
-            ⚠ Scout salaries exceed this season's budget — consider releasing a scout.
-          </p>
-        )}
+      <Card style={{ display: 'flex', gap: 'var(--sp-8)', flexWrap: 'wrap', marginBottom: 'var(--sp-4)' }}>
+        <Stat value={dollars(annual)} label="Annual Budget" size="sm" />
+        <Stat value={dollars(salary)} label="Scout Salaries" size="sm" color={overBudget ? 'var(--color-danger)' : undefined} />
+        <Stat value={dollars(budget)} label="Available (Missions)" size="sm" />
+        <Stat value={`${scouts.length}/${MAX_SCOUTS}`} label="Scouts on Staff" size="sm" />
+      </Card>
 
-        {!canHire && (
-          <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
-            Scout hiring and releasing is only available during the offseason.
-          </p>
-        )}
+      {overBudget && (
+        <Card style={{ borderLeft: '3px solid var(--color-danger)', marginBottom: 'var(--sp-4)', color: 'var(--color-danger)', fontSize: 'var(--text-sm)' }}>
+          Scout salaries exceed this season's budget — consider releasing a scout.
+        </Card>
+      )}
 
-        {scouts.length > 0 ? (
-          <table style={{ marginBottom: 16 }}>
-            <thead>
-              <tr><th>Scout Type</th><th>Specialty</th><th className="num">Salary</th><th></th></tr>
-            </thead>
-            <tbody>
-              {scouts.map((sc, i) => (
-                <tr key={i}>
-                  <td>{SCOUT_TYPES[sc.type]?.label ?? sc.type}</td>
-                  <td style={{ color: 'var(--muted)' }}>
-                    {sc.region ?? (sc.range ? RANGE_LABELS[sc.range] : '—')}
-                  </td>
-                  <td className="num">{dollars(sc.salary)}</td>
-                  <td>
-                    <button className="btn small secondary" disabled={!canHire} onClick={() => doFire(sc)}>
-                      Release
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p style={{ color: 'var(--muted)', marginBottom: 16 }}>No scouts on staff.</p>
-        )}
+      {!canHire && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-3)' }}>
+          Scout hiring and releasing is only available during the offseason.
+        </p>
+      )}
 
-        {scouts.length < MAX_SCOUTS && (
-          <>
-            <h3 style={{ marginBottom: 8 }}>Hire Scouts</h3>
+      {scouts.length > 0 ? (
+        <>
+          <Table columns={staffCols} rows={staffRows} />
+          <Divider />
+        </>
+      ) : (
+        <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-4)' }}>No scouts on staff.</p>
+      )}
 
-            {/* Regional scouts */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ marginBottom: 4 }}>
-                <b>Regional Scout</b>
-                <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-                  {dollars(SCOUT_TYPES.regional.salary)}/yr — auto-discovers all prospects in a region each offseason
+      {scouts.length < MAX_SCOUTS && (
+        <Section title="Hire Scouts">
+          {/* Regional scouts */}
+          <div style={{ marginBottom: 'var(--sp-4)' }}>
+            <div style={{ marginBottom: 'var(--sp-2)' }}>
+              <b>Regional Scout</b>
+              <span style={{ color: 'var(--text-muted)', marginLeft: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                {dollars(SCOUT_TYPES.regional.salary)}/yr — auto-discovers all prospects in a region each offseason
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+              {INTL_REGIONS.map((region) => {
+                const has = scouts.some((sc) => sc.type === 'regional' && sc.region === region);
+                const wouldExceed = !has && salary + SCOUT_TYPES.regional.salary > annual;
+                return (
+                  <Button
+                    key={region}
+                    size="sm"
+                    variant={has ? 'secondary' : 'ghost'}
+                    disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
+                    title={has ? `Already have a ${region} scout` : wouldExceed ? 'Salary would exceed budget' : `Hire a regional scout for ${region}`}
+                    onClick={() => doHire('regional', region)}
+                  >
+                    {region}{has ? ' ✓' : ''}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sleeper finder */}
+          {(() => {
+            const has = scouts.some((sc) => sc.type === 'sleeper');
+            const wouldExceed = !has && salary + SCOUT_TYPES.sleeper.salary > annual;
+            return (
+              <div style={{ marginBottom: 'var(--sp-3)' }}>
+                <Button
+                  size="sm"
+                  variant={has ? 'secondary' : 'ghost'}
+                  disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
+                  title={wouldExceed ? 'Salary would exceed budget' : undefined}
+                  onClick={() => doHire('sleeper')}
+                >
+                  {has ? 'Sleeper Finder ✓' : `Hire Sleeper Finder (${dollars(SCOUT_TYPES.sleeper.salary)}/yr)`}
+                </Button>
+                {' '}
+                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                  flags 3–5 high-upside, under-scouted prospects each offseason
                 </span>
               </div>
-              <div className="controls">
-                {INTL_REGIONS.map((region) => {
-                  const has = scouts.some((sc) => sc.type === 'regional' && sc.region === region);
-                  const wouldExceed = !has && salary + SCOUT_TYPES.regional.salary > annual;
-                  return (
-                    <button
-                      key={region}
-                      className={`btn small${has ? '' : ' secondary'}`}
-                      disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
-                      title={has ? `Already have a ${region} scout` : wouldExceed ? 'Salary would exceed budget' : `Hire a regional scout for ${region}`}
-                      onClick={() => doHire('regional', region)}
-                    >
-                      {region}{has ? ' ✓' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            );
+          })()}
 
-            {/* Sleeper finder */}
-            {(() => {
-              const has = scouts.some((sc) => sc.type === 'sleeper');
-              const wouldExceed = !has && salary + SCOUT_TYPES.sleeper.salary > annual;
-              return (
-                <div style={{ marginBottom: 10 }}>
-                  <button
-                    className="btn small secondary"
-                    disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
-                    title={wouldExceed ? 'Salary would exceed budget' : undefined}
-                    onClick={() => doHire('sleeper')}
-                  >
-                    {has ? 'Sleeper Finder ✓' : `Hire Sleeper Finder (${dollars(SCOUT_TYPES.sleeper.salary)}/yr)`}
-                  </button>
-                  {' '}
-                  <span style={{ color: 'var(--muted)' }}>flags 3–5 high-upside, under-scouted prospects each offseason</span>
-                </div>
-              );
-            })()}
-
-            {/* Big board analyst */}
-            {(() => {
-              const has = scouts.some((sc) => sc.type === 'bigBoard');
-              const wouldExceed = !has && salary + SCOUT_TYPES.bigBoard.salary > annual;
-              return (
-                <div style={{ marginBottom: 10 }}>
-                  <button
-                    className="btn small secondary"
-                    disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
-                    title={wouldExceed ? 'Salary would exceed budget' : undefined}
-                    onClick={() => doHire('bigBoard')}
-                  >
-                    {has ? 'Big Board Analyst ✓' : `Hire Big Board Analyst (${dollars(SCOUT_TYPES.bigBoard.salary)}/yr)`}
-                  </button>
-                  {' '}
-                  <span style={{ color: 'var(--muted)' }}>generates a top-20 ranked list weighted by positional need</span>
-                </div>
-              );
-            })()}
-
-            {/* Range specialists */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ marginBottom: 4 }}>
-                <b>Draft Range Specialist</b>
-                <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-                  {dollars(SCOUT_TYPES.rangeSpecialist.salary)}/yr — +10 baseline points to prospects in their range
+          {/* Big board analyst */}
+          {(() => {
+            const has = scouts.some((sc) => sc.type === 'bigBoard');
+            const wouldExceed = !has && salary + SCOUT_TYPES.bigBoard.salary > annual;
+            return (
+              <div style={{ marginBottom: 'var(--sp-3)' }}>
+                <Button
+                  size="sm"
+                  variant={has ? 'secondary' : 'ghost'}
+                  disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
+                  title={wouldExceed ? 'Salary would exceed budget' : undefined}
+                  onClick={() => doHire('bigBoard')}
+                >
+                  {has ? 'Big Board Analyst ✓' : `Hire Big Board Analyst (${dollars(SCOUT_TYPES.bigBoard.salary)}/yr)`}
+                </Button>
+                {' '}
+                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                  generates a top-20 ranked list weighted by positional need
                 </span>
               </div>
-              <div className="controls">
-                {[['lottery', 'Lottery (Top 14)'], ['secondRound', '2nd Round']].map(([range, label]) => {
-                  const has = scouts.some((sc) => sc.type === 'rangeSpecialist' && sc.range === range);
-                  const wouldExceed = !has && salary + SCOUT_TYPES.rangeSpecialist.salary > annual;
-                  return (
-                    <button
-                      key={range}
-                      className={`btn small${has ? '' : ' secondary'}`}
-                      disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
-                      title={has ? 'Already have this specialist' : wouldExceed ? 'Salary would exceed budget' : undefined}
-                      onClick={() => doHire('rangeSpecialist', range)}
-                    >
-                      {label}{has ? ' ✓' : ''}
-                    </button>
-                  );
-                })}
-              </div>
+            );
+          })()}
+
+          {/* Range specialists */}
+          <div style={{ marginBottom: 'var(--sp-3)' }}>
+            <div style={{ marginBottom: 'var(--sp-2)' }}>
+              <b>Draft Range Specialist</b>
+              <span style={{ color: 'var(--text-muted)', marginLeft: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                {dollars(SCOUT_TYPES.rangeSpecialist.salary)}/yr — +10 baseline points to prospects in their range
+              </span>
             </div>
-          </>
-        )}
-      </div>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+              {[['lottery', 'Lottery (Top 14)'], ['secondRound', '2nd Round']].map(([range, label]) => {
+                const has = scouts.some((sc) => sc.type === 'rangeSpecialist' && sc.range === range);
+                const wouldExceed = !has && salary + SCOUT_TYPES.rangeSpecialist.salary > annual;
+                return (
+                  <Button
+                    key={range}
+                    size="sm"
+                    variant={has ? 'secondary' : 'ghost'}
+                    disabled={has || scouts.length >= MAX_SCOUTS || !canHire}
+                    title={has ? 'Already have this specialist' : wouldExceed ? 'Salary would exceed budget' : undefined}
+                    onClick={() => doHire('rangeSpecialist', range)}
+                  >
+                    {label}{has ? ' ✓' : ''}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </Section>
+      )}
     </>
   );
 }
@@ -658,38 +661,34 @@ export default function Scouting({ league, commit, openPlayer }) {
   const watchCount = league.scouting?.proWatchList?.length ?? 0;
   const scouts = getScouts(league, league.userTeamId);
 
-  return (
-    <>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button
-          className={`btn small${tab === 'draft' ? '' : ' secondary'}`}
-          onClick={() => setTab('draft')}
-        >
-          Draft Board
-        </button>
-        <button
-          className={`btn small${tab === 'pro' ? '' : ' secondary'}`}
-          onClick={() => setTab('pro')}
-        >
+  const tabs = [
+    { key: 'draft', label: 'Draft Board' },
+    {
+      key: 'pro',
+      label: (
+        <>
           Pro Scouting
-          {watchCount > 0 && (
-            <span style={{ marginLeft: 5, color: 'var(--muted)' }}>({watchCount})</span>
-          )}
-        </button>
-        <button
-          className={`btn small${tab === 'staff' ? '' : ' secondary'}`}
-          onClick={() => setTab('staff')}
-        >
+          {watchCount > 0 && <Badge variant="default" style={{ marginLeft: 'var(--sp-1)' }}>{watchCount}</Badge>}
+        </>
+      ),
+    },
+    {
+      key: 'staff',
+      label: (
+        <>
           Staff
-          {scouts.length > 0 && (
-            <span style={{ marginLeft: 5, color: 'var(--muted)' }}>({scouts.length})</span>
-          )}
-        </button>
-      </div>
+          {scouts.length > 0 && <Badge variant="default" style={{ marginLeft: 'var(--sp-1)' }}>{scouts.length}</Badge>}
+        </>
+      ),
+    },
+  ];
 
+  return (
+    <div className="page-fade">
+      <Tabs tabs={tabs} activeTab={tab} onTabChange={setTab} />
       {tab === 'draft' && <DraftBoardTab league={league} commit={commit} openPlayer={openPlayer} />}
       {tab === 'pro' && <ProScoutingTab league={league} commit={commit} openPlayer={openPlayer} />}
       {tab === 'staff' && <StaffTab league={league} commit={commit} />}
-    </>
+    </div>
   );
 }
