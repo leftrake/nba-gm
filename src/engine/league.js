@@ -736,7 +736,7 @@ export function simDay(league) {
   league.resultsByDay[league.dayIndex] = results.map((r) => {
     const slim = { home: r.home, away: r.away, homePts: r.homePts, awayPts: r.awayPts, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, injuryReport: r.injuryReport };
     if (r.home === league.userTeamId || r.away === league.userTeamId) {
-      return { ...slim, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox), events: r.events };
+      return { ...slim, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox), events: r.events, playByPlay: r.playByPlay };
     }
     return { ...slim, homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) };
   });
@@ -853,7 +853,7 @@ export function simPlayoffGame(league) {
     // (league.playoffs resets every year, so they don't accumulate)
     const game = {
       home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
-      homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events,
+      homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay,
       homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox),
       injuryReport: hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, gamesLeft: p.injury.gamesLeft })),
     };

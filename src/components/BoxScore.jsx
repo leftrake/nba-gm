@@ -177,6 +177,24 @@ export function TopPerformers({ league, game, openPlayer }) {
   );
 }
 
+// Full possession-by-possession log: every shot, rebound, turnover, foul,
+// and free throw in game order with period + clock.
+export function PlayByPlay({ events }) {
+  if (!events?.length) return null;
+  return (
+    <div>
+      {events.map((e, i) => (
+        <div className="news-item" key={i}>
+          <span style={{ color: 'var(--muted)', display: 'inline-block', minWidth: 70 }}>
+            {e.q}{e.t ? ` ${e.t}` : ''}
+          </span>
+          {e.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // The highlight log recorded during the sim: runs, clutch shots, big
 // quarters, quarter scores, injuries. Post-game notes carry no period tag.
 export function GameFlow({ events }) {
@@ -202,6 +220,7 @@ export function GameFlow({ events }) {
 // the save kept them, and the game-flow log. Falls back gracefully for
 // games stored slim (top performers only) and for results from old saves.
 export default function GameModal({ league, game, title, onClose, openTeam, openPlayer }) {
+  const hasPbp = !!(game.playByPlay?.length);
   const [boxTab, setBoxTab] = useState('away');
 
   useEffect(() => {
@@ -238,6 +257,11 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
                 <button className={`ui-tab${boxTab === 'home' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('home')}>
                   <TeamBadge team={home} size="small" /> {home.name} {game.homePts}
                 </button>
+                {hasPbp && (
+                  <button className={`ui-tab${boxTab === 'pbp' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('pbp')}>
+                    Play by Play
+                  </button>
+                )}
               </div>
               <div className="ui-table-wrap">
                 {boxTab === 'away' && (
@@ -246,6 +270,7 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
                 {boxTab === 'home' && (
                   <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
                 )}
+                {boxTab === 'pbp' && <PlayByPlay events={game.playByPlay} />}
               </div>
             </>
           ) : (
