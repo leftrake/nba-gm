@@ -141,15 +141,18 @@ export function maybeOwnerInterference(league, team, rng) {
 
 // ---------- Signing budget ----------
 
-// Whether a contract's salary would push payroll above what the owner has
-// budgeted this season. This is advisory only: a cap-legal signing always
+// Whether a contract's salary would push total team spend above what the owner
+// has budgeted this season. This is advisory only: a cap-legal signing always
 // goes through, but exceeding budget costs approval (see below).
+// Coach salary is included as a pre-committed operating expense even though
+// it does not count against the cap.
 export function exceedsOwnerBudget(team, salary) {
   const owner = team.owner;
   if (!owner) return false;
   let budgetCap = owner.budget;
   if (owner.approval < 25) budgetCap = Math.min(budgetCap, payroll(team)); // payroll freeze
-  return payroll(team) + salary > budgetCap;
+  const coachCost = team.coach?.salary ?? 0;
+  return payroll(team) + coachCost + salary > budgetCap;
 }
 
 // Approval hit for signing a player whose salary exceeds the owner's budget.

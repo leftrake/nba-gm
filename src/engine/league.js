@@ -26,7 +26,7 @@ import {
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
 import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting } from './scoutingTrips.js';
 import { computeQualitySeasons, TRAIT_NEWS_REVEAL_TIERS, traitFromPotential } from './devTraits.js';
-import { generateCoach, devBonus } from './coach.js';
+import { generateCoach, devBonus, coachSalary } from './coach.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -391,6 +391,7 @@ export function backfillPlayers(league) {
     // saves predating the coaching staff system
     if (!team.coach) team.coach = generateCoach(rng);
     if (!team.coach.style) team.coach.style = 'balanced';
+    if (!team.coach.salary) team.coach.salary = coachSalary(team.coach.rating);
   }
   if (!league.coachCandidates) league.coachCandidates = [generateCoach(rng), generateCoach(rng)];
   // Saves predating the ownership system: generate an owner for the user's team
@@ -1156,7 +1157,10 @@ export function advanceOffseason(league) {
     // AI teams quietly re-sign or replace their coach; the user does this on
     // the Coaching Decisions screen instead (see league.coachCandidates below).
     if (team.id !== league.userTeamId) {
-      if (team.coach.rating < 60 && coachRng() < 0.3) {
+      // Expensive bad coaches face slightly more pressure; cheap bad coaches
+      // still fire at normal rate so AI doesn't hoard low-salary underperformers.
+      const fireP = team.coach.salary >= 7_000_000 ? 0.35 : 0.3;
+      if (team.coach.rating < 60 && coachRng() < fireP) {
         pushNews(league, { day: 0, category: 'league', teamIds: [team.id], text: `The ${team.name} part ways with head coach ${team.coach.name} after a disappointing season.` });
         team.coach = generateCoach(coachRng);
       } else {

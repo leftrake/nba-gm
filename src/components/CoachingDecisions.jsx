@@ -1,6 +1,6 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
-import { SPECIALTY_INFO } from '../engine/coach.js';
+import { SPECIALTY_INFO, coachSalary } from '../engine/coach.js';
 
 function ratingLabel(rating) {
   if (rating >= 85) return 'Elite';
@@ -9,8 +9,13 @@ function ratingLabel(rating) {
   return 'Weak';
 }
 
+function fmtSalary(salary) {
+  return `$${(salary / 1_000_000).toFixed(1)}M`;
+}
+
 function CoachCard({ coach, selected, tag, onSelect }) {
   const info = SPECIALTY_INFO[coach.specialty];
+  const salary = coach.salary ?? coachSalary(coach.rating);
   return (
     <div
       className="panel"
@@ -25,6 +30,11 @@ function CoachCard({ coach, selected, tag, onSelect }) {
       <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>Age {coach.age}</div>
       <div style={{ marginBottom: 4 }}>
         <b>{info.label}</b> · {ratingLabel(coach.rating)} ({coach.rating})
+      </div>
+      <div style={{ fontSize: 13, marginBottom: 8 }}>
+        <span style={{ color: 'var(--muted)' }}>Salary: </span>
+        <b>{fmtSalary(salary)}</b>
+        <span style={{ color: 'var(--muted)' }}>/yr · not cap-counted</span>
       </div>
       <p style={{ color: 'var(--muted)', fontSize: 13 }}>{info.blurb}</p>
       {coach.seasonsWithTeam > 0 && (

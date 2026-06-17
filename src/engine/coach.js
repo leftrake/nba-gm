@@ -60,15 +60,19 @@ function pickStyle(rng) {
   return 'grind-it-out';
 }
 
+// Annual salary keyed off rating: ~$4M at minimum rating, ~$7.5M at maximum.
+// Does not count against the salary cap; treated as a team operating expense.
+export function coachSalary(rating) {
+  return Math.round((4_000_000 + ((rating - 45) / 54) * 3_500_000) / 100_000) * 100_000;
+}
+
 export function generateCoach(rng) {
-  return {
-    name: coachName(rng),
-    age: randInt(38, 68, rng),
-    specialty: pick(COACH_SPECIALTIES, rng),
-    style: pickStyle(rng),
-    rating: randInt(45, 99, rng),
-    seasonsWithTeam: 0,
-  };
+  const name = coachName(rng);
+  const age = randInt(38, 68, rng);
+  const specialty = pick(COACH_SPECIALTIES, rng);
+  const style = pickStyle(rng);
+  const rating = randInt(45, 99, rng);
+  return { name, age, specialty, style, rating, salary: coachSalary(rating), seasonsWithTeam: 0 };
 }
 
 // Yearly ceiling (potential) nudge for players under 25 (see developPlayer),
