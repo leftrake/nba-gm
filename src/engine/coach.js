@@ -22,6 +22,29 @@ export const SPECIALTY_INFO = {
   },
 };
 
+// Tactical style — independent of specialty. A coach is e.g. Development + defensive.
+// Balanced is the most common (~35%); the three active styles split the remainder.
+export const COACH_STYLES = ['pace-and-space', 'defensive', 'grind-it-out', 'balanced'];
+
+export const STYLE_INFO = {
+  'pace-and-space': {
+    label: 'Pace & Space',
+    blurb: 'Pushes pace and spaces the floor with threes. Works best with shooters.',
+  },
+  defensive: {
+    label: 'Defensive',
+    blurb: 'Slows the game and focuses on stopping opponents. Works best with defenders.',
+  },
+  'grind-it-out': {
+    label: 'Grind It Out',
+    blurb: 'Controls pace and attacks the interior. Works best with bigs.',
+  },
+  balanced: {
+    label: 'Balanced',
+    blurb: 'No strong scheme preference — modest gains regardless of roster shape.',
+  },
+};
+
 const FIRST_NAMES = ['Doug', 'Monty', 'Erik', 'Tyronn', 'Nate', 'Quin', 'Chauncey', 'Dawn', 'Becky', 'Ime', 'Wes', 'Frank', 'Mike', 'Steve', 'Darvin', 'J.B.', 'Taylor', 'Charlotte', 'Adrian', 'Billy'];
 const LAST_NAMES = ['Rivers', 'Williams', 'Spoelstra', 'Lue', 'McMillan', 'Snyder', 'Billups', 'Staley', 'Hammon', 'Udoka', 'Unseld', 'Vogel', 'Malone', 'Kerr', 'Ham', 'Bickerstaff', 'Jenkins', 'Reid', 'Griffin', 'Donovan'];
 
@@ -29,11 +52,20 @@ function coachName(rng) {
   return `${pick(FIRST_NAMES, rng)} ${pick(LAST_NAMES, rng)}`;
 }
 
+function pickStyle(rng) {
+  const roll = rng();
+  if (roll < 0.35) return 'balanced';
+  if (roll < 0.55) return 'pace-and-space';
+  if (roll < 0.75) return 'defensive';
+  return 'grind-it-out';
+}
+
 export function generateCoach(rng) {
   return {
     name: coachName(rng),
     age: randInt(38, 68, rng),
     specialty: pick(COACH_SPECIALTIES, rng),
+    style: pickStyle(rng),
     rating: randInt(45, 99, rng),
     seasonsWithTeam: 0,
   };

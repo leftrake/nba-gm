@@ -390,6 +390,7 @@ export function backfillPlayers(league) {
     if (!team.deadMoney) team.deadMoney = [];
     // saves predating the coaching staff system
     if (!team.coach) team.coach = generateCoach(rng);
+    if (!team.coach.style) team.coach.style = 'balanced';
   }
   if (!league.coachCandidates) league.coachCandidates = [generateCoach(rng), generateCoach(rng)];
   // Saves predating the ownership system: generate an owner for the user's team

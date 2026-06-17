@@ -49,8 +49,98 @@ function rotationStrength(rot) {
   return rot.reduce((s, r) => s + overall(r.p) * playerFit(r.p, r.slot) * r.min, 0) / totalMin;
 }
 
+// ---------- Coaching style modifiers ----------
+// All magnitudes are intentionally secondary to roster talent.
+// A perfectly-fit scheme vs. a badly-mismatched roster of equal talent is ~2–3 pts/game.
+
+// Per rating point above/below 70: teamStrength() scaling (previews & trade logic)
+const COACH_STRENGTH_MULT = 0.0008;
+
+// Fit curve: effect at normalized fit c = c * (1 + FIT_PENALTY) - FIT_PENALTY
+//   fit=0 → -FIT_PENALTY  (scheme hurts a badly mismatched roster)
+//   fit=1 → 1.0           (full style benefit)
+const FIT_PENALTY = 0.4;
+const FIT_BASE = 52;    // raw rating that maps to fit=0
+const FIT_RANGE = 25;   // range above FIT_BASE for fit=1
+
+// pace-and-space: more threes, faster pace
+const PAS_THREE_BOOST = 0.28;  // wThree *= (1 + PAS_THREE_BOOST * effect)
+const PAS_PACE = 2;            // possessions added per team at fit=1
+
+// defensive: stronger defense, slower pace
+const DEF_RATING_BOOST = 2.5;  // def rating added per player at fit=1
+const DEF_PACE = -2;           // possessions subtracted at fit=1
+
+// grind-it-out: more inside shots, modest defense, slowest pace
+const GIO_INS_BOOST = 0.18;   // wIns *= (1 + GIO_INS_BOOST * effect)
+const GIO_DEF_BOOST = 1.2;    // smaller def boost than pure defensive
+const GIO_PACE = -4;           // possessions subtracted at fit=1
+
+// balanced: tiny fit-independent lift to everything; no penalty
+const BAL_SHOT_BOOST = 0.03;  // wIns/wMid/wThree *= (1 + BAL_SHOT_BOOST)
+const BAL_DEF_BOOST = 0.4;    // def rating added per player (flat)
+
+// Normalized [0..1] fit: how well the rotation's raw ratings match the style.
+function rotationFit(rot, style) {
+  if (rot.length === 0) return 0.5;
+  let sum = 0;
+  for (const { p } of rot) {
+    const r = p.ratings;
+    if (style === 'pace-and-space')   sum += r.three;
+    else if (style === 'defensive')   sum += r.defense;
+    else if (style === 'grind-it-out') sum += (r.inside + r.rebounding) / 2;
+  }
+  return clamp((sum / rot.length - FIT_BASE) / FIT_RANGE, 0, 1);
+}
+
+// Maps fit [0..1] to an effect multiplier: negative at low fit, 1.0 at perfect fit.
+function fitEffect(fit) {
+  return fit * (1 + FIT_PENALTY) - FIT_PENALTY;
+}
+
+// Pre-game: mutates gamePlayer objects to apply shot-mix and defensive shifts.
+// defBase is updated alongside def so applyFatigue tracks off the adjusted baseline.
+function applyStyleAdjustments(coach, rot, players) {
+  const style = coach?.style ?? 'balanced';
+  if (style === 'balanced') {
+    for (const gp of players) {
+      gp.wIns   *= 1 + BAL_SHOT_BOOST;
+      gp.wMid   *= 1 + BAL_SHOT_BOOST;
+      gp.wThree *= 1 + BAL_SHOT_BOOST;
+      gp.def    += BAL_DEF_BOOST;
+      gp.defBase += BAL_DEF_BOOST;
+    }
+    return;
+  }
+  const eff = fitEffect(rotationFit(rot, style));
+  for (const gp of players) {
+    if (style === 'pace-and-space') {
+      gp.wThree *= 1 + PAS_THREE_BOOST * eff;
+    } else if (style === 'defensive') {
+      gp.def    += DEF_RATING_BOOST * eff;
+      gp.defBase += DEF_RATING_BOOST * eff;
+    } else if (style === 'grind-it-out') {
+      gp.wIns   *= 1 + GIO_INS_BOOST * eff;
+      gp.def    += GIO_DEF_BOOST * eff;
+      gp.defBase += GIO_DEF_BOOST * eff;
+    }
+  }
+}
+
+// Pace contribution from one team's coaching style (in possessions per team).
+// Both teams' bonuses are summed in simGame to get the shared game pace.
+function stylePaceBonus(coach, rot) {
+  const style = coach?.style ?? 'balanced';
+  if (style === 'pace-and-space') return PAS_PACE  * fitEffect(rotationFit(rot, style));
+  if (style === 'defensive')      return DEF_PACE  * fitEffect(rotationFit(rot, style));
+  if (style === 'grind-it-out')   return GIO_PACE  * fitEffect(rotationFit(rot, style));
+  return 0;
+}
+
 export function teamStrength(team) {
-  return rotationStrength(getRotation(team));
+  const base = rotationStrength(getRotation(team));
+  const coachMult = team.coach ? 1 + (team.coach.rating - 70) * COACH_STRENGTH_MULT : 1;
+  return base * coachMult;
 }
 
 // ---------- Possession engine ----------
@@ -368,12 +458,19 @@ function featureTopOption(players) {
 }
 
 export function simGame(homeTeam, awayTeam, rng = rand) {
-  const homePlayers = getRotation(homeTeam).map((e) => gamePlayer(e, rng));
-  const awayPlayers = getRotation(awayTeam).map((e) => gamePlayer(e, rng));
+  const homeRot = getRotation(homeTeam);
+  const awayRot = getRotation(awayTeam);
+  const homePlayers = homeRot.map((e) => gamePlayer(e, rng));
+  const awayPlayers = awayRot.map((e) => gamePlayer(e, rng));
+  applyStyleAdjustments(homeTeam.coach, homeRot, homePlayers);
+  applyStyleAdjustments(awayTeam.coach, awayRot, awayPlayers);
   featureTopOption(homePlayers);
   featureTopOption(awayPlayers);
 
-  const poss = Math.round(clamp(gauss(99, 2.5, rng), 92, 106));
+  // Both teams contribute to shared game pace; the sum reflects "pace negotiations"
+  // (a p&s coach vs. a grind coach produce a middling tempo).
+  const possMean = 99 + stylePaceBonus(homeTeam.coach, homeRot) + stylePaceBonus(awayTeam.coach, awayRot);
+  const poss = Math.round(clamp(gauss(possMean, 2.5, rng), 88, 112));
   const homeScore = { pts: 0, last: null }; // .last: most recent scorer, for the log
   const awayScore = { pts: 0, last: null };
 
