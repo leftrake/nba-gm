@@ -34,7 +34,7 @@ function BoxInjuryIcon({ entry }) {
 export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injuryReport }) {
   const byId = usePlayerIndex(league);
   const team = getTeam(league, teamId);
-  const lines = asLines(box).filter((l) => l.min > 0);
+  const lines = asLines(box).filter((l) => l.min > 0 || l.pts > 0 || l.reb > 0 || l.ast > 0 || l.stl > 0 || l.blk > 0 || l.tov > 0 || l.fgm > 0);
   const total = (k) => lines.reduce((s, l) => s + l[k], 0);
   const injuryById = new Map((injuryReport || []).map((e) => [e.playerId, e]));
   const hurtHere = (injuryReport || []).filter((e) => lines.some((l) => l.playerId === e.playerId));
