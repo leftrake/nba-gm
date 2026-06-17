@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { SAVE_VERSION, checkSave } from '../engine/save.js';
 import { THEMES, DEFAULT_ACCENT } from '../theme.js';
 
-export default function Settings({ league, importLeague, onResetTutorial, theme, setTheme, accentColor, setAccentColor }) {
+export default function Settings({ league, commit, importLeague, onResetTutorial, theme, setTheme, accentColor, setAccentColor }) {
   const fileRef = useRef(null);
   const [importError, setImportError] = useState(null);
   const [tutorialReset, setTutorialReset] = useState(false);
@@ -93,6 +93,27 @@ export default function Settings({ league, importLeague, onResetTutorial, theme,
           <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setAccentColor(DEFAULT_ACCENT)}>Reset Accent</button>
         )}
       </div>
+
+      <div className="ui-divider ui-divider--lg" />
+
+      <div className="ui-section-header">
+        <div className="ui-section-title">Gameplay</div>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--text-base)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={!!league.settings?.suppressInjuryAlerts}
+          onChange={(e) => {
+            if (!league.settings) league.settings = {};
+            league.settings.suppressInjuryAlerts = e.target.checked;
+            commit?.();
+          }}
+        />
+        Suppress injury alerts during simulation
+      </label>
+      <p className="ui-section-subtitle" style={{ marginTop: 'var(--sp-1)', marginBottom: 0 }}>
+        Injuries still happen — you just won't be interrupted mid-sim. Check your roster after simming to see who went down.
+      </p>
 
       <div className="ui-divider ui-divider--lg" />
 

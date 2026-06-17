@@ -360,7 +360,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                 value={p.trainingFocus || ''}
                 onChange={(e) => { p.trainingFocus = e.target.value || null; commit?.(); }}
               >
-                <option value="">None</option>
+                <option value="">Balanced</option>
                 {TRAINING_FOCUS_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
               </select>
               {p.trainingFocus && (() => {

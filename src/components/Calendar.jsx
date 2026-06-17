@@ -79,8 +79,10 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
       const returned = rosterAfter.filter((p) => !p.injury && injuredBefore.has(p.id))
         .map((p) => ({ id: p.id, name: p.name, pos: p.pos }));
       if (injured.length || returned.length) {
-        setInjuryAlert({ injured, returned });
-        break;
+        if (!leagueRef.current.settings?.suppressInjuryAlerts) {
+          setInjuryAlert({ injured, returned });
+          break;
+        }
       }
       if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
       if (leagueRef.current.dayIndex >= leagueRef.current.schedule.length) break;

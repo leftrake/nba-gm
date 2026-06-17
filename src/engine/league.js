@@ -366,6 +366,7 @@ export function backfillPlayers(league) {
     if (p.morale == null) p.morale = initMorale(p.id);
     if (p.moraleLowStreak == null) p.moraleLowStreak = 0;
     if (p.tradeDemand == null) p.tradeDemand = false;
+    if (p.trainingFocus === undefined) p.trainingFocus = null;
     // saves predating player season-stint tracking (mid-season trades)
     if (!p.seasonStints) p.seasonStints = [];
     // saves predating the legacy/records system
@@ -378,6 +379,8 @@ export function backfillPlayers(league) {
     }
   };
   for (const team of league.teams) team.roster.forEach(fill);
+  if (!league.settings) league.settings = {};
+  if (league.settings.suppressInjuryAlerts == null) league.settings.suppressInjuryAlerts = false;
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
   for (const team of league.teams) {
     if (!team.streak) team.streak = { result: null, count: 0 };

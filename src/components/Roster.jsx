@@ -9,7 +9,7 @@ import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
-import { Section } from './ui/index.js';
+import { Section, Tooltip } from './ui/index.js';
 
 // Visual cap breakdown — proportional blocks colored by years remaining.
 function CapBreakdown({ team, pay, dead }) {
@@ -833,7 +833,13 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                       ) : 'Morale'}
                     </th>
                     <th>Potential</th>
-                    {isUser && <th>Training Focus</th>}
+                    {isUser && (
+                      <th>
+                        <Tooltip content="Applied each offseason — boosts selected attributes, slight regression in one other. No effect on current ratings." position="bottom">
+                          Training Focus
+                        </Tooltip>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -863,9 +869,17 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                               onChange={(e) => { p.trainingFocus = e.target.value || null; commit(); }}
                               style={{ fontSize: 'var(--text-xs)' }}
                             >
-                              <option value="">None</option>
+                              <option value="">Balanced</option>
                               {TRAINING_FOCUS_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                             </select>
+                            {(() => {
+                              const f = TRAINING_FOCUS_OPTIONS.find((opt) => opt.id === p.trainingFocus);
+                              return f ? (
+                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'nowrap' }}>
+                                  +{f.boost.join(', ')} · −{f.neglect}
+                                </div>
+                              ) : null;
+                            })()}
                           </td>
                         )}
                       </tr>

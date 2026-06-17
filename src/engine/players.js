@@ -210,6 +210,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     morale: initMorale(id), // 0-100, see engine/morale.js
     moraleLowStreak: 0,
     tradeDemand: false,
+    trainingFocus: null,
     potential: 0,
     contract: null,
     stats: emptyStats(),
