@@ -8,7 +8,6 @@ import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
 import FuturePayroll from './components/FuturePayroll.jsx';
 import Standings from './components/Standings.jsx';
-import Leaders from './components/Leaders.jsx';
 import Stats from './components/Stats.jsx';
 import Schedule from './components/Schedule.jsx';
 import AllStarScreen from './components/AllStarScreen.jsx';
@@ -70,7 +69,6 @@ export default function App() {
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
-  const [statsInitialSort, setStatsInitialSort] = useState(null);
   const [theme, setTheme] = useState(loadTheme);
   const [accentColor, setAccentColor] = useState(loadAccent);
 
@@ -99,13 +97,6 @@ export default function App() {
   const openPlayer = useCallback((p) => setViewPlayer(p), []);
   const closePlayer = useCallback(() => setViewPlayer(null), []);
   const openGame = useCallback((game, title) => setViewGame({ game, title }), []);
-
-  // From the League Leaders screen's "See full stats →" links: jump to the
-  // Stats page's Player Stats tab pre-sorted by the given stat column.
-  const openStats = useCallback((sortKey) => {
-    setStatsInitialSort(sortKey);
-    setScreen('stats');
-  }, []);
 
   // Hand an incoming trade offer to the Trade Machine, pre-filled so the
   // user can tweak it into a counter-offer.
@@ -336,7 +327,6 @@ export default function App() {
     ],
     [
       ['standings', 'Standings'],
-      ['leaders', 'Leaders'],
       ['stats', 'Stats'],
       ['schedule', 'Schedule'],
     ],
@@ -488,8 +478,7 @@ export default function App() {
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
         {screen === 'futurecap' && <FuturePayroll league={league} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
-        {screen === 'leaders' && <Leaders league={league} openPlayer={openPlayer} openTeam={openTeam} openStats={openStats} />}
-        {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} initialSort={statsInitialSort} />}
+        {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
         {screen === 'allstar' && (
           <AllStarScreen

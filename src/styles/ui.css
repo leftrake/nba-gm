@@ -341,6 +341,12 @@
 .ui-table.zebra tbody tr:nth-child(even) td {
   background: color-mix(in srgb, var(--surface-2) 45%, transparent);
 }
+/* Comfortable row height — slightly more padding than the default */
+.ui-table.comfortable th,
+.ui-table.comfortable td {
+  padding: var(--sp-2) var(--sp-3);
+}
+
 /* Sticky header */
 .ui-table.sticky-head th {
   position: sticky;

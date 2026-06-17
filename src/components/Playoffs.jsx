@@ -2,17 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { getTeam, standings, makeRoundMatchups } from '../engine/league.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { TeamLink, NewsText, GuideTooltip } from './shared.jsx';
+import { Card } from './ui/Card.jsx';
 import SeriesModal from './SeriesModal.jsx';
 
 export const ROUND_NAMES = ['First Round', 'Conference Semifinals', 'Conference Finals', 'NBA Finals'];
 
-// How many matchups exist per conference in each round, used to build TBD
-// placeholders for rounds the bracket hasn't reached yet.
 const ROUND_COUNTS = [4, 2, 1];
 
-// The series for a given conference/round: the live arrays for the round
-// currently being played, the archived copy from `po.completed` for rounds
-// already finished, or a row of TBD placeholders for rounds not yet reached.
 function getRoundSeries(po, conf, round) {
   if (round === po.round && round < 3) return po[conf] || [];
   if (round < po.round) {
@@ -21,16 +17,11 @@ function getRoundSeries(po, conf, round) {
   return Array.from({ length: ROUND_COUNTS[round] }, () => ({ high: null, low: null, highWins: 0, lowWins: 0, winner: null, games: [] }));
 }
 
-// "4-2" for a decided series, "1-0" for one in progress, "TBD" if the
-// matchup hasn't been determined yet.
 function seriesScoreLabel(m) {
   if (!m || m.high == null) return 'TBD';
   return `${m.highWins}-${m.lowWins}`;
 }
 
-// One matchup as a broadcast-style card: team rows with seed, logo, series
-// score, and win/loss dots. Clicking opens the game-by-game series modal.
-// Renders a TBD placeholder if the matchup hasn't been determined yet.
 function BracketCard({ league, m, openTeam, openSeries, roundName, seeds }) {
   if (m.high == null) {
     return (
@@ -71,8 +62,6 @@ function BracketCard({ league, m, openTeam, openSeries, roundName, seeds }) {
   );
 }
 
-// One round's column of matchups, with its title. Has a fixed height so its
-// cards line up with the connector lines feeding into/out of it.
 function BracketColumn({ league, round, series, current, openTeam, openSeries, seeds }) {
   return (
     <div className={`bracket-round${current ? ' current' : ''}`}>
@@ -86,12 +75,6 @@ function BracketColumn({ league, round, series, current, openTeam, openSeries, s
   );
 }
 
-// The connecting lines between two adjacent rounds: `sourceCount` matchups
-// on one side converge in groups (of `sourceCount / labels.length`) toward
-// `labels.length` matchups on the other side. Each group gets an elbow
-// connector with the resulting series score on it. `flip` mirrors the whole
-// thing so the "many" side ends up on the right (used on the East side of
-// the bracket, which reads right-to-left toward the Finals).
 function BracketConnector({ sourceCount, labels, flip }) {
   const groupSize = sourceCount / labels.length;
   return (
@@ -122,10 +105,6 @@ function BracketConnector({ sourceCount, labels, flip }) {
   );
 }
 
-// One conference's side of the bracket: First Round, Conf Semis, Conf Finals
-// plus the connectors between them. `flip` (East) mirrors the column order
-// so the Conference Finals sits nearest the center, and mirrors the
-// connectors so they still point inward.
 function ConferenceSide({ league, po, conf, openTeam, openSeries, seeds, flip }) {
   const r0 = getRoundSeries(po, conf, 0);
   const r1 = getRoundSeries(po, conf, 1);
@@ -140,9 +119,6 @@ function ConferenceSide({ league, po, conf, openTeam, openSeries, seeds, flip })
   return <div className="bracket-side">{flip ? columns.slice().reverse() : columns}</div>;
 }
 
-// The bracket grid itself: West side, Finals (with champion banner if
-// decided), East side, and the connectors between them. Shared by the live
-// playoff bracket and the pre-playoffs projected bracket.
 function BracketGrid({ league, po, openTeam, openSeries, seeds }) {
   const finalsLabel = seriesScoreLabel(po.finals);
   return (
@@ -183,11 +159,8 @@ function BracketGrid({ league, po, openTeam, openSeries, seeds }) {
 
 export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
   const po = league.playoffs;
-  const [seriesView, setSeriesView] = useState(null); // { m, roundName }
+  const [seriesView, setSeriesView] = useState(null);
 
-  // Seed numbers (1-8) come from each conference's regular-season standings.
-  // Once the playoffs start these are locked in; before that, they're
-  // recomputed from the current standings for the projected bracket below.
   const seeds = useMemo(() => {
     const map = new Map();
     for (const conf of ['East', 'West']) {
@@ -197,8 +170,6 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
   }, [league, po]);
 
   if (!po) {
-    // Project the first-round matchups from the current standings; later
-    // rounds and the Finals are still TBD.
     const projected = {
       round: 0,
       East: makeRoundMatchups(standings(league, 'East').slice(0, 8).map((t) => t.id)),
@@ -209,41 +180,42 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
     };
     return (
       <div>
-        <div className="panel">
-          <h2>Projected Playoff Bracket</h2>
-          <p style={{ color: 'var(--muted)' }}>The playoffs haven't started yet. Here's how the bracket would look if the regular season ended today, based on the current standings — it will keep shifting as teams win and lose.</p>
-        </div>
-        <div className="panel">
+        <Card style={{ marginBottom: 'var(--sp-4)' }}>
+          <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-2)' }}>Projected Playoff Bracket</span>
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>The playoffs haven't started yet. Here's how the bracket would look if the regular season ended today — it will keep shifting as teams win and lose.</p>
+        </Card>
+        <Card noPad>
           <BracketGrid league={league} po={projected} openTeam={openTeam} openSeries={() => {}} seeds={seeds} />
-        </div>
+        </Card>
       </div>
     );
   }
+
   const roundName = ROUND_NAMES[po.round] || '';
   const openSeries = (m, rn) => setSeriesView({ m, roundName: rn });
 
   return (
     <div>
       {!po.champion && (
-        <div className="panel">
+        <Card style={{ marginBottom: 'var(--sp-4)' }}>
           <GuideTooltip
             tipKey="playoffs_entered"
             text="Best-of-7 series, home court goes to the higher seed. Rest and rotation matter more than ever — tired stars in the fourth quarter lose series."
             block
           >
-            <h2>Current Round: {roundName}</h2>
+            <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-2)' }}>Current Round: {roundName}</span>
           </GuideTooltip>
-          <p style={{ color: 'var(--muted)' }}>"Sim Next Playoff Game" plays one game in every active series; "Sim Playoff Round" fast-forwards the round. Click a series for game-by-game results and stat leaders.</p>
-        </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>"Sim Next Playoff Game" plays one game in every active series; "Sim Playoff Round" fast-forwards the round. Click a series for game-by-game results and stat leaders.</p>
+        </Card>
       )}
-      <div className="panel">
+      <Card noPad>
         <BracketGrid league={league} po={po} openTeam={openTeam} openSeries={openSeries} seeds={seeds} />
-      </div>
+      </Card>
       {po.log.length > 0 && (
-        <div className="panel">
-          <h2>Series Results</h2>
+        <Card style={{ marginTop: 'var(--sp-4)' }}>
+          <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-3)' }}>Series Results</span>
           {po.log.map((l, i) => <div className="news-item" key={i}><NewsText text={l} openTeam={openTeam} /></div>)}
-        </div>
+        </Card>
       )}
       {seriesView && (
         <SeriesModal
