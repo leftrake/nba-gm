@@ -16,7 +16,7 @@ function CoachCard({ coach, selected, tag, onSelect }) {
       className="panel"
       style={{
         cursor: 'pointer',
-        ...(selected ? { boxShadow: 'inset 0 0 0 2px var(--team-color)', background: 'var(--team-color-soft)' } : {}),
+        ...(selected ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)', background: 'var(--team-color-soft)' } : {}),
       }}
       onClick={onSelect}
     >

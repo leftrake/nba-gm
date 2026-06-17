@@ -158,7 +158,7 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
         </p>
 
         {userSeasons > 0 && (
-          <p style={{ margin: '10px 0', color: 'var(--team-color)' }}>
+          <p style={{ margin: '10px 0', color: 'var(--team-color-safe)' }}>
             🤝 Spent {userSeasons} season{userSeasons === 1 ? '' : 's'} with your franchise.
           </p>
         )}

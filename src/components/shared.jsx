@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { textOnColor } from '../engine/colorUtils.js';
 import { overall, flagFor } from '../engine/players.js';
 import { scoutRange, scoutedOverallRange, scoutUncertainty, isHidden, fogColor } from '../engine/scouting.js';
 import { traitBand, traitShort, TRAIT_COLORS } from '../engine/devTraits.js';
@@ -230,7 +231,7 @@ const TEAM_BADGE_SIZES = {
 export function TeamBadge({ team, size = 'medium' }) {
   const { size: px, fontSize } = TEAM_BADGE_SIZES[size] || TEAM_BADGE_SIZES.medium;
   return (
-    <span className="team-logo" style={{ width: px, height: px, fontSize, background: team.color }}>
+    <span className="team-logo" style={{ width: px, height: px, fontSize, background: team.color, color: textOnColor(team.color) }}>
       {team.id}
     </span>
   );

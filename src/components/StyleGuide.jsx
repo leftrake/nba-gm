@@ -13,6 +13,7 @@ import { Modal } from './ui/Modal.jsx';
 import { Table } from './ui/Table.jsx';
 import { Ovr, Pot, Sta, TeamBadge, money } from './shared.jsx';
 import { TEAMS } from '../data/teams.js';
+import { safeAccent, textOnColor, contrastRatio } from '../engine/colorUtils.js';
 
 // ── Google Fonts (preview only) ──────────────────────────────────────────────
 const GFONTS_URL =
@@ -626,11 +627,47 @@ export default function StyleGuide() {
           <Section title="Team Color Accents (subtle use)">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
               {TEAMS.slice(0, 15).map((t) => (
-                <div key={t.id} style={{ padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border)', borderLeft: `3px solid ${t.color}`, fontSize: 'var(--text-sm)' }}>
-                  <span style={{ color: t.color, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{t.id}</span>{' '}
+                <div key={t.id} style={{ padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border)', borderLeft: `3px solid ${safeAccent(t.color)}`, fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: safeAccent(t.color), fontWeight: 700, fontFamily: 'var(--font-display)' }}>{t.id}</span>{' '}
                   <span style={{ color: 'var(--text-muted)' }}>{t.name}</span>
                 </div>
               ))}
+            </div>
+          </Section>
+
+          <Divider />
+
+          <Section title="Team Color Contrast Safety">
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-4)' }}>
+              Each team's raw color (left) vs. <code>safeAccent()</code> output (right), both as text on the dark background.
+              The badge uses the true team color with auto black/white text flip. Values are contrast ratios against <code>#0d1117</code>.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: 'var(--sp-3)' }}>
+              {TEAMS.map((t) => {
+                const safe = safeAccent(t.color);
+                const rawCR = contrastRatio(t.color, '#0d1117').toFixed(1);
+                const safeCR = contrastRatio(safe, '#0d1117').toFixed(1);
+                const rawOk = parseFloat(rawCR) >= 4.5;
+                return (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3)', background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+                    <span className="team-logo" style={{ background: t.color, color: textOnColor(t.color), flexShrink: 0, width: 36, height: 36, fontSize: 12 }}>{t.id}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.city} {t.name}</div>
+                      <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ color: t.color, fontWeight: 700, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-display)' }}>RAW</span>
+                          <span style={{ fontSize: 'var(--text-xs)', color: rawOk ? 'var(--color-success)' : 'var(--color-danger)', fontVariantNumeric: 'tabular-nums' }}>{rawCR}:1</span>
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>→</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ color: safe, fontWeight: 700, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-display)' }}>SAFE</span>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', fontVariantNumeric: 'tabular-nums' }}>{safeCR}:1</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Section>
         </>

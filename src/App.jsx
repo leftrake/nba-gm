@@ -32,6 +32,7 @@ import StyleGuide from './components/StyleGuide.jsx';
 import GameModal from './components/BoxScore.jsx';
 import Walkthrough from './components/Walkthrough.jsx';
 import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/shared.jsx';
+import { safeAccent, textOnColor } from './engine/colorUtils.js';
 import { checkSave } from './engine/save.js';
 import { readCrossSaveLegacy } from './engine/legacy.js';
 import { loadTheme, loadAccent, applyTheme, THEME_KEY, ACCENT_KEY } from './theme.js';
@@ -310,65 +311,91 @@ export default function App() {
   const hasDevReport = !!league.devReport?.entries?.length
     && (league.phase === 'offseason/coaching' || league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
 
-  const NAV = [
-    ['dashboard', 'Dashboard'],
-    ['news', 'News'],
-    ['roster', 'Roster'],
-    ['futurecap', 'Cap Projection'],
-    ['standings', 'Standings'],
-    ['leaders', 'Leaders'],
-    ['stats', 'Stats'],
-    ['schedule', 'Schedule'],
-    ['trade', 'Trade'],
-    ['scouting', 'Scouting'],
-    ['draft', 'Draft'],
-    ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
-    ['freeagency', 'Free Agency'],
-    ['playoffs', 'Playoffs'],
-    ['legacy', 'Legacy'],
-    ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
-    ['settings', 'Settings'],
-    ['styleguide', '🎨'],
+  const phaseLabel =
+    league.phase === 'regular'                 ? `Day ${league.dayIndex + 1} / ${league.schedule.length}`
+    : league.phase === 'awards'                ? 'Award Ceremony'
+    : league.phase === 'playoffs'              ? 'Playoffs'
+    : league.phase === 'offseason/finals-mvp'  ? 'Finals MVP'
+    : league.phase === 'offseason/development' ? 'Development'
+    : league.phase === 'offseason/coaching'    ? 'Coaching'
+    : league.phase === 'offseason/lottery'     ? 'Draft Lottery'
+    : league.phase === 'offseason/draft'       ? 'Draft'
+    : league.phase === 'fantasydraft'          ? 'Fantasy Draft'
+    : league.phase === 'offseason/freeagency'  ? 'Free Agency'
+    : league.phase === 'offseason/preview'     ? 'Season Preview'
+    : 'Offseason';
+
+  const NAV_GROUPS = [
+    [
+      ['dashboard', 'Dashboard'],
+      ['news', 'News'],
+    ],
+    [
+      ['roster', 'Roster'],
+      ['futurecap', 'Cap Projection'],
+    ],
+    [
+      ['standings', 'Standings'],
+      ['leaders', 'Leaders'],
+      ['stats', 'Stats'],
+      ['schedule', 'Schedule'],
+    ],
+    [
+      ['trade', 'Trade'],
+      ['scouting', 'Scouting'],
+      ['draft', 'Draft'],
+      ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
+      ['freeagency', 'Free Agency'],
+      ['playoffs', 'Playoffs'],
+      ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
+    ],
+    [
+      ['legacy', 'Legacy'],
+      ['settings', 'Settings'],
+      ['styleguide', '🎨'],
+    ],
   ];
 
   return (
-    <div className="app" style={{ '--team-color': userTeam.color }}>
-      <div className="topbar">
-        <h1>🏀 {userTeam.city} {userTeam.name}</h1>
-        <span className="meta">
-          {league.season} · {userTeam.wins}-{userTeam.losses} ·{' '}
-          {league.phase === 'regular' ? `Day ${league.dayIndex + 1}/${league.schedule.length}`
-            : league.phase === 'awards' ? 'Award Ceremony'
-            : league.phase === 'playoffs' ? 'Playoffs'
-            : league.phase === 'offseason/finals-mvp' ? 'Finals MVP'
-            : league.phase === 'offseason/development' ? 'Development Report'
-            : league.phase === 'offseason/coaching' ? 'Coaching Decisions'
-            : league.phase === 'offseason/lottery' ? 'Draft Lottery'
-            : league.phase === 'offseason/draft' ? (onTheClock(league) ? `Draft (Pick ${league.draft.pickIndex + 1}/${league.draft.order.length})` : 'Draft complete')
-            : league.phase === 'fantasydraft' ? (onFantasyClock(league) ? `Fantasy Draft (Pick ${league.fantasyDraft.pickIndex + 1}/${league.fantasyDraft.order.length})` : 'Fantasy Draft complete')
-            : league.phase === 'offseason/freeagency' ? `Free Agency (${league.faDaysLeft} rounds left)`
-            : league.phase === 'offseason/preview' ? 'Season Preview'
-            : 'Offseason'}
-        </span>
-        <nav>
-          {NAV.map(([key, label]) => (
-            <button
-              key={key}
-              className={screen === key ? 'active' : ''}
-              data-tour={key === 'roster' ? 'roster-tab' : key === 'scouting' ? 'scouting-tab' : undefined}
-              onClick={() => {
-                // The Roster tab always opens on the user's team; only
-                // explicit team links (openTeam) show another roster.
-                if (key === 'roster') setRosterTeamId(null);
-                setScreen(key);
-              }}
-            >
-              {label}
-            </button>
+    <div className="app" style={{ '--team-color': userTeam.color, '--team-color-safe': safeAccent(userTeam.color), '--team-color-text': textOnColor(userTeam.color) }}>
+      <aside className="app-sidebar">
+        <div className="sidebar-brand">
+          <div className="sidebar-team-badge">{userTeam.id}</div>
+          <div className="sidebar-brand-text">
+            <div className="sidebar-city">{userTeam.city}</div>
+            <div className="sidebar-name">{userTeam.name}</div>
+          </div>
+        </div>
+        <div className="sidebar-meta">
+          <div className="sidebar-record">{userTeam.wins}–{userTeam.losses}</div>
+          <div className="sidebar-season-txt">{league.season}</div>
+          <div className="sidebar-phase-txt">{phaseLabel}</div>
+        </div>
+        <nav className="sidebar-nav">
+          {NAV_GROUPS.map((group, gi) => (
+            <React.Fragment key={gi}>
+              {gi > 0 && <div className="sidebar-nav-sep" />}
+              {group.map(([key, label]) => (
+                <button
+                  key={key}
+                  className={screen === key ? 'active' : ''}
+                  data-tour={key === 'roster' ? 'roster-tab' : key === 'scouting' ? 'scouting-tab' : undefined}
+                  onClick={() => {
+                    if (key === 'roster') setRosterTeamId(null);
+                    setScreen(key);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </React.Fragment>
           ))}
-          <button onClick={resetGame} style={{ color: 'var(--red)' }}>New Game</button>
         </nav>
-      </div>
+        <div className="sidebar-footer">
+          <button className="sidebar-new-game" onClick={resetGame}>New Game</button>
+        </div>
+      </aside>
+      <div className="app-main">
       <main>
         {league.phase === 'playoffs' && (
           <div className="controls">
@@ -533,6 +560,7 @@ export default function App() {
           />
         )}
       </main>
+      </div>
       {showWalkthrough && <Walkthrough onDone={() => setShowWalkthrough(false)} />}
     </div>
   );

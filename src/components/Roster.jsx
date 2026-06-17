@@ -6,6 +6,7 @@ import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, li
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
+import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 
@@ -66,7 +67,7 @@ function FrontOfficeSnapshot({ league, team, pay, dead, recent, openPlayer }) {
   }).filter(Boolean);
 
   return (
-    <div className="panel" style={{ borderLeft: '4px solid var(--team-color)' }}>
+    <div className="panel" style={{ borderLeft: '4px solid var(--team-color-safe)' }}>
       <GuideTooltip
         tipKey="fogged_ratings"
         text="Rating ranges reflect your scouting knowledge — tighter ranges mean more certainty. Scout players before the draft or trade deadline to get better information."
@@ -76,7 +77,7 @@ function FrontOfficeSnapshot({ league, team, pay, dead, recent, openPlayer }) {
       </GuideTooltip>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         {stars.map((p) => (
-          <div key={p.id} className="panel" style={{ flex: '1 1 150px', margin: 0, padding: 10, borderTop: '3px solid var(--team-color)' }}>
+          <div key={p.id} className="panel" style={{ flex: '1 1 150px', margin: 0, padding: 10, borderTop: '3px solid var(--team-color-safe)' }}>
             <div style={{ fontWeight: 700 }}><PlayerLink p={p} openPlayer={openPlayer} /></div>
             <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>{posLabel(p)} · Age {p.age}</div>
             <Ovr p={p} league={league} fogged />
@@ -289,10 +290,10 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     : sorted;
 
   return (
-    <div style={{ '--team-color': team.color }}>
+    <div style={{ '--team-color': team.color, '--team-color-safe': safeAccent(team.color), '--team-color-text': textOnColor(team.color) }}>
       <div className="panel" style={{ borderLeft: `4px solid var(--team-color)` }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <div className="team-logo" style={{ width: 56, height: 56, fontSize: 20, background: team.color }}>{team.id}</div>
+          <div className="team-logo" style={{ width: 56, height: 56, fontSize: 20, background: team.color, color: textOnColor(team.color) }}>{team.id}</div>
           <div style={{ flex: 1 }}>
             <div className="display-font" style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 2 }}>{team.city}</div>
             <h1 className="display-font" style={{ fontSize: 30, margin: '2px 0' }}>{team.name} {isUser && <span className="tag">YOUR TEAM</span>}</h1>
@@ -477,7 +478,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 </tbody>
               </table>
             </div>
-            <div style={{ borderLeft: '2px solid var(--team-color)', paddingLeft: 14 }}>
+            <div style={{ borderLeft: '2px solid var(--team-color-safe)', paddingLeft: 14 }}>
               <h2 style={{ fontSize: 14 }}>Bench Rotation</h2>
               <table>
                 <thead>
@@ -649,7 +650,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               <React.Fragment key={p.id}>
               {isUser && i > 0 && starterIds.has(rosterRows[i - 1].id) && !starterIds.has(p.id) && (
                 <tr>
-                  <td colSpan={17} style={{ padding: 0, borderBottom: '2px solid var(--team-color)' }}>
+                  <td colSpan={17} style={{ padding: 0, borderBottom: '2px solid var(--team-color-safe)' }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '4px 8px' }}>Bench</div>
                   </td>
                 </tr>

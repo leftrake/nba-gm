@@ -96,7 +96,7 @@ function StandingsWidget({ league, team, openTeam }) {
           {slice.map((t, i) => {
             const rank = start + i;
             return (
-              <tr key={t.id} style={t.id === team.id ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color)' } : undefined}>
+              <tr key={t.id} style={t.id === team.id ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : undefined}>
                 <td>{rank + 1}{rank === 7 ? ' —' : ''}</td>
                 <td><TeamLink team={t} openTeam={openTeam} /></td>
                 <td className="num">{t.wins}</td>
@@ -307,7 +307,7 @@ function LegacyTile({ league, setScreen }) {
         {gm.totalWins ?? 0}-{gm.totalLosses ?? 0} · {gm.championships ?? 0} championship{(gm.championships ?? 0) === 1 ? '' : 's'} ·{' '}
         {gm.confFinalsAppearances ?? 0} conf. finals appearance{(gm.confFinalsAppearances ?? 0) === 1 ? '' : 's'}
       </p>
-      <a className="team-link" style={{ color: 'var(--team-color)' }} onClick={() => setScreen('legacy')}>
+      <a className="team-link" style={{ color: 'var(--team-color-safe)' }} onClick={() => setScreen('legacy')}>
         View record book, Hall of Fame &amp; more ▸
       </a>
     </div>
@@ -416,7 +416,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
           <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />
         ))}
         <p style={{ marginTop: 10 }}>
-          <a className="team-link" style={{ color: 'var(--team-color)' }} onClick={openNews}>
+          <a className="team-link" style={{ color: 'var(--team-color-safe)' }} onClick={openNews}>
             Full news feed ▸
           </a>
         </p>

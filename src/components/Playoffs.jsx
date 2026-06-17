@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { getTeam, standings, makeRoundMatchups } from '../engine/league.js';
+import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { TeamLink, NewsText, GuideTooltip } from './shared.jsx';
 import SeriesModal from './SeriesModal.jsx';
 
@@ -47,11 +48,11 @@ function BracketCard({ league, m, openTeam, openSeries, roundName, seeds }) {
     <div key={team.id}>
       <div className={`bracket-team${isWinner ? ' winner' : ''}`}>
         <span className="seed-num">({seeds.get(team.id)})</span>
-        <span className="team-logo" style={{ background: team.color }}>{team.id}</span>
+        <span className="team-logo" style={{ background: team.color, color: textOnColor(team.color) }}>{team.id}</span>
         <TeamLink team={team} openTeam={openTeam}>{team.name}</TeamLink>
         <span className="score">{wins}</span>
       </div>
-      <div className="series-dots" style={{ color: team.color }}>
+      <div className="series-dots" style={{ color: safeAccent(team.color) }}>
         {Array.from({ length: 4 }).map((_, i) => (
           <span key={i} className={`series-dot${i < wins ? ' filled' : ''}`} />
         ))}
@@ -164,7 +165,7 @@ function BracketGrid({ league, po, openTeam, openSeries, seeds }) {
             </div>
           </div>
           {po.champion && (
-            <div className="champion-banner-inline" style={{ '--team-color': getTeam(league, po.champion).color }}>
+            <div className="champion-banner-inline" style={{ '--team-color': getTeam(league, po.champion).color, '--team-color-safe': safeAccent(getTeam(league, po.champion).color), '--team-color-text': textOnColor(getTeam(league, po.champion).color) }}>
               🏆 <TeamLink team={getTeam(league, po.champion)} openTeam={openTeam} />
               <div>NBA Champions</div>
             </div>

@@ -13,10 +13,14 @@
   --yellow: #d29922;
 
   /* The user's current team color, injected on .app and updated if they
-     switch franchises. Falls back to the default accent when unset. */
+     switch franchises. Falls back to the default accent when unset.
+     --team-color-safe is the contrast-adjusted version (≥4.5:1 on dark BG);
+     --team-color-text is black or white for text placed on the raw team color. */
   --team-color: var(--accent);
-  --team-color-soft: color-mix(in srgb, var(--team-color) 16%, var(--panel));
-  --team-color-line: color-mix(in srgb, var(--team-color) 55%, var(--border));
+  --team-color-safe: var(--accent);
+  --team-color-text: #ffffff;
+  --team-color-soft: color-mix(in srgb, var(--team-color-safe) 16%, var(--panel));
+  --team-color-line: color-mix(in srgb, var(--team-color-safe) 55%, var(--border));
 
   --font-display: 'Oswald', -apple-system, 'Segoe UI', sans-serif;
 
@@ -59,34 +63,200 @@ body {
 
 #root { min-height: 100vh; }
 
-.app { display: flex; flex-direction: column; min-height: 100vh; }
+.app { display: flex; flex-direction: row; min-height: 100vh; }
 
-.topbar {
+/* ── Sidebar shell ── */
+.app-sidebar {
+  width: 210px;
+  flex-shrink: 0;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.sidebar-brand {
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 20px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  gap: var(--sp-3);
+  min-height: 68px;
 }
-.topbar h1 { font-size: 18px; margin-right: 8px; }
-.topbar .meta { color: var(--muted); font-size: 13px; }
 
-nav { display: flex; gap: 4px; flex-wrap: wrap; }
-nav button {
+.sidebar-team-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--team-color);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-sm);
+  color: var(--team-color-text);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+.sidebar-brand-text { min-width: 0; }
+
+.sidebar-city {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-name {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-meta {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-record {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+}
+
+.sidebar-season-txt {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--sp-1);
+}
+
+.sidebar-phase-txt {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--team-color-safe);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: var(--sp-3) var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+}
+
+.sidebar-nav button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--transition-base), background var(--transition-base);
+  white-space: nowrap;
+}
+
+.sidebar-nav button:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.sidebar-nav button.active {
+  color: var(--text-primary);
+  background: var(--surface-2);
+  font-weight: var(--weight-medium);
+  box-shadow: inset 3px 0 0 var(--team-color-safe);
+}
+
+.sidebar-nav-sep {
+  height: 1px;
+  background: var(--border);
+  margin: var(--sp-2) var(--sp-1);
+}
+
+.sidebar-footer {
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-new-game {
+  width: 100%;
   background: none;
   border: 1px solid transparent;
-  color: var(--muted);
-  padding: 6px 12px;
-  border-radius: 6px;
+  color: var(--color-danger);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
   cursor: pointer;
-  font-size: 14px;
+  text-align: left;
+  transition: color var(--transition-base), background var(--transition-base);
 }
-nav button:hover { color: var(--text); background: var(--panel2); }
-nav button.active { color: var(--text); background: var(--panel2); border-color: var(--border); box-shadow: inset 0 -2px 0 var(--team-color); }
 
-main { flex: 1; padding: 20px; max-width: 1200px; width: 100%; margin: 0 auto; }
+.sidebar-new-game:hover { background: var(--color-danger-soft); }
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+main { flex: 1; padding: var(--sp-6); max-width: 1200px; width: 100%; margin: 0 auto; }
+
+@media (max-width: 767px) {
+  .app { flex-direction: column; }
+  .app-sidebar {
+    width: 100%;
+    height: auto;
+    position: static;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-meta { display: none; }
+  .sidebar-nav {
+    flex-direction: row;
+    flex: 0 0 auto;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding: var(--sp-2);
+    gap: var(--sp-1);
+  }
+  .sidebar-nav button { flex-shrink: 0; width: auto; }
+  .sidebar-nav button.active { box-shadow: inset 0 -2px 0 var(--team-color-safe); }
+  .sidebar-nav-sep { display: none; }
+  main { padding: var(--sp-4); }
+}
 
 .panel {
   background: var(--panel);
@@ -95,7 +265,7 @@ main { flex: 1; padding: 20px; max-width: 1200px; width: 100%; margin: 0 auto; }
   padding: 16px;
   margin-bottom: 16px;
 }
-.panel h2 { font-size: 15px; margin-bottom: 12px; color: var(--team-color); text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-display); }
+.panel h2 { font-size: 15px; margin-bottom: 12px; color: var(--team-color-safe); text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-display); }
 .panel h3 { font-size: 14px; margin: 10px 0 6px; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -107,10 +277,10 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: var(--panel2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-tr.today { background: var(--panel2); box-shadow: inset 3px 0 0 var(--team-color); }
+tr.today { background: var(--panel2); box-shadow: inset 3px 0 0 var(--team-color-safe); }
 
 a.team-link { color: inherit; cursor: pointer; }
-a.team-link:hover { color: var(--team-color); text-decoration: underline; }
+a.team-link:hover { color: var(--team-color-safe); text-decoration: underline; }
 
 .modal-overlay {
   position: fixed;
@@ -186,7 +356,7 @@ a.team-link:hover { color: var(--team-color); text-decoration: underline; }
   padding: 4px 12px;
   border-radius: 999px;
   background: var(--team-color-soft);
-  box-shadow: inset 0 0 0 1px var(--team-color);
+  box-shadow: inset 0 0 0 1px var(--team-color-safe);
   font-size: 13px;
   font-weight: 600;
 }
@@ -208,7 +378,7 @@ a.team-link:hover { color: var(--team-color); text-decoration: underline; }
   font-size: 14px;
 }
 .award-roster-row.yours {
-  box-shadow: inset 0 0 0 1px var(--team-color);
+  box-shadow: inset 0 0 0 1px var(--team-color-safe);
   background: var(--team-color-soft);
 }
 .award-roster-name { font-weight: 600; text-align: left; }
@@ -216,7 +386,7 @@ a.team-link:hover { color: var(--team-color); text-decoration: underline; }
 .award-yours-tag {
   font-size: 11px;
   font-weight: 700;
-  color: var(--team-color);
+  color: var(--team-color-safe);
 }
 
 .rating-row {
@@ -323,7 +493,7 @@ button.btn.small { padding: 4px 10px; font-size: 12px; }
 
 /* stories involving the user's team get a colored accent in their team color */
 .news-item.your-team {
-  border-left: 3px solid var(--team-color, var(--accent));
+  border-left: 3px solid var(--team-color-safe, var(--accent));
   padding-left: 9px;
 }
 .news-item.your-team:not(.major) { color: var(--text); }
@@ -452,12 +622,12 @@ button.slot-pick:hover { border-color: var(--accent); }
 }
 .calendar-cell.outmonth { opacity: 0.35; }
 .calendar-cell.muted { background: transparent; border-color: transparent; }
-.calendar-cell.today { border-color: var(--team-color); box-shadow: inset 0 0 0 1px var(--team-color); }
+.calendar-cell.today { border-color: var(--team-color-safe); box-shadow: inset 0 0 0 1px var(--team-color-safe); }
 .calendar-cell.clickable { cursor: pointer; }
-.calendar-cell.clickable:hover { border-color: var(--team-color); }
+.calendar-cell.clickable:hover { border-color: var(--team-color-safe); }
 .calendar-cell.flash { animation: calendar-flash 0.35s ease-out; }
 @keyframes calendar-flash {
-  0% { background: var(--team-color); }
+  0% { background: var(--team-color-safe); }
   100% { background: var(--panel2); }
 }
 .calendar-daynum { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
@@ -486,7 +656,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   gap: 10px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-left: 4px solid var(--team-color);
+  border-left: 4px solid var(--team-color-safe);
   border-radius: 8px;
   padding: 8px 12px;
   margin-bottom: 16px;
@@ -496,7 +666,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   text-transform: uppercase;
   letter-spacing: 1.5px;
   font-size: 11px;
-  color: var(--team-color);
+  color: var(--team-color-safe);
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -509,7 +679,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ticker-item:hover { color: var(--team-color); }
+.ticker-item:hover { color: var(--team-color-safe); }
 .ticker-item.expanded { white-space: normal; }
 @keyframes ticker-fade { from { opacity: 0; } to { opacity: 1; } }
 .ticker-nav { display: flex; gap: 2px; flex-shrink: 0; align-items: center; }
@@ -520,7 +690,7 @@ button.slot-pick:hover { border-color: var(--accent); }
 .ticker-nav button:hover { color: var(--text); }
 .ticker-dots { display: flex; gap: 4px; flex-shrink: 0; }
 .ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--border); cursor: pointer; }
-.ticker-dot.active { background: var(--team-color); }
+.ticker-dot.active { background: var(--team-color-safe); }
 
 /* ---------- Visual cap breakdown (Roster) ---------- */
 .cap-bar-v2 {
@@ -586,7 +756,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   padding: 16px;
   margin-bottom: 16px;
 }
-.warroom h2 { color: var(--team-color); }
+.warroom h2 { color: var(--team-color-safe); }
 .value-meter {
   height: 22px;
   border-radius: 11px;
@@ -597,7 +767,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   margin: 10px 0;
 }
 .value-meter > div { height: 100%; transition: width 140ms ease; }
-.value-meter .side-a { background: var(--team-color); }
+.value-meter .side-a { background: var(--team-color-safe); }
 .value-meter .side-b { background: var(--muted); }
 .value-meter-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cap-impact {
@@ -662,7 +832,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   text-align: center;
   white-space: nowrap;
 }
-.bracket-round.current .bracket-round-title { color: var(--team-color); }
+.bracket-round.current .bracket-round-title { color: var(--team-color-safe); }
 .bracket-round-body { height: 100%; display: flex; flex-direction: column; justify-content: space-around; }
 .bracket-card {
   width: var(--card-w);

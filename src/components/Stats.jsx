@@ -44,7 +44,7 @@ function SortTh({ label, sortKey, sortState, onSort, className, icon }) {
   const [activeKey, dir] = sortState;
   const active = activeKey === sortKey;
   return (
-    <th className={className} onClick={() => onSort(sortKey)} style={{ cursor: 'pointer', color: active ? 'var(--team-color)' : undefined }}>
+    <th className={className} onClick={() => onSort(sortKey)} style={{ cursor: 'pointer', color: active ? 'var(--team-color-safe)' : undefined }}>
       {icon ? `${icon} ` : ''}{label}{active ? (dir === 'desc' ? ' ▼' : ' ▲') : ''}
     </th>
   );
@@ -108,7 +108,7 @@ function PlayerStatsTab({ league, openPlayer, openTeam, initialSort }) {
             </thead>
             <tbody>
               {rows.map(({ p, team, stats }) => (
-                <tr key={p.id} style={team.id === league.userTeamId ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color)' } : {}}>
+                <tr key={p.id} style={team.id === league.userTeamId ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
                   <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
                   <td><TeamLink team={team} openTeam={openTeam}>{team.id}</TeamLink></td>
                   <td className="num">{stats.gp}</td>
@@ -164,7 +164,7 @@ function TeamStatsTab({ league, openTeam }) {
           </thead>
           <tbody>
             {sorted.map((r) => (
-              <tr key={r.team.id} style={r.team.id === league.userTeamId ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color)' } : {}}>
+              <tr key={r.team.id} style={r.team.id === league.userTeamId ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
                 <td><TeamLink team={r.team} openTeam={openTeam} /></td>
                 <td className="num">{r.gp}</td>
                 <td className="num">{r.ppg.toFixed(1)}</td>
@@ -200,7 +200,7 @@ function Podium({ rows, unit, openPlayer, openTeam, league }) {
   return (
     <div className="podium">
       {rows.slice(0, 3).map((r, i) => (
-        <div className={`podium-step ${steps[i]}`} key={r.p.id} style={r.team.id === league.userTeamId ? { boxShadow: 'inset 0 0 0 1px var(--team-color)' } : undefined}>
+        <div className={`podium-step ${steps[i]}`} key={r.p.id} style={r.team.id === league.userTeamId ? { boxShadow: 'inset 0 0 0 1px var(--team-color-safe)' } : undefined}>
           <div className="podium-rank">{i + 1}</div>
           <div className="podium-value">{r.value.toFixed(1)}</div>
           <div style={{ fontSize: 11, color: 'var(--muted)' }}>{unit}</div>
@@ -237,7 +237,7 @@ function LeagueLeadersTab({ league, openPlayer, openTeam }) {
                     </thead>
                     <tbody>
                       {rows.map((r, i) => (
-                        <tr key={r.p.id} style={r.team.id === league.userTeamId ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color)' } : {}}>
+                        <tr key={r.p.id} style={r.team.id === league.userTeamId ? { background: 'var(--panel2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
                           <td>{i + 1}</td>
                           <td><PlayerLink p={r.p} openPlayer={openPlayer} /></td>
                           <td><TeamLink team={r.team} openTeam={openTeam}>{r.team.id}</TeamLink></td>

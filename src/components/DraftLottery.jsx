@@ -46,7 +46,7 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
         <h2>Draft Lottery — {draft.season}</h2>
         <p style={{ color: 'var(--muted)', marginBottom: 12 }}>
           The 14 lottery teams, weighted by record.{' '}
-          {userInLottery && <strong style={{ color: 'var(--team-color)' }}>You're in the lottery this year.</strong>}
+          {userInLottery && <strong style={{ color: 'var(--team-color-safe)' }}>You're in the lottery this year.</strong>}
         </p>
 
         <div style={{ overflowX: 'auto', marginBottom: 16 }}>
@@ -54,7 +54,7 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
             <thead><tr><th>Team</th><th className="num">Record</th><th className="num">Odds</th></tr></thead>
             <tbody>
               {lotteryTeams.map((t, i) => (
-                <tr key={t.id} style={t.id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color)', background: 'var(--panel2)' } : undefined}>
+                <tr key={t.id} style={t.id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
                   <td><TeamLink team={t} openTeam={openTeam} /></td>
                   <td className="num">{t.lastWins ?? '–'}-{t.lastWins != null ? 82 - t.lastWins : '–'}</td>
                   <td className="num">{(LOTTERY_WEIGHTS[i] / 10).toFixed(1)}%</td>
@@ -76,7 +76,7 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
               <div
                 key={pickNo}
                 className="panel"
-                style={{ textAlign: 'center', padding: 16, ...(isUser ? { boxShadow: 'inset 0 0 0 2px var(--team-color)' } : {}) }}
+                style={{ textAlign: 'center', padding: 16, ...(isUser ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)' } : {}) }}
               >
                 <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Pick #{pickNo}</div>
                 {isRevealed && team ? (
@@ -101,7 +101,7 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
                   {rest.map((id, i) => {
                     const t = getTeam(league, id);
                     return (
-                      <tr key={i} style={id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color)', background: 'var(--panel2)' } : undefined}>
+                      <tr key={i} style={id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
                         <td className="num">{i + 5}</td>
                         <td><TeamLink team={t} openTeam={openTeam} /></td>
                       </tr>

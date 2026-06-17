@@ -20,7 +20,7 @@ export default function FinalsMVP({ league, openPlayer, openTeam, onContinue }) 
     <div className="modal-overlay">
       <div
         className="modal-card wide offseason-gate"
-        style={isUserChamp ? { borderColor: 'var(--team-color)', boxShadow: '0 0 0 1px var(--team-color)', position: 'relative', overflow: 'hidden' } : { position: 'relative', overflow: 'hidden' }}
+        style={isUserChamp ? { borderColor: 'var(--team-color-safe)', boxShadow: '0 0 0 1px var(--team-color-safe)', position: 'relative', overflow: 'hidden' } : { position: 'relative', overflow: 'hidden' }}
       >
         {isUserChamp && <Confetti />}
 
@@ -45,7 +45,7 @@ export default function FinalsMVP({ league, openPlayer, openTeam, onContinue }) 
             className="panel"
             style={{
               margin: '0 0 16px', textAlign: 'center',
-              ...(isUserMVP ? { boxShadow: 'inset 0 0 0 2px var(--team-color)', background: 'var(--team-color-soft)' } : {}),
+              ...(isUserMVP ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)', background: 'var(--team-color-soft)' } : {}),
             }}
           >
             <h2 style={{ marginBottom: 4 }}>Finals MVP{isUserMVP ? ' 🌟' : ''}</h2>

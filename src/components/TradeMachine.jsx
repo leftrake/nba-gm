@@ -8,6 +8,7 @@ import { applyShoppedPenalty } from '../engine/morale.js';
 import { teamNeeds } from '../engine/strategy.js';
 import { ownerSignoffRequired, ownerBlocksTrade, ownerStance } from '../engine/owner.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
+import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, StrategyTag, money, PlayerLink, GuideTooltip } from './shared.jsx';
 
 const YELLOW = '#d29922';
@@ -102,7 +103,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
   };
 
   return (
-    <div className="panel team-col" style={{ '--team-color': team.color, borderTop: `3px solid ${team.color}`, ...(team.id === userId ? { borderColor: 'var(--team-color-line)', borderTopColor: team.color } : null) }}>
+    <div className="panel team-col" style={{ '--team-color': team.color, '--team-color-safe': safeAccent(team.color), '--team-color-text': textOnColor(team.color), borderTop: `3px solid ${safeAccent(team.color)}`, ...(team.id === userId ? { borderColor: 'var(--team-color-line)', borderTopColor: safeAccent(team.color) } : null) }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h2 style={{ marginBottom: 0 }}>
           {changeTeamAt ? (
@@ -407,7 +408,7 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
     : 'Trades are now locked until next season. Any moves you wanted to make had to happen before today.';
 
   return (
-    <div className="warroom" style={{ '--team-color': getTeam(league, userId).color }}>
+    <div className="warroom" style={{ '--team-color': getTeam(league, userId).color, '--team-color-safe': safeAccent(getTeam(league, userId).color), '--team-color-text': textOnColor(getTeam(league, userId).color) }}>
       <div className="panel">
         {deadlinePassed ? (
           <GuideTooltip
@@ -446,8 +447,8 @@ export default function TradeMachine({ league, commit, openPlayer, prefill }) {
                 ...leg.outPicks.map((pick) => pickLabel(pick)),
               ];
               return (
-                <div key={leg.team.id} style={{ borderTop: `3px solid ${leg.team.color}`, paddingTop: 10 }}>
-                  <div style={{ fontWeight: 700, color: isUser ? 'var(--team-color)' : leg.team.color, marginBottom: 6, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <div key={leg.team.id} style={{ borderTop: `3px solid ${safeAccent(leg.team.color)}`, paddingTop: 10 }}>
+                  <div style={{ fontWeight: 700, color: isUser ? 'var(--team-color-safe)' : safeAccent(leg.team.color), marginBottom: 6, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {isUser ? 'You send' : `${leg.team.name} sends`}
                   </div>
                   {assets.length > 0 ? (
