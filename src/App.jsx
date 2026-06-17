@@ -32,7 +32,8 @@ import GameModal from './components/BoxScore.jsx';
 import Walkthrough from './components/Walkthrough.jsx';
 import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/shared.jsx';
 import { safeAccent, textOnColor } from './engine/colorUtils.js';
-import { checkSave } from './engine/save.js';
+import { checkSave, pushNews } from './engine/save.js';
+import { bumpTurmoil } from './engine/morale.js';
 import { readCrossSaveLegacy } from './engine/legacy.js';
 import { loadTheme, loadAccent, applyTheme, THEME_KEY, ACCENT_KEY } from './theme.js';
 
@@ -530,7 +531,20 @@ export default function App() {
         {league.phase === 'offseason/coaching' && (
           <CoachingDecisions
             league={league}
-            onContinue={(coach) => { getTeam(league, league.userTeamId).coach = coach; league.phase = 'offseason/lottery'; commit(); }}
+            onContinue={(coach) => {
+              const team = getTeam(league, league.userTeamId);
+              if (team.coach && coach.name !== team.coach.name) {
+                bumpTurmoil(team, 2);
+                pushNews(league, {
+                  day: league.dayIndex, season: league.season, phase: league.phase,
+                  category: 'coaching', teamIds: [team.id],
+                  text: `${team.city} ${team.name} part ways with coach ${team.coach.name} and hire ${coach.name} as the new head coach.`,
+                });
+              }
+              team.coach = coach;
+              league.phase = 'offseason/lottery';
+              commit();
+            }}
           />
         )}
         {league.phase === 'offseason/lottery' && (

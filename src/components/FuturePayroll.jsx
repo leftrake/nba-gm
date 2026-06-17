@@ -8,7 +8,7 @@ import {
 import { getTeamPicks, pickLabel, projectedSlot } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus, respondToExtension } from '../engine/owner.js';
-import { SPECIALTY_INFO } from '../engine/coach.js';
+import { SPECIALTY_INFO, STYLE_INFO, coachSalary } from '../engine/coach.js';
 import { money, PlayerLink, GuideTooltip, ApprovalMeter, approvalColor } from './shared.jsx';
 import { Section, Card } from './ui/index.js';
 
@@ -42,13 +42,44 @@ function OwnershipSection({ league, team, commit }) {
           <p>Budget: <b>{money(owner.budget)}</b>
             {showProjected && <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}> (next season: {money(owner.projectedBudget)})</span>}
           </p>
-          {team.coach && (
-            <p style={{ marginTop: 'var(--sp-1)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-              Coach: <b style={{ color: 'var(--text-primary)' }}>{team.coach.name}</b> · {SPECIALTY_INFO[team.coach.specialty].label}
-            </p>
-          )}
         </div>
       </div>
+
+      {team.coach && (
+        <div style={{ marginTop: 'var(--sp-4)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-primary)', marginBottom: 'var(--sp-2)' }}>
+            Head Coach
+          </div>
+          <Card elevation="raised" style={{ padding: 'var(--sp-3) var(--sp-4)' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-6)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ flex: '0 0 auto' }}>
+                <p style={{ fontWeight: 'var(--weight-bold)' }}>{team.coach.name}</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>Age {team.coach.age}</p>
+                {team.coach.seasonsWithTeam > 0 && (
+                  <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>
+                    {team.coach.seasonsWithTeam} season{team.coach.seasonsWithTeam === 1 ? '' : 's'} with team
+                  </p>
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 200, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <p style={{ fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Specialty: </span>
+                  <b>{SPECIALTY_INFO[team.coach.specialty]?.label ?? team.coach.specialty}</b>
+                </p>
+                <p style={{ fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Style: </span>
+                  <b>{STYLE_INFO[team.coach.style ?? 'balanced'].label}</b>
+                </p>
+                <p style={{ fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Salary: </span>
+                  <b>${((team.coach.salary ?? coachSalary(team.coach.rating)) / 1_000_000).toFixed(1)}M/yr</b>
+                  <span style={{ color: 'var(--text-muted)' }}> · not cap-counted</span>
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {(isRosterFrozen(league, team) || owner.missedPlayoffsStreak > 0 || owner.champYears > 0 || owner.extensionOffered) && (
         <div style={{ marginTop: 'var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>

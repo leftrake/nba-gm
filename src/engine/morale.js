@@ -115,6 +115,11 @@ export function dailyMoraleUpdate(league, results) {
     const demandCount = team.roster.filter((p) => p.tradeDemand).length;
     const legendBonus = legendTeammateBonus(team);
     const coachBonus = chemistryBonus(team.coach);
+    // An authoritative (high-rated) coach keeps the locker room steadier:
+    // role dissatisfaction, turmoil drag, and trade-demand contagion are
+    // softened slightly. A weak coach amplifies the same pressures.
+    // Range: rating 45 → -0.25, rating 70 → 0, rating 99 → +0.25.
+    const coachAuth = clamp(((team.coach?.rating ?? 70) - 70) / 116, -0.25, 0.25);
     for (const p of team.roster) {
       const ovr = overall(p);
       const caresWin = caresAboutWinning(p);
@@ -129,11 +134,11 @@ export function dailyMoraleUpdate(league, results) {
         const min = line?.min ?? 0;
         if (min > 0) {
           const gap = clamp(min - expectedMinutes(ovr), -15, 15);
-          m += gap * 0.015 * caresRole;
+          m += gap * 0.015 * caresRole * (1 - coachAuth * 0.5);
         }
       }
-      m -= turmoil * 0.01;
-      m -= demandCount * 0.02;
+      m -= turmoil * 0.01 * (1 - coachAuth * 0.6);
+      m -= demandCount * 0.02 * (1 - coachAuth * 0.6);
       m += legendBonus; // steady locker room from a long-tenured "one city legend"
       m += coachBonus; // a chemistry-minded (or poor) head coach
       m += (50 - m) * 0.003; // gentle drift back toward neutral

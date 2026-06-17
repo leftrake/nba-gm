@@ -143,6 +143,14 @@ export function teamStrength(team) {
   return base * coachMult;
 }
 
+// How well the team's current rotation matches a coaching style.
+// Returns [0..1] for the three active styles; null for balanced (no roster dependency).
+// Used by the CoachingDecisions UI for the roster-fit indicator.
+export function rosterFit(team, style) {
+  if (style === 'balanced') return null;
+  return rotationFit(getRotation(team), style);
+}
+
 // ---------- Possession engine ----------
 // A game is ~99 possessions per team, each resolved by the ten players on
 // the floor: a usage-weighted shooter picks a shot from his inside/mid/three
