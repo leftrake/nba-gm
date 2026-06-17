@@ -323,7 +323,7 @@ export default function App() {
     ],
     [
       ['roster', 'Roster'],
-      ['futurecap', 'Cap Projection'],
+      ['futurecap', 'Front Office'],
     ],
     [
       ['standings', 'Standings'],
@@ -342,7 +342,6 @@ export default function App() {
     [
       ['legacy', 'Legacy'],
       ['settings', 'Settings'],
-      ['styleguide', '🎨'],
     ],
   ];
 
@@ -476,7 +475,7 @@ export default function App() {
         )}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
-        {screen === 'futurecap' && <FuturePayroll league={league} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
+        {screen === 'futurecap' && <FuturePayroll league={league} commit={commit} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}

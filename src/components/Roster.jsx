@@ -9,6 +9,7 @@ import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
+import { Section } from './ui/index.js';
 
 // Visual cap breakdown — proportional blocks colored by years remaining.
 function CapBreakdown({ team, pay, dead }) {
@@ -352,11 +353,13 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                           const slot = lineup.starters[pos];
                           const p = slot.id != null ? byId.get(slot.id) : null;
                           const fit = p ? playerFit(p, pos) : 1;
-                          const isDropTarget = dragSource != null && !(dragSource.kind === 'starter' && dragSource.pos === pos);
+                          const isDragging = dragSource?.kind === 'starter' && dragSource?.pos === pos;
+                          const isDropTarget = dragSource != null && !isDragging;
                           return (
                             <tr
                               key={pos}
-                              style={{ height: 52, ...(isDropTarget ? { outline: '1px dashed var(--border)' } : null) }}
+                              className={isDropTarget ? 'lineup-drop-target' : ''}
+                              style={{ height: 52, ...(isDragging ? { opacity: 0.4 } : null) }}
                               draggable={p != null}
                               onDragStart={() => p && setDragSource({ kind: 'starter', pos })}
                               onDragOver={(e) => e.preventDefault()}
@@ -373,7 +376,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                               }}
                               onDragEnd={() => setDragSource(null)}
                             >
-                              <td><b>{pos}</b></td>
+                              <td style={{ cursor: p ? 'grab' : 'default', color: 'var(--text-muted)', whiteSpace: 'nowrap', userSelect: 'none' }} title={p ? 'Drag to swap' : undefined}>
+                                <span className="drag-handle">{p ? '⠿' : ''}</span> <b>{pos}</b>
+                              </td>
                               <td>
                                 <button className="slot-pick" style={p ? undefined : { color: 'var(--color-danger)' }} onClick={() => setPickSlot(pos)} title={`Choose your starting ${pos}`}>
                                   {p ? (
@@ -420,9 +425,12 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                         {lineup.bench.map((b, i) => {
                           const p = byId.get(b.id);
                           if (!p) return null;
+                          const isDragging = dragSource?.kind === 'bench' && dragSource?.index === i;
+                          const isDropTarget = dragSource?.kind === 'bench' && !isDragging;
                           return (
                             <tr
                               key={b.id}
+                              className={isDropTarget ? 'lineup-drop-target' : ''}
                               draggable
                               onDragStart={() => setDragSource({ kind: 'bench', index: i })}
                               onDragOver={(e) => e.preventDefault()}
@@ -437,9 +445,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                                 setDragSource(null);
                               }}
                               onDragEnd={() => setDragSource(null)}
-                              style={{ ...(b.min === 0 ? { opacity: 0.55 } : null), ...(dragSource?.kind === 'bench' && dragSource?.index === i ? { opacity: 0.4 } : null) }}
+                              style={{ ...(b.min === 0 ? { opacity: 0.55 } : null), ...(isDragging ? { opacity: 0.35 } : null) }}
                             >
-                              <td style={{ whiteSpace: 'nowrap', cursor: 'grab', color: 'var(--text-muted)' }} title="Drag to reorder">⠿</td>
+                              <td className="drag-handle" title="Drag to reorder">⠿</td>
                               <td><PlayerLink p={p} openPlayer={openPlayer} />{isInjured(p) ? ' 🩹' : ''}</td>
                               <td>{posLabel(p)}</td>
                               <td className="num">{overall(p)}</td>
@@ -634,7 +642,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
           <div className="ui-section">
             <div className="ui-section-header">
               <div className="ui-section-header__left">
-                <div className="ui-section-title">Contracts</div>
+                <div className="ui-section-title">Cap &amp; Contracts</div>
               </div>
             </div>
             {extMessage && <p style={{ marginBottom: 'var(--sp-3)', color: 'var(--color-success)' }}>{extMessage}</p>}

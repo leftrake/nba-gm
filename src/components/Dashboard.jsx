@@ -2,9 +2,7 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, ApprovalMeter, approvalColor, GuideTooltip } from './shared.jsx';
-import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus, respondToExtension } from '../engine/owner.js';
-import { SPECIALTY_INFO } from '../engine/coach.js';
+import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, GuideTooltip } from './shared.jsx';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -130,88 +128,6 @@ function LegacySection({ league, setScreen }) {
   );
 }
 
-// ── Ownership — bare Section; alerts/directives as raised Cards ──────────────
-function OwnerSection({ league, team, commit }) {
-  const owner = team.owner;
-  if (!owner) return null;
-  const showProjected = league.phase !== 'regular' && league.phase !== 'playoffs' && owner.projectedBudget !== owner.budget;
-  return (
-    <div data-tour="owner-card">
-      <Section title="Ownership" spacing="sm">
-        <p><b>{owner.name}</b>, Owner</p>
-        <p style={{ color: 'var(--text-muted)' }}>{personalitySummary(owner)}</p>
-        <p style={{ marginTop: 'var(--sp-2)' }}>
-          {ownerStance(owner)} · <span style={{ color: approvalColor(owner.approval) }}>{seatStatus(owner)}</span>
-        </p>
-        <ApprovalMeter value={owner.approval} />
-        <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Approval {Math.round(owner.approval)}/100</p>
-        <p style={{ marginTop: 'var(--sp-2)' }}>
-          Budget: <b>{money(owner.budget)}</b>
-          {showProjected && <span style={{ color: 'var(--text-muted)' }}> (projected next season: {money(owner.projectedBudget)})</span>}
-        </p>
-        {team.coach && (
-          <p style={{ marginTop: 'var(--sp-1)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            Head Coach: <b style={{ color: 'var(--text-primary)' }}>{team.coach.name}</b> · {SPECIALTY_INFO[team.coach.specialty].label}
-          </p>
-        )}
-
-        {/* Alert callouts — raised Cards per design system pattern */}
-        {isRosterFrozen(league, team) && (
-          <Card elevation="raised" style={{ borderLeft: '3px solid var(--color-danger)', marginTop: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
-            🔒 Roster frozen by ownership.
-          </Card>
-        )}
-        {owner.missedPlayoffsStreak > 0 && (
-          <Card elevation="raised" style={{ borderLeft: '3px solid var(--color-danger)', marginTop: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
-            📉 Missed the playoffs {owner.missedPlayoffsStreak} season{owner.missedPlayoffsStreak === 1 ? '' : 's'} in a row.
-          </Card>
-        )}
-        {owner.champYears > 0 && (
-          <Card elevation="raised" style={{ borderLeft: '3px solid #e3c567', marginTop: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', color: '#e3c567' }}>
-            🏆 Championship afterglow — ownership goodwill and revenue boosted for {owner.champYears} more season{owner.champYears === 1 ? '' : 's'}.
-          </Card>
-        )}
-        {owner.extensionOffered && (
-          <Card elevation="raised" style={{ borderLeft: '3px solid var(--color-primary)', marginTop: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
-            ✉️ {owner.name} has offered you a contract extension as GM.{' '}
-            <button className="btn small" onClick={() => { respondToExtension(league, team, true); commit(); }}>Accept</button>{' '}
-            <button className="btn small" onClick={() => { respondToExtension(league, team, false); commit(); }}>Decline</button>
-          </Card>
-        )}
-
-        {owner.directives?.length > 0 && (
-          <div style={{ marginTop: 'var(--sp-4)' }}>
-            <GuideTooltip
-              tipKey="owner_directive"
-              text="Your owner wants something specific. Ignoring it costs approval — and low approval leads to budget cuts, interference, and eventually getting fired."
-              block
-            >
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-primary)', marginBottom: 'var(--sp-2)' }}>
-                Owner Directives
-              </div>
-            </GuideTooltip>
-            {owner.directives.map((d, i) => {
-              const status = directiveStatus(league, team, d);
-              const icon = status === 'done' ? '✅' : status === 'on-track' ? '🟡' : '📋';
-              const borderColor = status === 'done' ? 'var(--color-success)' : 'var(--color-warning)';
-              return (
-                <Card key={i} elevation="raised" style={{ borderLeft: `3px solid ${borderColor}`, marginTop: 'var(--sp-2)', padding: 'var(--sp-3) var(--sp-4)' }}>
-                  <div>{icon} {d.text}</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 4 }}>
-                    {d.deadline}
-                    {status === 'done' && ' · on track to satisfy ownership'}
-                    {status === 'on-track' && ' · progress made, but not there yet'}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </Section>
-    </div>
-  );
-}
-
 // ── Last game result — Section with raised Card for the score callout ─────────
 function FeaturedGame({ league, fg, openTeam, openPlayer, openGame }) {
   const me = league.userTeamId;
@@ -332,14 +248,10 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
       {/* Hero — Card (lifted) */}
       <Banner league={league} team={team} seed={seed} openTeam={openTeam} />
 
-      {/* My Legacy */}
+      {/* GM Legacy */}
       <LegacySection league={league} setScreen={setScreen} />
-      <Divider />
 
-      {/* Ownership */}
-      <OwnerSection league={league} team={team} commit={commit} />
-
-      {/* Last game result */}
+      {/* Last game result — right after hero for immediate context */}
       {featuredGame && (
         <>
           <Divider />

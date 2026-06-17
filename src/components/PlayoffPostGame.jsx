@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getTeam, seriesHomeTeam } from '../engine/league.js';
 import { TeamLink } from './shared.jsx';
 import { BoxTable, LineScore, TopPerformers, GameFlow } from './BoxScore.jsx';
@@ -48,6 +48,7 @@ function ScoreRow({ league, entry, openTeam, openGame }) {
 // or a compact scoreboard when their team didn't play. One click back to
 // the bracket either way.
 export default function PlayoffPostGame({ league, played, onBack, openTeam, openPlayer, openGame }) {
+  const [boxTab, setBoxTab] = useState('away');
   const me = league.userTeamId;
   const mine = played.find((e) => e.game.home === me || e.game.away === me);
   const others = played.filter((e) => e !== mine);
@@ -101,9 +102,17 @@ export default function PlayoffPostGame({ league, played, onBack, openTeam, open
         <p style={{ fontWeight: 700, marginBottom: 12 }}>{seriesStatusText(league, m)}</p>
         <LineScore league={league} game={g} />
         <TopPerformers league={league} game={g} openPlayer={openPlayer} />
-        <div className="grid2">
-          <BoxTable league={league} teamId={g.away} pts={g.awayPts} box={g.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />
-          <BoxTable league={league} teamId={g.home} pts={g.homePts} box={g.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />
+        <div style={{ display: 'flex', gap: 'var(--sp-1)', marginBottom: 'var(--sp-3)' }}>
+          <button className={`ui-tab${boxTab === 'away' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('away')}>
+            {away.name} {g.awayPts}
+          </button>
+          <button className={`ui-tab${boxTab === 'home' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('home')}>
+            {home.name} {g.homePts}
+          </button>
+        </div>
+        <div className="ui-table-wrap">
+          {boxTab === 'away' && <BoxTable league={league} teamId={g.away} pts={g.awayPts} box={g.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />}
+          {boxTab === 'home' && <BoxTable league={league} teamId={g.home} pts={g.homePts} box={g.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />}
         </div>
         <details style={{ marginTop: 6 }}>
           <summary className="stories-toggle">Play-by-play</summary>

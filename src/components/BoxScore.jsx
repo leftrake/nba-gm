@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getTeam } from '../engine/league.js';
 import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
 import { injuryTimeline } from '../engine/injuries.js';
@@ -40,8 +40,8 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
   const hurtHere = (injuryReport || []).filter((e) => lines.some((l) => l.playerId === e.playerId));
   return (
     <div>
-      <h3><TeamBadge team={team} size="small" /> <TeamLink team={team} openTeam={openTeam} />{pts != null && <> · {pts}</>}</h3>
-      <table>
+      <h3 style={{ marginBottom: 'var(--sp-2)' }}><TeamBadge team={team} size="small" /> <TeamLink team={team} openTeam={openTeam} />{pts != null && <> · {pts}</>}</h3>
+      <table className="ui-table">
         <thead>
           <tr>
             <th>Player</th><th className="num">MIN</th><th className="num">PTS</th><th className="num">REB</th>
@@ -202,6 +202,8 @@ export function GameFlow({ events }) {
 // the save kept them, and the game-flow log. Falls back gracefully for
 // games stored slim (top performers only) and for results from old saves.
 export default function GameModal({ league, game, title, onClose, openTeam, openPlayer }) {
+  const [boxTab, setBoxTab] = useState('away');
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -228,10 +230,24 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
           <LineScore league={league} game={game} />
           <TopPerformers league={league} game={game} openPlayer={openPlayer} />
           {fullBox ? (
-            <div className="grid2">
-              <BoxTable league={league} teamId={game.away} pts={game.awayPts} box={game.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
-              <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
-            </div>
+            <>
+              <div style={{ display: 'flex', gap: 'var(--sp-1)', marginBottom: 'var(--sp-3)' }}>
+                <button className={`ui-tab${boxTab === 'away' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('away')}>
+                  <TeamBadge team={away} size="small" /> {away.name} {game.awayPts}
+                </button>
+                <button className={`ui-tab${boxTab === 'home' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('home')}>
+                  <TeamBadge team={home} size="small" /> {home.name} {game.homePts}
+                </button>
+              </div>
+              <div className="ui-table-wrap">
+                {boxTab === 'away' && (
+                  <BoxTable league={league} teamId={game.away} pts={game.awayPts} box={game.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
+                )}
+                {boxTab === 'home' && (
+                  <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
+                )}
+              </div>
+            </>
           ) : (
             <p style={{ color: 'var(--muted)', fontSize: 12 }}>
               Full box scores are kept for your games and playoff games; other games keep the line score and top performers.

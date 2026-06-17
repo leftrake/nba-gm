@@ -14,6 +14,16 @@ function getRoundSeries(po, conf, round) {
   if (round < po.round) {
     return (po.completed || []).filter((c) => c.conf === conf && c.round === round).map((c) => c.series);
   }
+  // One round ahead: pre-populate slots where a series has already been decided
+  if (round === po.round + 1 && round < 3) {
+    const prev = po[conf] || [];
+    return Array.from({ length: ROUND_COUNTS[round] }, (_, i) => {
+      const w0 = prev[i * 2]?.winner ?? null;
+      const w1 = prev[i * 2 + 1]?.winner ?? null;
+      if (w0 === null && w1 === null) return { high: null, low: null, highWins: 0, lowWins: 0, winner: null, games: [] };
+      return { high: w0, low: w1, highWins: 0, lowWins: 0, winner: null, games: [] };
+    });
+  }
   return Array.from({ length: ROUND_COUNTS[round] }, () => ({ high: null, low: null, highWins: 0, lowWins: 0, winner: null, games: [] }));
 }
 
@@ -23,7 +33,7 @@ function seriesScoreLabel(m) {
 }
 
 function BracketCard({ league, m, openTeam, openSeries, roundName, seeds }) {
-  if (m.high == null) {
+  if (m.high == null && m.low == null) {
     return (
       <div className="bracket-card placeholder-card">
         <div className="bracket-team tbd">TBD</div>
@@ -31,33 +41,48 @@ function BracketCard({ league, m, openTeam, openSeries, roundName, seeds }) {
       </div>
     );
   }
-  const high = getTeam(league, m.high);
-  const low = getTeam(league, m.low);
   const completed = !!m.winner;
   const clickable = (m.games || []).length > 0;
-  const teamRow = (team, wins, isWinner) => (
-    <div key={team.id}>
-      <div className={`bracket-team${isWinner ? ' winner' : ''}`}>
-        <span className="seed-num">({seeds.get(team.id)})</span>
-        <span className="team-logo" style={{ background: team.color, color: textOnColor(team.color) }}>{team.id}</span>
-        <TeamLink team={team} openTeam={openTeam}>{team.name}</TeamLink>
-        <span className="score">{wins}</span>
+  const teamRow = (teamId, wins, isWinner) => {
+    if (teamId == null) {
+      return (
+        <div key="tbd">
+          <div className="bracket-team tbd">TBD</div>
+          {clickable && (
+            <div className="series-dots">
+              {Array.from({ length: 4 }).map((_, i) => <span key={i} className="series-dot" />)}
+            </div>
+          )}
+        </div>
+      );
+    }
+    const team = getTeam(league, teamId);
+    return (
+      <div key={team.id}>
+        <div className={`bracket-team${isWinner ? ' winner' : ''}`}>
+          <span className="seed-num">({seeds.get(team.id)})</span>
+          <span className="team-logo" style={{ background: team.color, color: textOnColor(team.color) }}>{team.id}</span>
+          <TeamLink team={team} openTeam={openTeam}>{team.name}</TeamLink>
+          {clickable && <span className="score">{wins}</span>}
+        </div>
+        {clickable && (
+          <div className="series-dots" style={{ color: safeAccent(team.color) }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <span key={i} className={`series-dot${i < wins ? ' filled' : ''}`} />
+            ))}
+          </div>
+        )}
       </div>
-      <div className="series-dots" style={{ color: safeAccent(team.color) }}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <span key={i} className={`series-dot${i < wins ? ' filled' : ''}`} />
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
   return (
     <div
       className={`bracket-card${completed ? ' completed' : ''}`}
       style={{ cursor: clickable ? 'pointer' : 'default' }}
       onClick={() => clickable && openSeries(m, roundName)}
     >
-      {teamRow(high, m.highWins, m.winner === m.high)}
-      {teamRow(low, m.lowWins, m.winner === m.low)}
+      {teamRow(m.high, m.highWins, m.winner === m.high)}
+      {teamRow(m.low, m.lowWins, m.winner === m.low)}
     </div>
   );
 }

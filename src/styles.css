@@ -417,6 +417,22 @@ button.btn.secondary { background: var(--panel2); color: var(--text); border: 1p
 button.btn.danger { background: var(--red); color: #fff; }
 button.btn.small { padding: 4px 10px; font-size: 12px; }
 
+/* ---------- Lineup drag-and-drop ---------- */
+.drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 16px;
+  padding: 0 var(--sp-1);
+  user-select: none;
+  white-space: nowrap;
+  letter-spacing: -1px;
+}
+.drag-handle:active { cursor: grabbing; }
+tr.lineup-drop-target td {
+  background: var(--team-color-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--team-color-line);
+}
+
 /* ---------- Minutes stepper (roster/lineup) ---------- */
 .min-stepper { display: inline-flex; align-items: center; gap: 2px; }
 .min-step-btn {

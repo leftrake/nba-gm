@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { getTeam, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { fmtDate, TeamLink, TeamBadge } from './shared.jsx';
 import { ROUND_NAMES } from './Playoffs.jsx';
+import { Section } from './ui/index.js';
 
 // Every playoff game the user's team has played this postseason, oldest
 // first, across whatever rounds are archived in `po.completed` plus the
@@ -73,8 +74,7 @@ export default function Schedule({ league, openTeam, openGame }) {
   return (
     <div className="grid2">
       <div>
-        <div className="panel">
-          <h2>Upcoming Games</h2>
+        <Section title="Upcoming Games" spacing="sm">
           {upcoming.length === 0 && !playoffStatus && <p style={{ color: 'var(--muted)' }}>Regular season complete.</p>}
           {upcoming.length === 0 && playoffStatus && (
             playoffStatus.champion ? (
@@ -91,8 +91,8 @@ export default function Schedule({ league, openTeam, openGame }) {
             )
           )}
           {upcoming.length > 0 && (
-            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-              <table>
+            <div className="ui-table-wrap" style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <table className="ui-table">
                 <thead><tr><th>Date</th><th>Opponent</th><th className="num">Opp Record</th></tr></thead>
                 <tbody>
                   {upcoming.map(({ di, g }) => {
@@ -109,14 +109,13 @@ export default function Schedule({ league, openTeam, openGame }) {
               </table>
             </div>
           )}
-        </div>
+        </Section>
 
-        <div className="panel">
-          <h2>Past Results</h2>
+        <Section title="Past Results" spacing="sm">
           {past.length === 0 && <p style={{ color: 'var(--muted)' }}>No games played yet.</p>}
           {past.length > 0 && (
-            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-              <table>
+            <div className="ui-table-wrap" style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <table className="ui-table">
                 <thead><tr><th>Date</th><th>Opponent</th><th>W/L</th><th className="num">Score</th></tr></thead>
                 <tbody>
                   {past.map(({ di, g, r }) => {
@@ -133,13 +132,12 @@ export default function Schedule({ league, openTeam, openGame }) {
               </table>
             </div>
           )}
-        </div>
+        </Section>
 
         {playoffGames.length > 0 && (
-          <div className="panel">
-            <h2>Playoff Games</h2>
-            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-              <table>
+          <Section title="Playoff Games" spacing="sm">
+            <div className="ui-table-wrap" style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <table className="ui-table">
                 <thead><tr><th>Round</th><th>Opponent</th><th>W/L</th><th className="num">Score</th></tr></thead>
                 <tbody>
                   {playoffGames.map(({ round, gameNo, g }) => {
@@ -163,26 +161,30 @@ export default function Schedule({ league, openTeam, openGame }) {
                 </tbody>
               </table>
             </div>
-          </div>
+          </Section>
         )}
       </div>
 
-      <div className="panel">
-        <h2>Around the League</h2>
-        <div className="controls">
-          <button className="btn small secondary" disabled={day === 0} onClick={() => setSelDay(day - 1)}>◀ Prev</button>
-          <button className="btn small secondary" onClick={() => setSelDay(Math.min(league.dayIndex, lastDay))}>Today</button>
-          <button className="btn small secondary" disabled={day === lastDay} onClick={() => setSelDay(day + 1)}>Next ▶</button>
-        </div>
-        <h3>
+      <Section
+        title="Around the League"
+        action={
+          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+            <button className="ui-btn ui-btn--sm ui-btn--secondary" disabled={day === 0} onClick={() => setSelDay(day - 1)}>◀</button>
+            <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => setSelDay(Math.min(league.dayIndex, lastDay))}>Today</button>
+            <button className="ui-btn ui-btn--sm ui-btn--secondary" disabled={day === lastDay} onClick={() => setSelDay(day + 1)}>▶</button>
+          </div>
+        }
+        spacing="sm"
+      >
+        <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-3)' }}>
           {fmtDate(dateForDay(league, day))} · Day {day + 1}/{league.schedule.length}
           {day === league.dayIndex && <span className="tag" style={{ marginLeft: 8, color: 'var(--accent)' }}>TODAY</span>}
-        </h3>
+        </p>
         {league.schedule[day].map((g, i) => {
           const r = resultFor(day, g);
           const mine = g.home === me || g.away === me;
           return (
-            <div className="result-row" key={i} style={mine ? { background: 'var(--panel2)' } : {}}>
+            <div className="result-row" key={i} style={mine ? { background: 'var(--surface-2)' } : {}}>
               {r ? (
                 <>
                   <span className={r.awayPts > r.homePts ? 'winner' : ''}>
@@ -209,7 +211,7 @@ export default function Schedule({ league, openTeam, openGame }) {
             </div>
           );
         })}
-      </div>
+      </Section>
     </div>
   );
 }
