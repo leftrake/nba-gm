@@ -130,33 +130,37 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     <div>
       {league.phase === 'regular' && (
         <div className="controls" data-tour="sim-controls">
-          <button className="btn" disabled={animating} onClick={() => animatedSimTo(league.dayIndex + 1)}>
+          <button className="ui-btn ui-btn--primary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(league.dayIndex + 1)}>
             {todayHasGame ? 'Simulate Game' : 'Next Day'}
           </button>
-          <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
-          <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
-          <button className="btn secondary" disabled={animating} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
-          {animating && <button className="btn secondary" onClick={() => { skipRef.current = true; }}>Skip ▸▸</button>}
-          {animating && <button className="btn secondary" onClick={() => { stopRef.current = true; }}>Stop ⏹</button>}
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
+          {animating && <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => { skipRef.current = true; }}>Skip ▸▸</button>}
+          {animating && <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => { stopRef.current = true; }}>Stop ⏹</button>}
         </div>
       )}
 
       {league.phase !== 'regular' && (
-        <div className="panel">
-          <h2>Calendar</h2>
-          <p style={{ color: 'var(--muted)' }}>{PHASE_BLURB[league.phase] || ''}</p>
+        <div className="ui-card" style={{ marginBottom: 'var(--sp-4)' }}>
+          <div className="ui-section-header">
+            <div className="ui-section-title">Calendar</div>
+          </div>
+          <p style={{ color: 'var(--text-muted)' }}>{PHASE_BLURB[league.phase] || ''}</p>
         </div>
       )}
 
-      <div className="panel calendar">
+      <div className="ui-card calendar">
         <div className="calendar-header">
-          <button className="btn small secondary" disabled={!canGoPrev} onClick={() => setView((v) => {
+          <button className="ui-btn ui-btn--secondary ui-btn--sm" disabled={!canGoPrev} onClick={() => setView((v) => {
             const m = v.month === 0 ? 11 : v.month - 1;
             const y = v.month === 0 ? v.year - 1 : v.year;
             return { year: y, month: m };
           })}>◀ Prev</button>
-          <h3 style={{ margin: 0 }}>{monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
-          <button className="btn small secondary" disabled={!canGoNext} onClick={() => setView((v) => {
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-lg)', color: 'var(--text-primary)' }}>
+            {monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </span>
+          <button className="ui-btn ui-btn--secondary ui-btn--sm" disabled={!canGoNext} onClick={() => setView((v) => {
             const m = v.month === 11 ? 0 : v.month + 1;
             const y = v.month === 11 ? v.year + 1 : v.year;
             return { year: y, month: m };
@@ -243,9 +247,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                 {confirmDay === di && (
                   <div className="calendar-popover">
                     <p>Sim to {fmtDate(d)}?</p>
-                    <div className="controls" style={{ marginBottom: 0 }}>
-                      <button className="btn small" onClick={(e) => { e.stopPropagation(); animatedSimTo(di); }}>Sim</button>
-                      <button className="btn small secondary" onClick={(e) => { e.stopPropagation(); setConfirmDay(null); }}>Cancel</button>
+                    <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' }}>
+                      <button className="ui-btn ui-btn--primary ui-btn--sm" onClick={(e) => { e.stopPropagation(); animatedSimTo(di); }}>Sim</button>
+                      <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={(e) => { e.stopPropagation(); setConfirmDay(null); }}>Cancel</button>
                     </div>
                   </div>
                 )}
@@ -257,11 +261,11 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                       <TradeDeadlineSummary league={league} openTeam={openTeam} />
                     )}
                     {openEvent === 'all-star-game' && league.allStar?.season === league.season && league.allStar.game && (
-                      <button className="btn small" onClick={(e) => { e.stopPropagation(); setOpenEvent(null); setScreen('allstar'); }}>
+                      <button className="ui-btn ui-btn--primary ui-btn--sm" style={{ marginBottom: 'var(--sp-2)' }} onClick={(e) => { e.stopPropagation(); setOpenEvent(null); setScreen('allstar'); }}>
                         View All-Star Game
                       </button>
                     )}
-                    <button className="btn small secondary" onClick={(e) => { e.stopPropagation(); setOpenEvent(null); }}>Close</button>
+                    <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={(e) => { e.stopPropagation(); setOpenEvent(null); }}>Close</button>
                   </div>
                 )}
               </div>
@@ -271,24 +275,26 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
       </div>
 
       {injuryAlert && (
-        <div className="modal-overlay" onClick={() => setInjuryAlert(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h2>🩹 Injury Update</h2>
+        <div className="ui-modal-overlay" onClick={() => setInjuryAlert(null)}>
+          <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ui-modal-header">
+              <div className="ui-modal-title">🩹 Injury Update</div>
+            </div>
             {injuryAlert.injured.map((p) => (
-              <p key={`hurt-${p.id}`}>
+              <p key={`hurt-${p.id}`} style={{ marginBottom: 'var(--sp-2)' }}>
                 <b>{p.name}</b> ({p.pos}) goes down with {p.injury.type.toLowerCase()} —{' '}
-                <span style={{ color: 'var(--red)' }}>{injuryTimeline(p.injury)}</span>.
+                <span style={{ color: 'var(--color-danger)' }}>{injuryTimeline(p.injury)}</span>.
               </p>
             ))}
             {injuryAlert.returned.map((p) => (
-              <p key={`back-${p.id}`}>
-                <b>{p.name}</b> ({p.pos}) is <span style={{ color: 'var(--green)' }}>back and available</span> for tonight's game.
+              <p key={`back-${p.id}`} style={{ marginBottom: 'var(--sp-2)' }}>
+                <b>{p.name}</b> ({p.pos}) is <span style={{ color: 'var(--color-success)' }}>back and available</span> for tonight's game.
               </p>
             ))}
-            <p style={{ color: 'var(--muted)' }}>You may want to adjust your rotation before the next game.</p>
-            <div className="controls" style={{ marginBottom: 0 }}>
-              <button className="btn" onClick={() => { setInjuryAlert(null); setScreen('roster'); }}>Go to Roster</button>
-              <button className="btn secondary" onClick={() => setInjuryAlert(null)}>Dismiss</button>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-4)' }}>You may want to adjust your rotation before the next game.</p>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+              <button className="ui-btn ui-btn--primary ui-btn--md" onClick={() => { setInjuryAlert(null); setScreen('roster'); }}>Go to Roster</button>
+              <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => setInjuryAlert(null)}>Dismiss</button>
             </div>
           </div>
         </div>
@@ -305,13 +311,13 @@ function TradeDeadlineSummary({ league, openTeam }) {
     && n.day >= TRADE_DEADLINE_DAY - 1 && n.day <= TRADE_DEADLINE_DAY
   );
   if (recent.length === 0) {
-    return <p style={{ color: 'var(--muted)' }}>No trades in the final 48 hours.</p>;
+    return <p style={{ color: 'var(--text-muted)' }}>No trades in the final 48 hours.</p>;
   }
   return (
     <div>
-      <p style={{ color: 'var(--muted)' }}>Trades in the final 48 hours:</p>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-2)' }}>Trades in the final 48 hours:</p>
       {recent.map((n, i) => (
-        <p key={i}><NewsText text={n.text} openTeam={openTeam} /></p>
+        <p key={i} style={{ marginBottom: 'var(--sp-1)' }}><NewsText text={n.text} openTeam={openTeam} /></p>
       ))}
     </div>
   );

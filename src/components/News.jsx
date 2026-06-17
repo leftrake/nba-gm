@@ -67,12 +67,16 @@ export default function News({ league, openTeam }) {
 
   return (
     <div>
-      <div className="panel">
-        <h2>League News · {league.season}</h2>
-        <div className="news-filters">
-          <div className="news-tabs">
+      <div className="ui-card">
+        <div className="ui-section-header">
+          <div className="ui-section-header__left">
+            <div className="ui-section-title">League News · {league.season}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--sp-3)' }}>
+          <div className="ui-tabs" style={{ marginBottom: 0, flex: 1 }}>
             {CATS.map(([key, label]) => (
-              <button key={key} className={cat === key ? 'active' : ''} onClick={() => setCat(key)}>
+              <button key={key} className={`ui-tab${cat === key ? ' ui-tab--active' : ''}`} onClick={() => setCat(key)}>
                 {label}
               </button>
             ))}
@@ -87,7 +91,7 @@ export default function News({ league, openTeam }) {
           </select>
         </div>
         {feed.length === 0 && (
-          <p style={{ color: 'var(--muted)' }}>No stories match these filters yet.</p>
+          <p style={{ color: 'var(--text-muted)', marginTop: 'var(--sp-3)' }}>No stories match these filters yet.</p>
         )}
         {feed.map((n, i) => (
           <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />
@@ -95,8 +99,10 @@ export default function News({ league, openTeam }) {
       </div>
 
       {archive.map(({ season, items }) => (
-        <div className="panel" key={season}>
-          <h2>{season} · Biggest Stories</h2>
+        <div className="ui-card" key={season}>
+          <div className="ui-section-header">
+            <div className="ui-section-title">{season} · Biggest Stories</div>
+          </div>
           {items.map((n, i) => (
             <NewsItem n={n} openTeam={openTeam} userTeamId={league.userTeamId} key={i} />
           ))}
@@ -104,14 +110,16 @@ export default function News({ league, openTeam }) {
       ))}
 
       {cat === 'trade' && (
-        <div className="panel">
-          <h2>Trade History</h2>
+        <div className="ui-card">
+          <div className="ui-section-header">
+            <div className="ui-section-title">Trade History</div>
+          </div>
           {tradesBySeason.length === 0 && (
-            <p style={{ color: 'var(--muted)' }}>No trades have been made yet.</p>
+            <p style={{ color: 'var(--text-muted)' }}>No trades have been made yet.</p>
           )}
           {tradesBySeason.map(({ season, items }) => (
             <div key={season}>
-              <h3>{season}</h3>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontWeight: 'var(--weight-semibold)', margin: 'var(--sp-4) 0 var(--sp-2)' }}>{season}</div>
               {items.map((t, i) => (
                 <div className="news-item" key={i}>
                   <span className="news-text"><NewsText text={t.text} openTeam={openTeam} /></span>

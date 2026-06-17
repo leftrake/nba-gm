@@ -41,16 +41,18 @@ export default function Settings({ league, importLeague, onResetTutorial, theme,
   };
 
   return (
-    <div className="panel" style={{ maxWidth: 560 }}>
-      <h2>Settings</h2>
-      <p style={{ color: 'var(--muted)', marginTop: 8 }}>
+    <div className="ui-card" style={{ maxWidth: 560 }}>
+      <div className="ui-section-header">
+        <div className="ui-section-title">Save &amp; Export</div>
+      </div>
+      <p className="ui-section-subtitle" style={{ marginBottom: 'var(--sp-4)' }}>
         Your game saves automatically in this browser. Export a file to back it
         up or move it to another browser; importing replaces the current game.
         Save format v{SAVE_VERSION}.
       </p>
-      <div className="controls" style={{ marginTop: 12 }}>
-        <button className="btn" onClick={exportSave}>Export Save</button>
-        <button className="btn secondary" onClick={() => fileRef.current?.click()}>Import Save…</button>
+      <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+        <button className="ui-btn ui-btn--primary ui-btn--md" onClick={exportSave}>Export Save</button>
+        <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => fileRef.current?.click()}>Import Save…</button>
         <input
           ref={fileRef}
           type="file"
@@ -59,23 +61,27 @@ export default function Settings({ league, importLeague, onResetTutorial, theme,
           onChange={onImportFile}
         />
       </div>
-      {importError && <p style={{ color: 'var(--red)', marginTop: 12 }}>⚠️ {importError}</p>}
+      {importError && <p style={{ color: 'var(--color-danger)', marginTop: 'var(--sp-3)' }}>⚠️ {importError}</p>}
 
-      <h2 style={{ marginTop: 24 }}>Appearance</h2>
-      <p style={{ color: 'var(--muted)', marginTop: 8 }}>
+      <div className="ui-divider ui-divider--lg" />
+
+      <div className="ui-section-header">
+        <div className="ui-section-title">Appearance</div>
+      </div>
+      <p className="ui-section-subtitle" style={{ marginBottom: 'var(--sp-4)' }}>
         Choose a dark theme palette and an optional custom accent color.
       </p>
-      <div className="controls" style={{ marginTop: 12 }}>
-        <label>
-          Theme:{' '}
+      <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
+          Theme:
           <select value={theme} onChange={(e) => setTheme(e.target.value)}>
             {Object.entries(THEMES).map(([key, t]) => (
               <option key={key} value={key}>{t.label}</option>
             ))}
           </select>
         </label>
-        <label>
-          Accent color:{' '}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
+          Accent color:
           <input
             type="color"
             value={accentColor}
@@ -84,23 +90,27 @@ export default function Settings({ league, importLeague, onResetTutorial, theme,
           />
         </label>
         {accentColor.toLowerCase() !== DEFAULT_ACCENT && (
-          <button className="btn small secondary" onClick={() => setAccentColor(DEFAULT_ACCENT)}>Reset Accent</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setAccentColor(DEFAULT_ACCENT)}>Reset Accent</button>
         )}
       </div>
 
-      <h2 style={{ marginTop: 24 }}>Tutorial</h2>
-      <p style={{ color: 'var(--muted)', marginTop: 8 }}>
+      <div className="ui-divider ui-divider--lg" />
+
+      <div className="ui-section-header">
+        <div className="ui-section-title">Tutorial</div>
+      </div>
+      <p className="ui-section-subtitle" style={{ marginBottom: 'var(--sp-4)' }}>
         Replay the first-session walkthrough and every first-encounter tooltip.
       </p>
-      <div className="controls" style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
         <button
-          className="btn secondary"
+          className="ui-btn ui-btn--secondary ui-btn--md"
           onClick={() => { onResetTutorial?.(); setTutorialReset(true); }}
         >
           Reset Tutorial
         </button>
       </div>
-      {tutorialReset && <p style={{ color: 'var(--green)', marginTop: 12 }}>Tutorial reset — the walkthrough will start now, and tooltips will reappear as you encounter them.</p>}
+      {tutorialReset && <p style={{ color: 'var(--color-success)', marginTop: 'var(--sp-3)' }}>Tutorial reset — the walkthrough will start now, and tooltips will reappear as you encounter them.</p>}
     </div>
   );
 }
