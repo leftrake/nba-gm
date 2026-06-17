@@ -715,6 +715,9 @@ export function simDay(league) {
     else { away.wins++; home.losses++; }
     updateStreak(league, home, r.homePts > r.awayPts);
     updateStreak(league, away, r.awayPts > r.homePts);
+    // Sync stored score to the box totals after injury truncation
+    r.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
+    r.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
     pushGameNews(league, r, home, away, hurt);
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, injuryReport });
   }
@@ -862,6 +865,9 @@ export function simPlayoffGame(league) {
     // playoff results swing morale harder than a regular-season game
     applyResultMorale(getTeam(league, homeId), r.homePts > r.awayPts, 2);
     applyResultMorale(getTeam(league, awayId), r.awayPts > r.homePts, 2);
+    // Sync stored score to the box totals after injury truncation
+    game.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
+    game.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
     if (m.highWins === 4 || m.lowWins === 4) {
       m.winner = m.highWins === 4 ? m.high : m.low;
       po.log.push(`${getTeam(league, m.winner).name} win series ${Math.max(m.highWins, m.lowWins)}-${Math.min(m.highWins, m.lowWins)}`);
