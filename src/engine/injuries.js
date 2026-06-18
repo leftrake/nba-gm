@@ -7,24 +7,25 @@ import { pushNews } from './save.js';
 // odds driven by hidden durability, age, the night's minutes, and current
 // condition — a gassed 34-year-old logging 40 minutes runs several times
 // the risk of a fresh 24-year-old. An injured player carries
-//   p.injury = { type, tier, gamesLeft }
-// counts down one per team game missed (the lineup/rotation code refuses to
-// play him), and heals over the summer no matter what.
+//   p.injury = { type, tier, daysLeft }
+// counts down one per calendar day (whether or not he plays, or even has a
+// game scheduled), and heals over the summer no matter what.
 
 // Severity tiers, weighted heavily toward the short end. Durations are in
-// team games: at ~3.3 games a week, "1-3 weeks" is about 4-10 games.
+// calendar days, not games — a day off the same as a played night, so a
+// team on a bye doesn't get free recovery relative to one playing nightly.
 export const INJURY_TIERS = [
-  { tier: 'dtd', w: 42, games: [1, 3], types: ['Bruised Knee', 'Sore Hamstring', 'Back Spasms', 'Rolled Ankle', 'Hip Soreness'] },
-  { tier: 'minor', w: 42, games: [4, 10], types: ['Sprained Ankle', 'Hamstring Strain', 'Wrist Sprain', 'Knee Tendinitis', 'Calf Strain'] },
-  { tier: 'significant', w: 14, games: [12, 27], types: ['MCL Sprain', 'Stress Fracture', 'Shoulder Separation', 'Groin Tear', 'Broken Hand'] },
-  { tier: 'season', w: 2, games: null, types: ['Torn ACL', 'Achilles Tear', 'Ruptured Disc', 'Torn Labrum'] },
+  { tier: 'dtd', w: 42, days: [1, 3], types: ['Bruised Knee', 'Sore Hamstring', 'Back Spasms', 'Rolled Ankle', 'Hip Soreness'] },
+  { tier: 'minor', w: 42, days: [4, 10], types: ['Sprained Ankle', 'Hamstring Strain', 'Wrist Sprain', 'Knee Tendinitis', 'Calf Strain'] },
+  { tier: 'significant', w: 14, days: [12, 27], types: ['MCL Sprain', 'Stress Fracture', 'Shoulder Separation', 'Groin Tear', 'Broken Hand'] },
+  { tier: 'season', w: 2, days: null, types: ['Torn ACL', 'Achilles Tear', 'Ruptured Disc', 'Torn Labrum'] },
 ];
 const TIER_W = INJURY_TIERS.reduce((s, t) => s + t.w, 0);
 
-// "out 6 games" / "out for the season", shared by news and the UI
+// "out 6 days" / "out for the season", shared by news and the UI
 export function injuryTimeline(injury) {
   if (injury.tier === 'season') return 'out for the season';
-  return `out ${injury.gamesLeft} game${injury.gamesLeft === 1 ? '' : 's'}`;
+  return `out ${injury.daysLeft} day${injury.daysLeft === 1 ? '' : 's'}`;
 }
 
 const article = (type) => (/^([AEIOU]|MCL)/i.test(type) ? 'an' : 'a');
@@ -48,7 +49,7 @@ export function injurePlayer(league, team, p, rng) {
   p.injury = {
     type: pick(tier.types, rng),
     tier: tier.tier,
-    gamesLeft: tier.games ? randInt(tier.games[0], tier.games[1], rng) : 400,
+    daysLeft: tier.days ? randInt(tier.days[0], tier.days[1], rng) : 400,
   };
   // bruise-level news only for players anyone has heard of
   if (tier.tier !== 'dtd' || overall(p) >= 70) {
@@ -65,14 +66,14 @@ export function injurePlayer(league, team, p, rng) {
   return p.injury;
 }
 
-// Count down one missed game for a team's wounded; clear and announce
-// anyone who's back. Call once per team per simmed game, before rolling
-// new injuries (tonight's casualties shouldn't tick the game they played).
+// Count down one calendar day for a team's wounded; clear and announce
+// anyone who's back. Call once per team per simulated day, before rolling
+// new injuries (tonight's casualties shouldn't tick the day they got hurt).
 export function tickInjuries(league, team) {
   for (const p of team.roster) {
     if (!p.injury || p.injury.tier === 'season') continue;
-    p.injury.gamesLeft -= 1;
-    if (p.injury.gamesLeft <= 0) {
+    p.injury.daysLeft -= 1;
+    if (p.injury.daysLeft <= 0) {
       const { type, tier } = p.injury;
       p.injury = null;
       if (tier !== 'dtd' || overall(p) >= 70) {

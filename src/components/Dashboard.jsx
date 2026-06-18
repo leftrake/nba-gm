@@ -379,7 +379,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
                         <td>{p.pos}</td>
                         <td style={severe ? { color: 'var(--color-danger)' } : undefined}>🩹 {p.injury.type}</td>
                         <td className="num" style={severe ? { color: 'var(--color-danger)' } : undefined}>
-                          {p.injury.tier === 'season' ? 'Season' : `${p.injury.gamesLeft} gm`}
+                          {p.injury.tier === 'season' ? 'Season' : `${p.injury.daysLeft}d`}
                         </td>
                       </tr>
                     );

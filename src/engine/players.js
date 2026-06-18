@@ -201,7 +201,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     stamina: generateStamina(pos, age, rng),
     condition: 100, // game-day freshness, managed by the league's day loop
     durability: Math.round(clamp(generateDurability(rng) + durabilityAdjust(backstory), 25, 99)),
-    injury: null, // { type, tier, gamesLeft } while hurt — see engine/injuries.js
+    injury: null, // { type, tier, daysLeft } while hurt — see engine/injuries.js
     // Hidden personality archetype — see engine/backstory.js. `scout` tracks
     // pre-draft/pre-roster scouting investment (engine/scoutingTrips.js).
     backstory,

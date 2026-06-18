@@ -122,7 +122,7 @@ export function Morale({ p }) {
   );
 }
 
-// Red injury chip: type plus games remaining. Renders nothing for the healthy.
+// Red injury chip: type plus days remaining. Renders nothing for the healthy.
 export function InjuryTag({ p }) {
   if (!p.injury) return null;
   const season = p.injury.tier === 'season';
@@ -130,9 +130,9 @@ export function InjuryTag({ p }) {
     <span
       className="tag"
       style={{ color: 'var(--red)', marginLeft: 6 }}
-      title={`${p.injury.type} — ${season ? 'out for the season' : `${p.injury.gamesLeft} game${p.injury.gamesLeft === 1 ? '' : 's'} remaining`}`}
+      title={`${p.injury.type} — ${season ? 'out for the season' : `${p.injury.daysLeft} day${p.injury.daysLeft === 1 ? '' : 's'} remaining`}`}
     >
-      🩹 {p.injury.type} · {season ? 'season' : `${p.injury.gamesLeft} gm`}
+      🩹 {p.injury.type} · {season ? 'season' : `${p.injury.daysLeft}d`}
     </span>
   );
 }

@@ -181,7 +181,7 @@ export function lineupWarnings(lineup, roster) {
     const p = e?.id != null ? byId.get(e.id) : null;
     if (!p || !(e.min > 0)) continue;
     if (isInjured(p)) {
-      const left = p.injury.tier === 'season' ? 'out for the season' : `${p.injury.gamesLeft} game${p.injury.gamesLeft === 1 ? '' : 's'} left`;
+      const left = p.injury.tier === 'season' ? 'out for the season' : `${p.injury.daysLeft} day${p.injury.daysLeft === 1 ? '' : 's'} left`;
       warns.push(`${p.name} is injured (${p.injury.type}, ${left}) — his minutes will be covered by healthy players until he returns.`);
       continue; // no point also nagging about his stamina
     }

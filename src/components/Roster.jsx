@@ -453,7 +453,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                               <td className="num">{overall(p)}</td>
                               <td className="num"><Cond p={p} /></td>
                               <td className="num">
-                                <MinInput value={b.min} disabled={isInjured(p)} onChange={(v) => setBenchMin(b.id, v)} />
+                                <MinInput value={b.min} onChange={(v) => setBenchMin(b.id, v)} />
                                 <OverStamina p={p} min={b.min} />
                               </td>
                             </tr>
