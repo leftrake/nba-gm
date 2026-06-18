@@ -177,9 +177,9 @@ export function TopPerformers({ league, game, openPlayer }) {
   );
 }
 
-// Full possession-by-possession log: every shot, rebound, turnover, foul,
-// and free throw in game order with period + clock.
-export function PlayByPlay({ events }) {
+// Full possession-by-possession log. Away team left, home team right,
+// clock in the middle — matching the traditional scoreboard orientation.
+export function PlayByPlay({ events, awayTeam, homeTeam }) {
   const [period, setPeriod] = useState('All');
   const [desc, setDesc] = useState(true); // true = 12:00→0:00 (default game order)
 
@@ -188,6 +188,8 @@ export function PlayByPlay({ events }) {
   const periods = ['All', ...([...new Set(events.map((e) => e.q).filter(Boolean))]) ];
   const visible = (period === 'All' ? events : events.filter((e) => e.q === period));
   const sorted = desc ? visible : [...visible].reverse();
+
+  const tdBase = { padding: '3px 6px', verticalAlign: 'top', fontSize: 13 };
 
   return (
     <div>
@@ -206,14 +208,30 @@ export function PlayByPlay({ events }) {
           {desc ? '12:00 → 0:00' : '0:00 → 12:00'}
         </button>
       </div>
-      {sorted.map((e, i) => (
-        <div className="news-item" key={i}>
-          <span style={{ color: 'var(--muted)', display: 'inline-block', minWidth: 70 }}>
-            {e.q}{e.t ? ` ${e.t}` : ''}
-          </span>
-          {e.text}
-        </div>
-      ))}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--border)' }}>
+            <th style={{ width: '44%', textAlign: 'left', padding: '2px 6px 6px', fontSize: 13 }}>{awayTeam?.name ?? 'Away'}</th>
+            <th style={{ width: '12%', textAlign: 'center', color: 'var(--muted)', padding: '2px 6px 6px', fontSize: 12 }}>Clock</th>
+            <th style={{ width: '44%', textAlign: 'right', padding: '2px 6px 6px', fontSize: 13 }}>{homeTeam?.name ?? 'Home'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((e, i) => (
+            <tr key={i} style={{ borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)' }}>
+              <td style={{ ...tdBase, textAlign: 'left' }}>
+                {e.side === 'away' && e.text}
+              </td>
+              <td style={{ ...tdBase, textAlign: 'center', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                {e.q}{e.t ? ` ${e.t}` : ''}
+              </td>
+              <td style={{ ...tdBase, textAlign: 'right' }}>
+                {e.side === 'home' && e.text}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -293,7 +311,7 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
                 {boxTab === 'home' && (
                   <BoxTable league={league} teamId={game.home} pts={game.homePts} box={game.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={game.injuryReport} />
                 )}
-                {boxTab === 'pbp' && <PlayByPlay events={game.playByPlay} />}
+                {boxTab === 'pbp' && <PlayByPlay events={game.playByPlay} awayTeam={away} homeTeam={home} />}
               </div>
             </>
           ) : (

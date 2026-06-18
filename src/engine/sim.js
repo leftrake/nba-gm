@@ -341,7 +341,7 @@ function offenseRebounds(off, def, rng, emit = () => {}) {
     gp.line.reb += 1;
     if (offensive) gp.line.oreb += 1;
     else gp.line.dreb += 1;
-    emit(`${gp.name} REBOUND (Off:${gp.line.oreb} Def:${gp.line.dreb})`);
+    emit(`${gp.name} REBOUND (Off:${gp.line.oreb} Def:${gp.line.dreb})`, gp.team);
   }
   return offensive;
 }
@@ -410,7 +410,7 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
       const stealer = weightedPick(def.five, (g) => g.def * g.def, rng);
       stealer.line.stl += 1;
       emit(`${loser.name} Turnover (${loser.line.tov} TO)`);
-      emit(`${stealer.name} STEAL (${stealer.line.stl} STL)`);
+      emit(`${stealer.name} STEAL (${stealer.line.stl} STL)`, stealer.team);
     } else {
       emit(`${loser.name} Turnover (${loser.line.tov} TO)`);
     }
@@ -421,7 +421,7 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
     const fouler = chargeFoul(def, rng);
     if (fouler) {
       const tf = foulBump(fouler);
-      emit(`${fouler.name} Loose Ball FOUL (P${fouler.line.pf}.T${tf})`);
+      emit(`${fouler.name} Loose Ball FOUL (P${fouler.line.pf}.T${tf})`, fouler.team);
     }
   }
   // non-shooting foul in the penalty: two shots, no field-goal attempt
@@ -430,7 +430,7 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
     const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
     if (fouler) {
       const tf = foulBump(fouler);
-      emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`);
+      emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team);
     }
     const { made, lastMissed } = shootFreeThrows(shooter, 2, rng, emit);
     if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
@@ -473,7 +473,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
         const fouler = chargeFoul(def, rng);
         if (fouler) {
           const tf = foulBump(fouler);
-          emit(`And one! ${fouler.name} FOUL (P${fouler.line.pf}.T${tf})`);
+          emit(`And one! ${fouler.name} FOUL (P${fouler.line.pf}.T${tf})`, fouler.team);
         }
         pts += shootFreeThrows(shooter, 1, rng, emit).made;
       }
@@ -484,7 +484,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       const fouler = chargeFoul(def, rng);
       if (fouler) {
         const tf = foulBump(fouler);
-        emit(`${fouler.name} Shooting FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`);
+        emit(`${fouler.name} Shooting FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team);
       }
       const { made: ftPts, lastMissed } = shootFreeThrows(shooter, shotPts, rng, emit);
       if (ftPts > 0) off.team.last = { name: shooter.name, type: 'ft' };
@@ -499,7 +499,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     if (rng() < blockP) {
       const blocker = weightedPick(def.five, (g) => Math.pow(g.def * 0.6 + g.reb * 0.4, 2), rng);
       blocker.line.blk += 1;
-      emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`);
+      emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`, blocker.team);
     }
     if (!offenseRebounds(off, def, rng, emit)) return pts;
   }
@@ -551,7 +551,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   const playByPlay = [];
   const qFouls = { home: 0, away: 0 }; // team fouls per quarter, cosmetic only
   let period = 0; // 0-3 = Q1-Q4, 4+ = overtimes
-  const addPlay = (text, t = '', q = periodLabel(period)) => playByPlay.push({ q, t, text });
+  const addPlay = (text, t = '', q = periodLabel(period), side = null) => playByPlay.push({ q, t, text, side });
   const sideName = (side) => (side === 0 ? homeTeam : awayTeam).name;
   const fmtClock = (rem) => {
     const t = Math.max(0, Math.round(rem * 60));
@@ -627,14 +627,14 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     // away possessions within the same pair get distinct clock readings.
     const pairStep = minutes / Math.max(possEach, 1);
     const halfStep = pairStep / 2;
+    const foulBump = (gp) => ++qFouls[gp.team];
     for (let k = 0; k < possEach; k++) {
       const rem = remStart - pairStep * (k + 1); // end of pair — unchanged game logic
       const clutch = period >= 3 && rem <= 2.05;
       const remH = remStart - pairStep * k - halfStep;   // midpoint of home possession
       const remA = remStart - pairStep * k - pairStep;   // midpoint of away possession (= rem)
-      const emitH = (text) => addPlay(text, fmtClock(remH));
-      const emitA = (text) => addPlay(text, fmtClock(remA));
-      const foulBump = (gp) => ++qFouls[gp.team];
+      const emitH = (text, side = 'home') => addPlay(text, fmtClock(remH), undefined, side);
+      const emitA = (text, side = 'away') => addPlay(text, fmtClock(remA), undefined, side);
       const hp = playPossession(h, a, true, rng, clutch, emitH, foulBump);
       homeScore.pts += hp;
       for (const gp of h.five) gp.line.pm += hp;
