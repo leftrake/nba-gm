@@ -485,7 +485,34 @@ export function backfillPlayers(league) {
     ];
     league.nextPlayerId = (allIds.length ? Math.max(...allIds) : 0) + 1;
   }
+  // One-time repair for saves created before league.nextPlayerId existed as a
+  // persisted, never-resetting counter: two active players (on the same or
+  // different teams) can end up sharing an id, which makes id-keyed lookups
+  // (box score names, dashboard links, player cards) resolve to whichever one
+  // a given lookup happens to hit, while their actual stat lines stay correct
+  // since those are tied to the in-memory roster object, not the id. Give the
+  // less-established player in each colliding group a fresh id so every
+  // lookup is unambiguous going forward.
+  league.nextPlayerId = repairDuplicateLivePlayerIds(league, league.nextPlayerId);
   resetPlayerIds(league.nextPlayerId);
+}
+
+function repairDuplicateLivePlayerIds(league, nextId) {
+  const groups = new Map();
+  const add = (p) => {
+    if (!groups.has(p.id)) groups.set(p.id, []);
+    groups.get(p.id).push(p);
+  };
+  for (const t of league.teams) for (const p of t.roster) add(p);
+  for (const p of league.freeAgents) add(p);
+  for (const players of groups.values()) {
+    if (players.length < 2) continue;
+    // Keep the id on whoever has the longest track record (most likely to be
+    // referenced by past awards/record-book/legacy entries); reassign the rest.
+    players.sort((a, b) => (b.careerStats?.length || 0) - (a.careerStats?.length || 0));
+    for (const p of players.slice(1)) p.id = nextId++;
+  }
+  return nextId;
 }
 
 // Schedule day N falls on Oct 21 + N of the year before `season`
