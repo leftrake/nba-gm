@@ -224,6 +224,11 @@ export function PlayByPlay({ events, awayTeam, homeTeam }) {
               </td>
               <td style={{ ...tdBase, textAlign: 'center', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                 {e.q}{e.t ? ` ${e.t}` : ''}
+                {e.score && (
+                  <div style={{ fontWeight: 700, color: 'var(--fg)', fontSize: 11, marginTop: 2 }}>
+                    {e.score.away}–{e.score.home}
+                  </div>
+                )}
               </td>
               <td style={{ ...tdBase, textAlign: 'right' }}>
                 {e.side === 'home' && e.text}

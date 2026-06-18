@@ -355,7 +355,7 @@ function shootFreeThrows(shooter, n, rng, emit = () => {}) {
     if (rng() < shooter.ftPct) {
       shooter.line.ftm += 1; made += 1;
       shooter.line.pts += 1;
-      emit(`${shooter.name} Free Throw ${i + 1} of ${n} (${shooter.line.pts} PTS)`);
+      emit(`${shooter.name} Free Throw ${i + 1} of ${n} (${shooter.line.pts} PTS)`, undefined, 1);
     } else {
       lastMissed = i === n - 1;
       emit(`${shooter.name} Free Throw ${i + 1} of ${n} MISS`);
@@ -468,7 +468,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       off.team.last = { name: shooter.name, type };
       const assister = maybeAssist(off, shooter, type, rng);
       const astText = assister ? ` (${assister.name} ${assister.line.ast} AST)` : '';
-      emit(`${shooter.name} ${shotDesc(shooter, type)} (${shooter.line.pts} PTS)${astText}`);
+      emit(`${shooter.name} ${shotDesc(shooter, type)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts);
       if (fouled) {
         const fouler = chargeFoul(def, rng);
         if (fouler) {
@@ -551,7 +551,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   const playByPlay = [];
   const qFouls = { home: 0, away: 0 }; // team fouls per quarter, cosmetic only
   let period = 0; // 0-3 = Q1-Q4, 4+ = overtimes
-  const addPlay = (text, t = '', q = periodLabel(period), side = null) => playByPlay.push({ q, t, text, side });
+  const addPlay = (text, t = '', q = periodLabel(period), side = null, score = null) => playByPlay.push({ q, t, text, side, score });
   const sideName = (side) => (side === 0 ? homeTeam : awayTeam).name;
   const fmtClock = (rem) => {
     const t = Math.max(0, Math.round(rem * 60));
@@ -633,14 +633,26 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
       const clutch = period >= 3 && rem <= 2.05;
       const remH = remStart - pairStep * k - halfStep;   // midpoint of home possession
       const remA = remStart - pairStep * k - pairStep;   // midpoint of away possession (= rem)
-      const emitH = (text, side = 'home') => addPlay(text, fmtClock(remH), undefined, side);
-      const emitA = (text, side = 'away') => addPlay(text, fmtClock(remA), undefined, side);
+      // possScore accumulates pts scored in the current possession so the emit
+      // closures can show the live score; reset between home and away possessions.
+      let possScore = 0;
+      const emitH = (text, side = 'home', delta = 0) => {
+        possScore += delta;
+        addPlay(text, fmtClock(remH), undefined, side,
+          possScore > 0 ? { home: homeScore.pts + possScore, away: awayScore.pts } : null);
+      };
+      const emitA = (text, side = 'away', delta = 0) => {
+        possScore += delta;
+        addPlay(text, fmtClock(remA), undefined, side,
+          possScore > 0 ? { home: homeScore.pts, away: awayScore.pts + possScore } : null);
+      };
       const hp = playPossession(h, a, true, rng, clutch, emitH, foulBump);
       homeScore.pts += hp;
       for (const gp of h.five) gp.line.pm += hp;
       for (const gp of a.five) gp.line.pm -= hp;
       track(0, hp, rem);
       a = replaceFouledOut(a, awayPlayers, rng);
+      possScore = 0; // reset for away possession
       const ap = playPossession(a, h, false, rng, clutch, emitA, foulBump);
       awayScore.pts += ap;
       for (const gp of a.five) gp.line.pm += ap;
