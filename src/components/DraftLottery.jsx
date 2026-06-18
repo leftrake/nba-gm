@@ -32,6 +32,8 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
     );
   }
 
+  const originalOrder = draft?.originalOrder ?? order; // fallback for old saves
+
   const byRecord = [...league.teams].sort((a, b) => (a.lastWins ?? 41) - (b.lastWins ?? 41));
   const lotteryTeams = byRecord.slice(0, 14);
   const userInLottery = lotteryTeams.some((t) => t.id === league.userTeamId);
@@ -39,6 +41,12 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
   const envelopes = order.slice(0, 4); // picks 1-4, in pick order
   const rest = order.slice(4, 30); // picks 5-30
   const allRevealed = revealed >= 4;
+
+  // For a given original-team slot in round 1, who currently owns it?
+  const round1OwnerOf = (originalTeamId) => {
+    const idx = originalOrder.findIndex((id, i) => i < 30 && id === originalTeamId);
+    return idx !== -1 ? order[idx] : originalTeamId;
+  };
 
   return (
     <div className="modal-overlay">
@@ -51,15 +59,22 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
 
         <div style={{ overflowX: 'auto', marginBottom: 16 }}>
           <table>
-            <thead><tr><th>Team</th><th className="num">Record</th><th className="num">Odds</th></tr></thead>
+            <thead><tr><th>Team</th><th className="num">Record</th><th className="num">Odds</th><th>Pick</th></tr></thead>
             <tbody>
-              {lotteryTeams.map((t, i) => (
-                <tr key={t.id} style={t.id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
-                  <td><TeamLink team={t} openTeam={openTeam} /></td>
-                  <td className="num">{t.lastWins ?? '–'}-{t.lastWins != null ? 82 - t.lastWins : '–'}</td>
-                  <td className="num">{(LOTTERY_WEIGHTS[i] / 10).toFixed(1)}%</td>
-                </tr>
-              ))}
+              {lotteryTeams.map((t, i) => {
+                const ownerId = round1OwnerOf(t.id);
+                const pickOwner = ownerId !== t.id ? getTeam(league, ownerId) : null;
+                return (
+                  <tr key={t.id} style={t.id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
+                    <td><TeamLink team={t} openTeam={openTeam} /></td>
+                    <td className="num">{t.lastWins ?? '–'}-{t.lastWins != null ? 82 - t.lastWins : '–'}</td>
+                    <td className="num">{(LOTTERY_WEIGHTS[i] / 10).toFixed(1)}%</td>
+                    <td style={{ color: pickOwner ? 'var(--accent)' : 'var(--muted)', fontSize: 13 }}>
+                      {pickOwner ? <>→ <TeamLink team={pickOwner} openTeam={openTeam} /></> : 'Own'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -72,16 +87,19 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
             const isRevealed = revealed > i;
             const team = teamId ? getTeam(league, teamId) : null;
             const isUser = teamId === league.userTeamId;
+            const originalTeamId = originalOrder[slotIdx];
+            const viaTeam = isRevealed && originalTeamId !== teamId ? getTeam(league, originalTeamId) : null;
             return (
               <div
                 key={pickNo}
                 className="panel"
-                style={{ textAlign: 'center', padding: 16, ...(isUser ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)' } : {}) }}
+                style={{ textAlign: 'center', padding: 16, ...(isUser && isRevealed ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)' } : {}) }}
               >
                 <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Pick #{pickNo}</div>
                 {isRevealed && team ? (
                   <div style={{ fontWeight: 600 }}>
                     <TeamLink team={team} openTeam={openTeam}>{team.city} {team.name}</TeamLink>
+                    {viaTeam && <div style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>via <TeamLink team={viaTeam} openTeam={openTeam} /></div>}
                   </div>
                 ) : (
                   <div style={{ fontSize: 28 }}>✉️</div>
@@ -100,10 +118,15 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
                 <tbody>
                   {rest.map((id, i) => {
                     const t = getTeam(league, id);
+                    const originalId = originalOrder[i + 4];
+                    const origTeam = originalId !== id ? getTeam(league, originalId) : null;
                     return (
                       <tr key={i} style={id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
                         <td className="num">{i + 5}</td>
-                        <td><TeamLink team={t} openTeam={openTeam} /></td>
+                        <td>
+                          <TeamLink team={t} openTeam={openTeam} />
+                          {origTeam && <span style={{ color: 'var(--muted)', fontSize: 12 }}> via <TeamLink team={origTeam} openTeam={openTeam} /></span>}
+                        </td>
                       </tr>
                     );
                   })}

@@ -119,6 +119,7 @@ export function initDraft(league, rng) {
   league.draft = {
     season: draftSeason,
     order: [...round1.map((id) => ownerOf(1, id)), ...round2.map((id) => ownerOf(2, id))],
+    originalOrder: [...round1, ...round2], // original team for each slot (pre-trade)
     pickIndex: 0,
     prospects,
     results: [], // { pick, round, teamId, playerId, playerName, pos }
