@@ -588,17 +588,25 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     let h = floorContext(hFive, homeScore);
     let a = floorContext(aFive, awayScore);
     // anyone who picks up his 6th foul leaves the floor before the next play
+    // pairStep: clock consumed per possession-pair (game logic + highlights).
+    // halfStep: half that — used only for play-by-play timestamps so home and
+    // away possessions within the same pair get distinct clock readings.
+    const pairStep = minutes / Math.max(possEach, 1);
+    const halfStep = pairStep / 2;
     for (let k = 0; k < possEach; k++) {
-      const rem = remStart - (minutes * (k + 1)) / Math.max(possEach, 1);
+      const rem = remStart - pairStep * (k + 1); // end of pair — unchanged game logic
       const clutch = period >= 3 && rem <= 2.05;
-      const emit = (text) => addPlay(text, fmtClock(rem));
-      const hp = playPossession(h, a, true, rng, clutch, emit);
+      const remH = remStart - pairStep * k - halfStep;   // midpoint of home possession
+      const remA = remStart - pairStep * k - pairStep;   // midpoint of away possession (= rem)
+      const emitH = (text) => addPlay(text, fmtClock(remH));
+      const emitA = (text) => addPlay(text, fmtClock(remA));
+      const hp = playPossession(h, a, true, rng, clutch, emitH);
       homeScore.pts += hp;
       for (const gp of h.five) gp.line.pm += hp;
       for (const gp of a.five) gp.line.pm -= hp;
       track(0, hp, rem);
       a = replaceFouledOut(a, awayPlayers, rng);
-      const ap = playPossession(a, h, false, rng, clutch, emit);
+      const ap = playPossession(a, h, false, rng, clutch, emitA);
       awayScore.pts += ap;
       for (const gp of a.five) gp.line.pm += ap;
       for (const gp of h.five) gp.line.pm -= ap;
