@@ -180,10 +180,33 @@ export function TopPerformers({ league, game, openPlayer }) {
 // Full possession-by-possession log: every shot, rebound, turnover, foul,
 // and free throw in game order with period + clock.
 export function PlayByPlay({ events }) {
+  const [period, setPeriod] = useState('All');
+  const [desc, setDesc] = useState(true); // true = 12:00→0:00 (default game order)
+
   if (!events?.length) return null;
+
+  const periods = ['All', ...([...new Set(events.map((e) => e.q).filter(Boolean))]) ];
+  const visible = (period === 'All' ? events : events.filter((e) => e.q === period));
+  const sorted = desc ? visible : [...visible].reverse();
+
   return (
     <div>
-      {events.map((e, i) => (
+      <div style={{ display: 'flex', gap: 'var(--sp-1)', flexWrap: 'wrap', marginBottom: 'var(--sp-2)', alignItems: 'center' }}>
+        {periods.map((p) => (
+          <button key={p} className={`ui-tab${period === p ? ' ui-tab--active' : ''}`} onClick={() => setPeriod(p)}>
+            {p}
+          </button>
+        ))}
+        <button
+          className="ui-tab"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => setDesc((d) => !d)}
+          title="Reverse play order"
+        >
+          {desc ? '12:00 → 0:00' : '0:00 → 12:00'}
+        </button>
+      </div>
+      {sorted.map((e, i) => (
         <div className="news-item" key={i}>
           <span style={{ color: 'var(--muted)', display: 'inline-block', minWidth: 70 }}>
             {e.q}{e.t ? ` ${e.t}` : ''}
