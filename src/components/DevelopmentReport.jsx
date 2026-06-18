@@ -40,9 +40,7 @@ export default function DevelopmentReport({ league, openPlayer, onContinue }) {
   for (const t of league.teams) for (const p of t.roster) live.set(p.id, p);
   for (const p of league.freeAgents) live.set(p.id, p);
 
-  const entries = [...report.entries].sort(
-    (a, b) => (b.now[0] - b.old[0]) - (a.now[0] - a.old[0])
-  );
+  const entries = [...report.entries].sort((a, b) => b.now[0] - a.now[0]);
 
   const breakouts = entries.filter((e) => !e.retired && (e.now[0] - e.old[0]) >= BREAKOUT);
   const declines = entries.filter((e) => !e.retired && (e.now[0] - e.old[0]) <= COLLAPSE);
@@ -54,7 +52,7 @@ export default function DevelopmentReport({ league, openPlayer, onContinue }) {
         <h2>Development Report — {report.season} Offseason</h2>
       </div>
       <p style={{ color: 'var(--muted)', marginBottom: 10 }}>
-        How every player on your roster developed over the summer, biggest gains first.{' '}
+        How every player on your roster developed over the summer, sorted by final overall.{' '}
         <span style={{ color: '#d2a8ff' }}>🚀 breakout leap</span> ·{' '}
         <span style={{ color: 'var(--red)' }}>📉 steep decline</span>
       </p>
