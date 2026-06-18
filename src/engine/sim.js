@@ -394,10 +394,10 @@ function maybeAssist(off, shooter, type, rng) {
 }
 
 // One offensive possession. Mutates box-score lines, returns points scored.
-// `clutch` is true in the final two minutes of the 4th or any OT — see
-// backstory.js's clutchMod for the shooters this affects.
+// `clutch` is true in the final two minutes of the 4th or any OT.
 // `foulBump(gp)` increments and returns the fouling team's quarter foul count.
-function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump = () => 0) {
+// `bonusAt` is the team-foul threshold that triggers free throws (5 reg, 4 OT).
+function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump = () => 0, bonusAt = 5) {
   // turnover before a shot gets up?
   const toP = clamp(0.125 + (def.def - off.pass) * 0.0012, 0.07, 0.2);
   if (rng() < toP) {
@@ -416,11 +416,19 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
     }
     return 0;
   }
-  // common defensive foul away from the shot: side out, play continues
+  // common defensive foul away from the shot: side out unless the offense is in the bonus
   if (rng() < 0.065) {
     const fouler = chargeFoul(def, rng);
     if (fouler) {
       const tf = foulBump(fouler);
+      if (tf >= bonusAt) {
+        const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
+        emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team);
+        const { made, lastMissed } = shootFreeThrows(shooter, 2, rng, emit);
+        if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
+        if (lastMissed && offenseRebounds(off, def, rng, emit)) return made + playShots(off, def, home, rng, clutch, emit, foulBump);
+        return made;
+      }
       emit(`${fouler.name} Loose Ball FOUL (P${fouler.line.pf}.T${tf})`, fouler.team);
     }
   }
@@ -628,6 +636,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     const pairStep = minutes / Math.max(possEach, 1);
     const halfStep = pairStep / 2;
     const foulBump = (gp) => ++qFouls[gp.team];
+    const bonusAt = ot ? 4 : 5;
     for (let k = 0; k < possEach; k++) {
       const rem = remStart - pairStep * (k + 1); // end of pair — unchanged game logic
       const clutch = period >= 3 && rem <= 2.05;
@@ -646,14 +655,14 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
         addPlay(text, fmtClock(remA), undefined, side,
           possScore > 0 ? { home: homeScore.pts, away: awayScore.pts + possScore } : null);
       };
-      const hp = playPossession(h, a, true, rng, clutch, emitH, foulBump);
+      const hp = playPossession(h, a, true, rng, clutch, emitH, foulBump, bonusAt);
       homeScore.pts += hp;
       for (const gp of h.five) gp.line.pm += hp;
       for (const gp of a.five) gp.line.pm -= hp;
       track(0, hp, rem);
       a = replaceFouledOut(a, awayPlayers, rng);
       possScore = 0; // reset for away possession
-      const ap = playPossession(a, h, false, rng, clutch, emitA, foulBump);
+      const ap = playPossession(a, h, false, rng, clutch, emitA, foulBump, bonusAt);
       awayScore.pts += ap;
       for (const gp of a.five) gp.line.pm += ap;
       for (const gp of h.five) gp.line.pm -= ap;
