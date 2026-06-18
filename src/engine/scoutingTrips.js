@@ -316,9 +316,12 @@ export function initScoutingPhase(league, rng) {
     if (team.id !== league.userTeamId) aiHireScouts(league, team, rng);
   }
 
-  // Promote current season's draft class from the board (if pre-generated)
-  const board = [...(s.draftBoard ?? [])];
-  if (board.length > 0 && board[0].draftSeason === league.season) {
+  // Promote the upcoming draft class from the board. This is called at the END
+  // of playoffs, before advanceOffseason increments league.season, so the class
+  // being drafted next is draftSeason === league.season + 1. Filter out any
+  // stale entries (draftSeason <= league.season) accumulated from old saves.
+  const board = (s.draftBoard ?? []).filter((dc) => dc.draftSeason > league.season);
+  if (board.length > 0 && board[0].draftSeason === league.season + 1) {
     const current = board.shift();
     let counter = league.nextPlayerId ?? getNextPlayerId();
     for (const p of current.prospects) {
@@ -337,7 +340,7 @@ export function initScoutingPhase(league, rng) {
     league.nextPlayerId = getNextPlayerId();
   }
 
-  // Keep 3 future classes on the board
+  // Keep 2 future classes on the board (one in s.prospects + two here = 3 visible total)
   const futureSeason = league.season + 3;
   if (!board.some((dc) => dc.draftSeason === futureSeason)) {
     const futureRng = makeRng(league.seed + futureSeason * 70_007 + 555_001);
