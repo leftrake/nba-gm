@@ -277,14 +277,10 @@ export default function FreeAgency({ league, commit, openPlayer }) {
           </span>
         </div>
 
-        <Table columns={faCols} rows={faRows} onSort={handleSort} />
-      </Section>
-
-      {/* Negotiation panel — appears below the table when a player is selected */}
-      {negotiatingPlayer && isOpen && (
-        <>
-          <Divider space="sm" />
-          <Card elevation="raised" style={{ borderLeft: '3px solid var(--color-primary)' }}>
+        {/* Negotiation panel — appears above the table so it's visible without
+            scrolling past a long free-agent list when a player is selected */}
+        {negotiatingPlayer && isOpen && (
+          <Card elevation="raised" style={{ borderLeft: '3px solid var(--color-primary)', marginBottom: 'var(--sp-3)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: 'var(--sp-3)' }}>
               <span style={{ fontWeight: 'var(--weight-semibold)' }}>
                 Negotiating with <PlayerLink p={negotiatingPlayer} openPlayer={openPlayer} />
@@ -360,8 +356,10 @@ export default function FreeAgency({ league, commit, openPlayer }) {
               );
             })()}
           </Card>
-        </>
-      )}
+        )}
+
+        <Table columns={faCols} rows={faRows} onSort={handleSort} />
+      </Section>
     </div>
   );
 }
