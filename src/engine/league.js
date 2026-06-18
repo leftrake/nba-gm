@@ -719,7 +719,7 @@ export function simDay(league) {
     r.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
     r.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
     pushGameNews(league, r, home, away, hurt);
-    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, injuryReport });
+    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay, injuryReport });
   }
   // unsigned players heal on the calendar — no games to count down
   if (league.dayIndex % 2 === 0) {
