@@ -738,13 +738,19 @@ export function simDay(league) {
     for (const p of hurt) {
       r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
     }
-    if (r.homePts > r.awayPts) { home.wins++; away.losses++; }
-    else { away.wins++; home.losses++; }
-    updateStreak(league, home, r.homePts > r.awayPts);
-    updateStreak(league, away, r.awayPts > r.homePts);
-    // Sync stored score to the box totals after injury truncation
+    // Sync stored score to the box totals after injury truncation *before*
+    // deciding the winner, so the recorded result always matches the final
+    // score shown to the user. simGame plays out overtime until someone
+    // leads, so the pre-truncation score is never tied — use it only as a
+    // tiebreaker on the rare chance truncation rounding ties the box totals.
+    const rawHomeWon = r.homePts > r.awayPts;
     r.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
     r.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
+    const homeWon = r.homePts !== r.awayPts ? r.homePts > r.awayPts : rawHomeWon;
+    if (homeWon) { home.wins++; away.losses++; }
+    else { away.wins++; home.losses++; }
+    updateStreak(league, home, homeWon);
+    updateStreak(league, away, !homeWon);
     pushGameNews(league, r, home, away, hurt);
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay, injuryReport });
   }
@@ -890,14 +896,18 @@ export function simPlayoffGame(league) {
     m.games.push(game);
     played.push({ series: m, game, round: po.round });
     po.gamesPlayed += 1;
-    const highWon = (r.homePts > r.awayPts) === (homeId === m.high);
-    if (highWon) m.highWins += 1; else m.lowWins += 1;
-    // playoff results swing morale harder than a regular-season game
-    applyResultMorale(getTeam(league, homeId), r.homePts > r.awayPts, 2);
-    applyResultMorale(getTeam(league, awayId), r.awayPts > r.homePts, 2);
-    // Sync stored score to the box totals after injury truncation
+    // Sync stored score to the box totals after injury truncation *before*
+    // deciding the winner, so the series record always matches the final
+    // score shown to the user (see simDay for why rawHomeWon is the tiebreaker).
+    const rawHomeWon = r.homePts > r.awayPts;
     game.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
     game.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
+    const homeWon = game.homePts !== game.awayPts ? game.homePts > game.awayPts : rawHomeWon;
+    const highWon = homeWon === (homeId === m.high);
+    if (highWon) m.highWins += 1; else m.lowWins += 1;
+    // playoff results swing morale harder than a regular-season game
+    applyResultMorale(getTeam(league, homeId), homeWon, 2);
+    applyResultMorale(getTeam(league, awayId), !homeWon, 2);
     if (m.highWins === 4 || m.lowWins === 4) {
       m.winner = m.highWins === 4 ? m.high : m.low;
       po.log.push(`${getTeam(league, m.winner).name} win series ${Math.max(m.highWins, m.lowWins)}-${Math.min(m.highWins, m.lowWins)}`);
