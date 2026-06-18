@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { getTeam, seriesHomeTeam } from '../engine/league.js';
 import { TeamLink } from './shared.jsx';
-import { BoxTable, LineScore, TopPerformers, GameFlow } from './BoxScore.jsx';
+import { BoxTable, LineScore, TopPerformers, GameFlow, PlayByPlay } from './BoxScore.jsx';
 import { ROUND_NAMES } from './Playoffs.jsx';
 
 // "Series tied 2–2, Game 5 in Boston" / "Celtics lead 3–2, Game 6 in Miami" /
@@ -50,6 +50,7 @@ function ScoreRow({ league, entry, openTeam, openGame }) {
 export default function PlayoffPostGame({ league, played, onBack, openTeam, openPlayer, openGame }) {
   const [boxTab, setBoxTab] = useState('away');
   const me = league.userTeamId;
+  const hasPbp = !!(played.find((e) => e.game.home === me || e.game.away === me)?.game.playByPlay?.length);
   const mine = played.find((e) => e.game.home === me || e.game.away === me);
   const others = played.filter((e) => e !== mine);
   const roundName = ROUND_NAMES[played[0].round];
@@ -109,13 +110,19 @@ export default function PlayoffPostGame({ league, played, onBack, openTeam, open
           <button className={`ui-tab${boxTab === 'home' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('home')}>
             {home.name} {g.homePts}
           </button>
+          {hasPbp && (
+            <button className={`ui-tab${boxTab === 'pbp' ? ' ui-tab--active' : ''}`} onClick={() => setBoxTab('pbp')}>
+              Play by Play
+            </button>
+          )}
         </div>
         <div className="ui-table-wrap">
           {boxTab === 'away' && <BoxTable league={league} teamId={g.away} pts={g.awayPts} box={g.awayBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />}
           {boxTab === 'home' && <BoxTable league={league} teamId={g.home} pts={g.homePts} box={g.homeBox} openTeam={openTeam} openPlayer={openPlayer} injuryReport={g.injuryReport} />}
+          {boxTab === 'pbp' && <PlayByPlay events={g.playByPlay} awayTeam={away} homeTeam={home} />}
         </div>
         <details style={{ marginTop: 6 }}>
-          <summary className="stories-toggle">Play-by-play</summary>
+          <summary className="stories-toggle">Game Flow</summary>
           <GameFlow events={g.events} />
         </details>
       </div>
