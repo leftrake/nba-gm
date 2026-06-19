@@ -733,11 +733,11 @@ export function decodeBox(box) {
   return box.map((arr) => Object.fromEntries(BOX_COLS.map((k, i) => [k, arr[i] ?? 0])));
 }
 
-export function applyBoxToStats(roster, box) {
+export function applyBoxToStats(roster, box, field = 'stats') {
   for (const line of box) {
     const p = roster.find((x) => x.id === line.playerId);
     if (!p || line.min === 0) continue;
-    const s = p.stats;
+    const s = p[field];
     s.gp += 1; s.min += line.min; s.pts += line.pts; s.reb += line.reb;
     s.ast += line.ast; s.stl += line.stl; s.blk += line.blk;
     s.fgm += line.fgm; s.fga += line.fga; s.tpm += line.tpm; s.tpa += line.tpa;

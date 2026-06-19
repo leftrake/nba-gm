@@ -369,6 +369,9 @@ export function backfillPlayers(league) {
     if (p.trainingFocus === undefined) p.trainingFocus = null;
     // saves predating player season-stint tracking (mid-season trades)
     if (!p.seasonStints) p.seasonStints = [];
+    // saves predating playoff stat tracking
+    if (!p.playoffStats) p.playoffStats = emptyStats();
+    if (!p.playoffCareerStats) p.playoffCareerStats = [];
     // saves predating the legacy/records system
     if (p.championships == null) p.championships = 0;
     // saves predating dev-trait fog collapse counter
@@ -921,6 +924,7 @@ export function simPlayoffGame(league) {
     for (const [id, box] of [[homeId, r.homeBox], [awayId, r.awayBox]]) {
       const team = getTeam(league, id);
       playoffCondition(team, box);
+      applyBoxToStats(team.roster, box, 'playoffStats');
       for (const p of rollGameInjuries(league, team, box, rng)) {
         hurt.push(p);
         r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
@@ -933,14 +937,18 @@ export function simPlayoffGame(league) {
     // Mirror resultsByDay's rule: full box + play-by-play only for games
     // involving the user's team (and even then, play-by-play is trimmed to
     // the last KEEP_PBP_GAMES below); everyone else gets quarter lines + top
-    // performers, which is enough for "click a series for results".
+    // performers, which is enough for "click a series for results". The
+    // Finals always get a full box regardless — computeFinalsMVP needs every
+    // player's line, not just the top 3 per team.
     const isUserGame = homeId === league.userTeamId || awayId === league.userTeamId;
+    const fullBox = isUserGame || m === po.finals;
     const game = {
       home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
       homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs,
       injuryReport: hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft })),
-      ...(isUserGame
-        ? { events: r.events, playByPlay: r.playByPlay, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox) }
+      ...(isUserGame ? { events: r.events, playByPlay: r.playByPlay } : null),
+      ...(fullBox
+        ? { homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox) }
         : { homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) }),
     };
     m.games.push(game);
@@ -1078,6 +1086,9 @@ function computeFinalsMVP(league) {
   const totals = new Map();
   for (const game of finals.games) {
     for (const [teamId, encoded] of [[game.home, game.homeBox], [game.away, game.awayBox]]) {
+      // an in-progress Finals series from before full Finals boxes were kept
+      // may have earlier games stored as star lines only
+      if (!encoded) continue;
       for (const line of decodeBox(encoded)) {
         if (line.min <= 0) continue;
         let t = totals.get(line.playerId);
@@ -1172,6 +1183,10 @@ export function advanceOffseason(league) {
       if (finalStats.gp > 0) p.careerStats.push({ season: league.season, team: team.id, ...finalStats });
       p.seasonStints = [];
       p.stats = emptyStats();
+      // rosters are frozen during the playoffs (no trades/signings), so
+      // unlike regular-season stats this never needs to split into stints
+      if (p.playoffStats.gp > 0) p.playoffCareerStats.push({ season: league.season, team: team.id, ...p.playoffStats });
+      p.playoffStats = emptyStats();
       p.condition = 100; // a summer off heals everything
       p.injury = null; // ...including last spring's torn ACL
       // Track qualifying seasons for dev-trait fog collapse.

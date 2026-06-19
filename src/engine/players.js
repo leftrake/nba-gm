@@ -215,6 +215,8 @@ export function generatePlayer(rng = rand, opts = {}) {
     contract: null,
     stats: emptyStats(),
     careerStats: [],
+    playoffStats: emptyStats(),
+    playoffCareerStats: [],
     qualitySeasons: 0, // count of seasons with 1000+ minutes — collapses dev-trait fog
     awards: [], // { season, award } — filled by engine/awards.js
     seasonStints: [], // { team, stats } — filled by engine/league.js on trades

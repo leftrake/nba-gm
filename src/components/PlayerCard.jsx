@@ -71,6 +71,42 @@ function SeasonStats({ stats }) {
   );
 }
 
+// Season-by-season stat table — shared by regular-season and playoff career history.
+function CareerStatsTable({ league, rows, openTeam }) {
+  return (
+    <div className="ui-table-wrap">
+      <table className="ui-table sticky-head">
+        <thead>
+          <tr>
+            <th>Season</th><th>Team</th><th className="num">GP</th><th className="num">MPG</th><th className="num">PPG</th>
+            <th className="num">RPG</th><th className="num">APG</th><th className="num">SPG</th><th className="num">BPG</th>
+            <th className="num">TOPG</th><th className="num">FG%</th><th className="num">3P%</th><th className="num">FT%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...rows].reverse().map((s, i) => (
+            <tr key={`${s.season}-${s.team ?? i}`}>
+              <td>{s.season}</td>
+              <td>{s.team != null ? <TeamLink team={getTeam(league, s.team)} openTeam={openTeam} /> : '–'}</td>
+              <td className="num">{s.gp}</td>
+              <td className="num">{perGame(s, 'min')}</td>
+              <td className="num">{perGame(s, 'pts')}</td>
+              <td className="num">{perGame(s, 'reb')}</td>
+              <td className="num">{perGame(s, 'ast')}</td>
+              <td className="num">{perGame(s, 'stl')}</td>
+              <td className="num">{perGame(s, 'blk')}</td>
+              <td className="num">{s.tov != null ? perGame(s, 'tov') : '–'}</td>
+              <td className="num">{fgPct(s)}</td>
+              <td className="num">{s.tpa ? ((s.tpm / s.tpa) * 100).toFixed(1) : '–'}</td>
+              <td className="num">{s.fta ? ((s.ftm / s.fta) * 100).toFixed(1) : '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Memorial layout for a retired player.
 function RetiredMemorial({ league, p, onClose, openTeam }) {
   useEffect(() => {
@@ -381,6 +417,14 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           <SeasonStats stats={p.stats} />
         </div>
 
+        {/* This postseason */}
+        {p.playoffStats.gp > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header"><div className="ui-section-title">This Postseason ({league.season})</div></div>
+            <SeasonStats stats={p.playoffStats} />
+          </div>
+        )}
+
         {/* Awards */}
         {p.awards?.length > 0 && (
           <div className="ui-section">
@@ -398,39 +442,16 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
         <div className="ui-section">
           <div className="ui-section-header"><div className="ui-section-title">Career</div></div>
           {p.careerStats.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No previous seasons.</p>}
-          {p.careerStats.length > 0 && (
-            <div className="ui-table-wrap">
-              <table className="ui-table sticky-head">
-                <thead>
-                  <tr>
-                    <th>Season</th><th>Team</th><th className="num">GP</th><th className="num">MPG</th><th className="num">PPG</th>
-                    <th className="num">RPG</th><th className="num">APG</th><th className="num">SPG</th><th className="num">BPG</th>
-                    <th className="num">TOPG</th><th className="num">FG%</th><th className="num">3P%</th><th className="num">FT%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...p.careerStats].reverse().map((s, i) => (
-                    <tr key={`${s.season}-${s.team ?? i}`}>
-                      <td>{s.season}</td>
-                      <td>{s.team != null ? <TeamLink team={getTeam(league, s.team)} openTeam={openTeam} /> : '–'}</td>
-                      <td className="num">{s.gp}</td>
-                      <td className="num">{perGame(s, 'min')}</td>
-                      <td className="num">{perGame(s, 'pts')}</td>
-                      <td className="num">{perGame(s, 'reb')}</td>
-                      <td className="num">{perGame(s, 'ast')}</td>
-                      <td className="num">{perGame(s, 'stl')}</td>
-                      <td className="num">{perGame(s, 'blk')}</td>
-                      <td className="num">{s.tov != null ? perGame(s, 'tov') : '–'}</td>
-                      <td className="num">{fgPct(s)}</td>
-                      <td className="num">{s.tpa ? ((s.tpm / s.tpa) * 100).toFixed(1) : '–'}</td>
-                      <td className="num">{s.fta ? ((s.ftm / s.fta) * 100).toFixed(1) : '–'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {p.careerStats.length > 0 && <CareerStatsTable league={league} rows={p.careerStats} openTeam={openTeam} />}
         </div>
+
+        {/* Career playoff stats */}
+        {p.playoffCareerStats.length > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header"><div className="ui-section-title">Career — Playoffs</div></div>
+            <CareerStatsTable league={league} rows={p.playoffCareerStats} openTeam={openTeam} />
+          </div>
+        )}
 
         {/* Contract history */}
         {p.contractHistory?.length > 0 && (
