@@ -43,27 +43,69 @@ export function minutesCap(p) {
   return Math.round(clamp(supportedMinutes(p) + 3, 12, 48));
 }
 
-// Best lineup for a roster: starters greedily assigned to the slot where
-// they're worth the most (fit-adjusted), bench ordered by overall, minutes
-// scaled to exactly TOTAL_MINUTES.
+// Optimal assignment of pool players to the 5 starter slots, maximizing
+// total fit-adjusted value (overall * playerFit), via bitmask DP over which
+// slots are filled. A simple greedy "assign the single best remaining pair"
+// can lock in a pairing that forecloses a better global arrangement — e.g.
+// a wing parked at center because a near-tied specialist grabbed the wing's
+// better-fit slot one step earlier, when swapping both would've scored
+// higher overall. With only 5 slots (32 masks) exact DP is cheap enough to
+// run every game for every AI team.
+function bestStarterAssignment(pool) {
+  const nSlots = POSITIONS.length;
+  const fullMask = (1 << nSlots) - 1;
+  let dp = new Array(fullMask + 1).fill(null);
+  dp[0] = { value: 0, assign: new Array(nSlots).fill(null) };
+  for (const p of pool) {
+    const next = dp.slice();
+    for (let mask = 0; mask <= fullMask; mask++) {
+      const cur = dp[mask];
+      if (!cur) continue;
+      for (let s = 0; s < nSlots; s++) {
+        if (mask & (1 << s)) continue;
+        const v = cur.value + overall(p) * playerFit(p, POSITIONS[s]);
+        const newMask = mask | (1 << s);
+        if (!next[newMask] || v > next[newMask].value) {
+          const assign = cur.assign.slice();
+          assign[s] = p;
+          next[newMask] = { value: v, assign };
+        }
+      }
+    }
+    dp = next;
+  }
+  // Pick the most-filled reachable mask (ties broken by value); a roster
+  // with fewer than 5 healthy players can't reach fullMask.
+  let bestMask = 0;
+  for (let mask = 1; mask <= fullMask; mask++) {
+    if (!dp[mask]) continue;
+    const bits = bitCount(mask);
+    const bestBits = bitCount(bestMask);
+    if (bits > bestBits || (bits === bestBits && dp[mask].value > (dp[bestMask]?.value ?? -Infinity))) {
+      bestMask = mask;
+    }
+  }
+  return dp[bestMask].assign;
+}
+
+function bitCount(mask) {
+  let c = 0;
+  for (let m = mask; m; m >>= 1) c += m & 1;
+  return c;
+}
+
+// Best lineup for a roster: starters optimally assigned across slots
+// (fit-adjusted), bench ordered by overall, minutes scaled to exactly
+// TOTAL_MINUTES.
 export function autoLineup(roster) {
   const pool = roster.filter((p) => !isInjured(p));
   const starters = Object.fromEntries(POSITIONS.map((pos) => [pos, { id: null, min: 0 }]));
   const used = new Set();
-  for (let k = 0; k < POSITIONS.length; k++) {
-    let best = null;
-    for (const pos of POSITIONS) {
-      if (starters[pos].id != null) continue;
-      for (const p of pool) {
-        if (used.has(p.id)) continue;
-        const v = overall(p) * playerFit(p, pos);
-        if (!best || v > best.v) best = { pos, p, v };
-      }
-    }
-    if (!best) break;
-    starters[best.pos].id = best.p.id;
-    used.add(best.p.id);
-  }
+  const assign = bestStarterAssignment(pool);
+  POSITIONS.forEach((pos, s) => {
+    const p = assign[s];
+    if (p) { starters[pos].id = p.id; used.add(p.id); }
+  });
 
   const starterEntries = POSITIONS
     .filter((pos) => starters[pos].id != null)
