@@ -31,7 +31,7 @@ import Settings from './components/Settings.jsx';
 import StyleGuide from './components/StyleGuide.jsx';
 import GameModal from './components/BoxScore.jsx';
 import Walkthrough from './components/Walkthrough.jsx';
-import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/shared.jsx';
+import { isWalkthroughDone, markWalkthroughDone, resetTutorial, InjuryAlertModal } from './components/shared.jsx';
 import { safeAccent, textOnColor } from './engine/colorUtils.js';
 import { checkSave, pushNews } from './engine/save.js';
 import { bumpTurmoil } from './engine/morale.js';
@@ -68,6 +68,7 @@ export default function App() {
   const [lastResults, setLastResults] = useState([]);
   const [featuredGame, setFeaturedGame] = useState(null);
   const [playoffDay, setPlayoffDay] = useState(null); // games from the last playoff sim
+  const [injuryAlert, setInjuryAlert] = useState(null); // { injured: [...], returned: [...] } — playoff sim only; Calendar owns its own copy for the regular season
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
@@ -290,12 +291,30 @@ export default function App() {
   };
 
 
+  // Playoff sims have no day-by-day calendar to interrupt, unlike the
+  // regular season's animatedSimTo — so check the user's roster for new
+  // injuries/returns around the sim call instead, mirroring Calendar.jsx.
+  const captureUserInjuries = () => league?.userTeamId
+    ? new Map(getTeam(league, league.userTeamId).roster.filter((p) => p.injury).map((p) => [p.id, p.injury]))
+    : null;
+  const checkPlayoffInjuryAlert = (before) => {
+    if (!before || league.settings?.suppressInjuryAlerts) return;
+    const rosterAfter = getTeam(league, league.userTeamId).roster;
+    const injured = rosterAfter.filter((p) => p.injury && !before.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name, pos: p.pos, injury: p.injury }));
+    const returned = rosterAfter.filter((p) => !p.injury && before.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name, pos: p.pos }));
+    if (injured.length || returned.length) setInjuryAlert({ injured, returned });
+  };
+
   // One playoff sim step lands on the post-game screen (the user's result in
   // full, or the day's scoreboard); a round fast-forward goes to the bracket.
   const handleSimPlayoffGame = () => {
+    const before = captureUserInjuries();
     const played = simPlayoffGame(league);
     trackFeaturedPlayoff(played);
     commit();
+    checkPlayoffInjuryAlert(before);
     if (played.length > 0) {
       setPlayoffDay(played);
       setScreen('postgame');
@@ -304,10 +323,12 @@ export default function App() {
     }
   };
   const handleSimPlayoffRound = () => {
+    const before = captureUserInjuries();
     const played = simPlayoffRound(league);
     trackFeaturedPlayoff(played);
     setPlayoffDay(null);
     commit();
+    checkPlayoffInjuryAlert(before);
     setScreen('playoffs');
   };
 
@@ -533,6 +554,11 @@ export default function App() {
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} commit={commit} />}
+        <InjuryAlertModal
+          alert={injuryAlert}
+          onClose={() => setInjuryAlert(null)}
+          onGoToRoster={() => { setInjuryAlert(null); setScreen('roster'); }}
+        />
         {league.phase === 'awards' && (
           <AwardCeremony
             league={league}

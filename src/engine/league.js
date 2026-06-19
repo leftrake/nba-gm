@@ -849,6 +849,7 @@ export function simDay(league) {
     for (const team of league.teams) {
       for (const p of team.roster) setCond(p, (p.condition ?? 100) + 20 + (100 - (p.condition ?? 100)) * 0.5);
     }
+    league.dayIndex += 7;
     pushNews(league, { day: league.dayIndex, category: 'league', text: 'The regular season is over. Playoffs begin!' });
   }
   return results;
@@ -974,9 +975,14 @@ export function simPlayoffGame(league) {
 
   if (po.round < 3) {
     for (const conf of ['East', 'West']) po[conf].forEach(playGame);
+    // a night of playoff games stands in for the ~2 rest days between a
+    // series' games — matches playoffCondition's recovery formula above, and
+    // keeps news/dates from bunching every round onto the same calendar day
+    if (played.length) league.dayIndex += 2;
     if (['East', 'West'].every((c) => po[c].every((m) => m.winner))) advanceRound(po, league);
   } else if (po.finals && !po.finals.winner) {
     playGame(po.finals);
+    if (played.length) league.dayIndex += 2;
     if (po.finals.winner) {
       po.champion = po.finals.winner;
       const champ = getTeam(league, po.champion);
@@ -1019,6 +1025,9 @@ function advanceRound(po, league) {
       bumpRosterMorale(getTeam(league, m.winner), 3); // playoff series win
     }
   }
+  // a few extra days off between rounds, on top of the per-game gap already
+  // added in simPlayoffGame, mirroring the real layoff before the next round
+  league.dayIndex += 3;
   if (po.East.length === 1 && po.West.length === 1) {
     // Finals home court goes to the conference champ with the better record
     const e = getTeam(league, po.East[0].winner);

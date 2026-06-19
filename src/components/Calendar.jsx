@@ -4,8 +4,7 @@ import {
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
-import { injuryTimeline } from '../engine/injuries.js';
-import { fmtDate, TeamLink, TeamBadge, NewsText } from './shared.jsx';
+import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal } from './shared.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -71,19 +70,20 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
       trackFeatured(results);
       commit();
       setFlashDay(leagueRef.current.dayIndex - 1);
-      if (stopAtGame && mine) break;
-      if (leagueRef.current.tradeOffers.length > offersBefore) break;
+      // check injuries before the "stop on game day" break below — that
+      // break used to fire first and skip this check on the very day (the
+      // user's own game) an injury is most likely to happen
       const rosterAfter = getTeam(leagueRef.current, me).roster;
       const injured = rosterAfter.filter((p) => p.injury && !injuredBefore.has(p.id))
         .map((p) => ({ id: p.id, name: p.name, pos: p.pos, injury: p.injury }));
       const returned = rosterAfter.filter((p) => !p.injury && injuredBefore.has(p.id))
         .map((p) => ({ id: p.id, name: p.name, pos: p.pos }));
-      if (injured.length || returned.length) {
-        if (!leagueRef.current.settings?.suppressInjuryAlerts) {
-          setInjuryAlert({ injured, returned });
-          break;
-        }
+      if ((injured.length || returned.length) && !leagueRef.current.settings?.suppressInjuryAlerts) {
+        setInjuryAlert({ injured, returned });
+        break;
       }
+      if (stopAtGame && mine) break;
+      if (leagueRef.current.tradeOffers.length > offersBefore) break;
       if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
       if (leagueRef.current.dayIndex >= leagueRef.current.schedule.length) break;
       if (stopRef.current) break;
@@ -276,31 +276,11 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         </div>
       </div>
 
-      {injuryAlert && (
-        <div className="ui-modal-overlay" onClick={() => setInjuryAlert(null)}>
-          <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="ui-modal-header">
-              <div className="ui-modal-title">🩹 Injury Update</div>
-            </div>
-            {injuryAlert.injured.map((p) => (
-              <p key={`hurt-${p.id}`} style={{ marginBottom: 'var(--sp-2)' }}>
-                <b>{p.name}</b> ({p.pos}) goes down with {p.injury.type.toLowerCase()} —{' '}
-                <span style={{ color: 'var(--color-danger)' }}>{injuryTimeline(p.injury)}</span>.
-              </p>
-            ))}
-            {injuryAlert.returned.map((p) => (
-              <p key={`back-${p.id}`} style={{ marginBottom: 'var(--sp-2)' }}>
-                <b>{p.name}</b> ({p.pos}) is <span style={{ color: 'var(--color-success)' }}>back and available</span> for tonight's game.
-              </p>
-            ))}
-            <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-4)' }}>You may want to adjust your rotation before the next game.</p>
-            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-              <button className="ui-btn ui-btn--primary ui-btn--md" onClick={() => { setInjuryAlert(null); setScreen('roster'); }}>Go to Roster</button>
-              <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => setInjuryAlert(null)}>Dismiss</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <InjuryAlertModal
+        alert={injuryAlert}
+        onClose={() => setInjuryAlert(null)}
+        onGoToRoster={() => { setInjuryAlert(null); setScreen('roster'); }}
+      />
     </div>
   );
 }

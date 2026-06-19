@@ -4,6 +4,7 @@ import { overall, flagFor } from '../engine/players.js';
 import { scoutRange, scoutedOverallRange, scoutUncertainty, isHidden, fogColor } from '../engine/scouting.js';
 import { traitBand, traitShort, TRAIT_COLORS } from '../engine/devTraits.js';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
+import { injuryTimeline } from '../engine/injuries.js';
 import { TEAMS } from '../data/teams.js';
 
 function ovrClass(o) {
@@ -136,6 +137,38 @@ export function InjuryTag({ p }) {
     >
       🩹 {p.injury.type} · {season ? 'season' : `${p.injury.daysLeft}d`}
     </span>
+  );
+}
+
+// Proactive "someone got hurt" popup — shared by the regular-season Calendar
+// sim loop and the playoff sim handlers in App.jsx, since the user's own
+// player getting hurt is the one result worth interrupting a fast-forward for.
+export function InjuryAlertModal({ alert, onClose, onGoToRoster }) {
+  if (!alert) return null;
+  return (
+    <div className="ui-modal-overlay" onClick={onClose}>
+      <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ui-modal-header">
+          <div className="ui-modal-title">🩹 Injury Update</div>
+        </div>
+        {alert.injured.map((p) => (
+          <p key={`hurt-${p.id}`} style={{ marginBottom: 'var(--sp-2)' }}>
+            <b>{p.name}</b> ({p.pos}) goes down with {p.injury.type.toLowerCase()} —{' '}
+            <span style={{ color: 'var(--color-danger)' }}>{injuryTimeline(p.injury)}</span>.
+          </p>
+        ))}
+        {alert.returned.map((p) => (
+          <p key={`back-${p.id}`} style={{ marginBottom: 'var(--sp-2)' }}>
+            <b>{p.name}</b> ({p.pos}) is <span style={{ color: 'var(--color-success)' }}>back and available</span> for tonight's game.
+          </p>
+        ))}
+        <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-4)' }}>You may want to adjust your rotation before the next game.</p>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+          <button className="ui-btn ui-btn--primary ui-btn--md" onClick={onGoToRoster}>Go to Roster</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={onClose}>Dismiss</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
