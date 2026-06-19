@@ -1,4 +1,4 @@
-import { isDraftProspect, scoutUncertainty, noise01 } from './scouting.js';
+import { isDraftProspect, scoutUncertainty, noise01, getDraftPoints } from './scouting.js';
 
 // ---- Trait tier definitions ----
 // Bucketed from projected peak OVR (potential). Thresholds are tunable here.
@@ -59,13 +59,14 @@ export function seasonsUncertainty(qualSeasons) {
 // Potential uncertainty (half-width of the trait fog window).
 // Draft prospects use (OVR formula) × PROSPECT_UNCERTAINTY_MULT.
 // Pro players take the tighter of scouting-driven (minutes/film) and seasons-based floor.
-export function potentialUncertainty(p, proGames = 0) {
+// teamId is the viewing team — only matters for the draft-prospect branch.
+export function potentialUncertainty(p, teamId, proGames = 0) {
   if (isDraftProspect(p)) {
-    const pts = p.scout?.draftPoints ?? 0;
+    const pts = getDraftPoints(p, teamId);
     if (pts === 0) return Infinity;
     return (15 - (pts / 100) * 13) * PROSPECT_UNCERTAINTY_MULT;
   }
-  const scoutU = scoutUncertainty(p, proGames);
+  const scoutU = scoutUncertainty(p, teamId, proGames);
   const sU = seasonsUncertainty(p.qualitySeasons ?? 0);
   return Math.min(scoutU, sU);
 }
@@ -74,12 +75,12 @@ export function potentialUncertainty(p, proGames = 0) {
 // fogged=false (own players) → always returns the single true trait.
 // fogged=true → derives band from potentialUncertainty + seeded noise.
 // True trait can land anywhere in the band (same honesty rule as OVR range).
-export function traitBand(p, season, proGames = 0, fogged = true) {
+export function traitBand(p, season, teamId, proGames = 0, fogged = true) {
   if (!fogged) {
     const name = traitFromPotential(p.potential);
     return { lo: name, hi: name };
   }
-  const u = potentialUncertainty(p, proGames);
+  const u = potentialUncertainty(p, teamId, proGames);
   if (!isFinite(u) || u >= POT_HIDDEN_THRESHOLD) return null;
   const width = 2 * u;
   const below = Math.round(noise01(p.id, season, 'trait') * width);
@@ -96,9 +97,9 @@ export function traitBand(p, season, proGames = 0, fogged = true) {
 // Numeric sort key for the potential column — the midpoint of the same window
 // traitBand() displays, using the same seeded noise. Returns -Infinity for "?".
 // Own players (fogged=false) sort by true potential directly.
-export function traitSortValue(p, season, proGames = 0, fogged = true) {
+export function traitSortValue(p, season, teamId, proGames = 0, fogged = true) {
   if (!fogged) return p.potential;
-  const u = potentialUncertainty(p, proGames);
+  const u = potentialUncertainty(p, teamId, proGames);
   if (!isFinite(u) || u >= POT_HIDDEN_THRESHOLD) return -Infinity;
   const width = 2 * u;
   const below = Math.round(noise01(p.id, season, 'trait') * width);

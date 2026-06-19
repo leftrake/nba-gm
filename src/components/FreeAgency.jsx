@@ -89,10 +89,10 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     ovr: (p) => {
       if (p.everOnUserTeam) return overall(p);
       const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-      if (isHidden(p, proGames)) return -Infinity;
-      return scoutedOverall(p, league.season, proGames);
+      if (isHidden(p, league.userTeamId, proGames)) return -Infinity;
+      return scoutedOverall(p, league.season, league.userTeamId, proGames);
     },
-    pot: (p) => traitSortValue(p, league.season, league.scouting?.proWatching?.[p.id] ?? 0, true),
+    pot: (p) => traitSortValue(p, league.season, league.userTeamId, league.scouting?.proWatching?.[p.id] ?? 0, true),
     age: (p) => p.age,
     asking: (p) => askingPrice(p),
     pos: (p) => POSITIONS.indexOf(p.pos),

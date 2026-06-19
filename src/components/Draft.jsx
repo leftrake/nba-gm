@@ -5,8 +5,8 @@ import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
 import { Ovr, Pot, money, PlayerLink, TeamLink, Origin } from './shared.jsx';
 import { Section, SectionHeader } from './ui/index.js';
 
-function boardValue(p, season) {
-  return scoutedOverall(p, season) + scoutedPotential(p, season, true) * 0.5;
+function boardValue(p, season, teamId) {
+  return scoutedOverall(p, season, teamId) + scoutedPotential(p, season, true, teamId) * 0.5;
 }
 
 export default function Draft({ league, commit, openPlayer, openTeam }) {
@@ -36,7 +36,7 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
     && league.freeAgents.some((p) => p.id === r.playerId);
 
   const board = [...d.prospects].sort(
-    (a, b) => boardValue(b, league.season) - boardValue(a, league.season)
+    (a, b) => boardValue(b, league.season, league.userTeamId) - boardValue(a, league.season, league.userTeamId)
   );
 
   const draft = (p) => {

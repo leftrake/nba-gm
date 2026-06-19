@@ -1,7 +1,7 @@
 import { randInt, clamp, makeRng } from './rng.js';
 import { overall, getNextPlayerId, resetPlayerIds } from './players.js';
 import { generateDraftClass } from './draft.js';
-import { scoutedOverallRange, scoutedOverall, scoutedPotential, potentialGrade, scoutUncertainty } from './scouting.js';
+import { scoutedOverallRange, scoutedOverall, scoutedPotential, potentialGrade, scoutUncertainty, getDraftPoints } from './scouting.js';
 import { regionFor, SCOUT_REGIONS, personalityNote, scoutBackstoryNote } from './backstory.js';
 
 // ---------- Two-track scouting system ----------
@@ -44,10 +44,16 @@ export const WORKOUT_COSTS    = { Domestic: 75_000, Europe: 125_000, 'Latin Amer
 export const GAME_WATCH_COSTS = { Domestic: 30_000, Europe: 50_000,  'Latin America': 50_000,  Africa: 65_000,  'Asia-Pacific': 65_000  };
 export const POACH_COST = 400_000;
 
-export const DRAFT_POINTS_WORKOUT    = 60;
-export const DRAFT_POINTS_GAME_WATCH = 25;
-export const DRAFT_POINTS_SWEEP      = 75; // points granted to all prospects in a swept region
-export const DRAFT_POINTS_MAX        = 100;
+// One-time-ever mission per team — domestic prospects are always visible, so
+// this isn't a discovery tool like the international sweeps. It's a single
+// cheap blanket scout that never recurs (no per-season refresh, no repeats).
+export const DOMESTIC_SWEEP_COST = 100_000;
+
+export const DRAFT_POINTS_WORKOUT       = 60;
+export const DRAFT_POINTS_GAME_WATCH    = 25;
+export const DRAFT_POINTS_SWEEP         = 75; // points granted to all prospects in a swept region
+export const DRAFT_POINTS_DOMESTIC_SWEEP = 50;
+export const DRAFT_POINTS_MAX           = 100;
 
 // Legacy compat
 export const DRAFT_SCOUT_COSTS = {
@@ -73,6 +79,18 @@ export function scoutingBudget(team) {
 
 export function totalScoutSalary(scouts) {
   return (scouts ?? []).reduce((sum, s) => sum + s.salary, 0);
+}
+
+// Adds points to one team's entry in a prospect's per-team draftPoints map,
+// clamped to DRAFT_POINTS_MAX. Each team's missions only ever move their own
+// entry — never another team's view of the same prospect.
+function addDraftPoints(p, teamId, delta) {
+  if (!p.scout || typeof p.scout.draftPoints !== 'object' || p.scout.draftPoints == null) {
+    p.scout = { ...p.scout, draftPoints: {} };
+  }
+  const next = Math.min(DRAFT_POINTS_MAX, getDraftPoints(p, teamId) + delta);
+  p.scout.draftPoints[teamId] = next;
+  return next;
 }
 
 // ---- Discovery ----
@@ -184,14 +202,12 @@ function applyScoutEffects(league, teamId, rng) {
   const rangeScouts = scouts.filter((sc) => sc.type === 'rangeSpecialist');
   if (rangeScouts.length) {
     const disc = allProspects.filter((p) => isDiscovered(p, teamId, league));
-    const sorted = [...disc].sort((a, b) => scoutedOverall(b, league.season) - scoutedOverall(a, league.season));
+    const sorted = [...disc].sort((a, b) => scoutedOverall(b, league.season, teamId) - scoutedOverall(a, league.season, teamId));
     for (const sc of rangeScouts) {
       const targets = sc.range === 'lottery' ? sorted.slice(0, 14) : sorted.slice(30, 60);
       for (const p of targets) {
-        p.scout = p.scout ?? { draftPoints: 0 };
-        const pts = p.scout.draftPoints ?? 0;
-        if (pts > 0 && pts < DRAFT_POINTS_MAX)
-          p.scout.draftPoints = Math.min(DRAFT_POINTS_MAX, pts + 10);
+        const pts = getDraftPoints(p, teamId);
+        if (pts > 0 && pts < DRAFT_POINTS_MAX) addDraftPoints(p, teamId, 10);
       }
     }
   }
@@ -200,7 +216,7 @@ function applyScoutEffects(league, teamId, rng) {
   if (scouts.some((sc) => sc.type === 'sleeper')) {
     const disc = allProspects.filter((p) => isDiscovered(p, teamId, league));
     const candidates = disc
-      .filter((p) => (p.scout?.draftPoints ?? 0) < 40 && p.potential >= 74)
+      .filter((p) => getDraftPoints(p, teamId) < 40 && p.potential >= 74)
       .sort((a, b) => b.potential - a.potential);
     const count = 3 + Math.floor(rng() * 3);
     s.sleeperPicks[teamId] = candidates.slice(0, count).map((p) => p.id);
@@ -215,7 +231,7 @@ function applyScoutEffects(league, teamId, rng) {
     const posCounts = {};
     for (const rp of team?.roster ?? []) posCounts[rp.pos] = (posCounts[rp.pos] ?? 0) + 1;
     const scored = disc.map((p) => {
-      let score = scoutedOverall(p, league.season);
+      let score = scoutedOverall(p, league.season, teamId);
       const cnt = posCounts[p.pos] ?? 0;
       if (cnt <= 1) score += 5;
       else if (cnt <= 2) score += 2;
@@ -254,6 +270,7 @@ export function initSeasonScouting(league, rng) {
     watchlists,
     scouts:       prev.scouts       ?? {},
     discovered:   prev.discovered   ?? {},
+    domesticSweepUsed: prev.domesticSweepUsed ?? {},
     draftBoard:   prev.draftBoard   ?? [],
     proWatching:  {},
     proWatchList: prev.proWatchList ?? [],
@@ -381,10 +398,10 @@ const SKILL_LABELS = {
 const topSkills = (p, n = 2) => Object.entries(p.ratings).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => SKILL_LABELS[k]);
 const weakestSkill = (p) => SKILL_LABELS[Object.entries(p.ratings).sort((a, b) => a[1] - b[1])[0][0]];
 
-export function generateScoutReport(p, season, rng) {
-  const pts = p.scout?.draftPoints ?? (p.scout?.watched ?? 0) * 33;
-  const [lo, hi] = scoutedOverallRange(p, season);
-  const grade = potentialGrade(scoutedPotential(p, season, pts < DRAFT_POINTS_MAX));
+export function generateScoutReport(p, season, rng, teamId) {
+  const pts = getDraftPoints(p, teamId);
+  const [lo, hi] = scoutedOverallRange(p, season, teamId);
+  const grade = potentialGrade(scoutedPotential(p, season, pts < DRAFT_POINTS_MAX, teamId));
   const strengths = topSkills(p, 2);
   if (pts < 30)
     return `Our scout caught ${p.name} (${p.pos}, ${p.age}, from ${p.from}). Early read: ${strengths[0]} stands out, projecting ${lo}–${hi} with ${grade} ceiling.`;
@@ -440,16 +457,15 @@ function runDraftMission(league, teamId, playerId, points, cost) {
   if (!p) return { ok: false, error: 'Prospect not on draft board.' };
   if (!isDiscovered(p, teamId, league))
     return { ok: false, error: 'Prospect not yet discovered — sweep the region first.' };
-  p.scout ??= { draftPoints: 0 };
-  const pts = p.scout.draftPoints ?? (p.scout.watched ?? 0) * 33;
+  const pts = getDraftPoints(p, teamId);
   if (pts >= DRAFT_POINTS_MAX) return { ok: false, error: `${p.name} is already fully scouted.` };
   if ((s.budgets[teamId] ?? 0) < cost) return { ok: false, error: 'Not enough scouting budget.' };
   s.budgets[teamId] -= cost;
-  p.scout.draftPoints = Math.min(DRAFT_POINTS_MAX, pts + points);
+  addDraftPoints(p, teamId, points);
   if (!s.watchlists[teamId]) s.watchlists[teamId] = [];
   if (!s.watchlists[teamId].includes(playerId)) s.watchlists[teamId].push(playerId);
   const rng = makeRng(league.seed + league.season * 80_001 + playerId * 13 + Math.floor((pts + points) / 10));
-  const text = generateScoutReport(p, league.season, rng);
+  const text = generateScoutReport(p, league.season, rng, teamId);
   addReport(league, teamId, text, playerId);
   return { ok: true, text };
 }
@@ -482,14 +498,29 @@ export function sweepRegion(league, teamId, region) {
   const newCount = discoverProspects(league, teamId, targets);
   // Grant scouting points to every prospect in the region — the sweep team
   // spends real time with each player, not just a name-check.
-  for (const p of targets) {
-    if (!p.scout) p.scout = { draftPoints: 0 };
-    p.scout.draftPoints = Math.min(DRAFT_POINTS_MAX, (p.scout.draftPoints ?? 0) + DRAFT_POINTS_SWEEP);
-  }
+  for (const p of targets) addDraftPoints(p, teamId, DRAFT_POINTS_SWEEP);
   s.budgets[teamId] -= cost;
   const text = `Scouting sweep of ${region}: ${newCount} new prospect${newCount === 1 ? '' : 's'} discovered, all evaluated (${DRAFT_POINTS_SWEEP} scouting pts each).`;
   addReport(league, teamId, text);
   return { ok: true, text, discovered: newCount };
+}
+
+// One-time-ever mission per team. Domestic prospects are never hidden, so
+// there's nothing to "discover" — this just hands every domestic prospect
+// (current class + future board) a flat scouting bump for a flat fee.
+export function domesticSweep(league, teamId) {
+  const s = league.scouting;
+  if (!s) return { ok: false, error: 'Scouting not available.' };
+  if (s.domesticSweepUsed?.[teamId]) return { ok: false, error: 'Domestic sweep already used.' };
+  if ((s.budgets[teamId] ?? 0) < DOMESTIC_SWEEP_COST) return { ok: false, error: 'Not enough scouting budget.' };
+  const targets = getAllDraftProspects(league).filter((p) => regionFor(p) === 'Domestic');
+  for (const p of targets) addDraftPoints(p, teamId, DRAFT_POINTS_DOMESTIC_SWEEP);
+  s.budgets[teamId] -= DOMESTIC_SWEEP_COST;
+  if (!s.domesticSweepUsed) s.domesticSweepUsed = {};
+  s.domesticSweepUsed[teamId] = true;
+  const text = `Domestic sweep: ${targets.length} domestic prospect${targets.length === 1 ? '' : 's'} evaluated (${DRAFT_POINTS_DOMESTIC_SWEEP} scouting pts each).`;
+  addReport(league, teamId, text);
+  return { ok: true, text };
 }
 
 export function poachIntel(league, teamId) {
@@ -633,7 +664,7 @@ export function aiScoutTurn(league, team, rng) {
   if (!s.prospects?.length) return;
 
   const allDisc = s.prospects.filter((p) => isDiscovered(p, team.id, league));
-  const targets = [...allDisc].sort((a, b) => scoutedOverall(b, league.season) - scoutedOverall(a, league.season));
+  const targets = [...allDisc].sort((a, b) => scoutedOverall(b, league.season, team.id) - scoutedOverall(a, league.season, team.id));
 
   const intlRegions = ['Europe', 'Latin America', 'Africa', 'Asia-Pacific'];
   const sweepChance = team.strategy === 'rebuilding' ? 0.3 : 0.1;
@@ -651,8 +682,14 @@ export function aiScoutTurn(league, team, rng) {
       continue;
     }
 
+    // One-time domestic sweep, if not yet used and affordable
+    if (!s.domesticSweepUsed?.[team.id] && budget >= DOMESTIC_SWEEP_COST && rng() < sweepChance) {
+      domesticSweep(league, team.id);
+      continue;
+    }
+
     // Scout undiscovered prospects via missions
-    const target = targets.find((p) => (p.scout?.draftPoints ?? 0) < DRAFT_POINTS_MAX);
+    const target = targets.find((p) => getDraftPoints(p, team.id) < DRAFT_POINTS_MAX);
     if (target) {
       const region = regionFor(target);
       const wkCost = WORKOUT_COSTS[region] ?? WORKOUT_COSTS.Domestic;

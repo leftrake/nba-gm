@@ -323,8 +323,8 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           {[...RATINGS, ['stamina', 'Stamina']].map(([key, label]) => {
             const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
             const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
-            const hidden = fogged && isHidden(p, proGames);
-            const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, proGames) : [v, v];
+            const hidden = fogged && isHidden(p, league.userTeamId, proGames);
+            const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, league.userTeamId, proGames) : [v, v];
             const mid = (lo + hi) / 2;
             return (
               <div className="rating-row" key={key}>

@@ -52,6 +52,17 @@ export function isDraftProspect(p) {
   return 'draftPoints' in (p.scout ?? {}) || p.draftYear == null;
 }
 
+// p.scout.draftPoints is keyed per scouting team ({ [teamId]: pts }) so one
+// team's missions never reveal a prospect to another team's view. Saves from
+// before this was per-team may still have a bare number — read as-is so old
+// progress isn't wiped, even though it was (bugged) shared across all teams.
+export function getDraftPoints(p, teamId) {
+  const dp = p.scout?.draftPoints;
+  if (typeof dp === 'number') return dp;
+  if (dp == null) return (p.scout?.watched ?? 0) * 33;
+  return dp[teamId] ?? 0;
+}
+
 // Total publicly observable minutes: completed seasons + current season in progress.
 // Box scores are public, so this collapses OVR fog mid-season without any extra tracking.
 function totalCareerMinutes(p) {
@@ -69,10 +80,11 @@ function proBaseUncertainty(careerMin) {
 }
 
 // Returns true when the player should show "?" instead of a range.
-export function isHidden(p, proGames = 0) {
+// teamId is the viewing team — for a draft prospect, only that team's own
+// scouting missions count toward revealing them.
+export function isHidden(p, teamId, proGames = 0) {
   if (isDraftProspect(p)) {
-    const pts = p.scout?.draftPoints ?? (p.scout?.watched ?? 0) * 33;
-    return pts === 0;
+    return getDraftPoints(p, teamId) === 0;
   }
   if (totalCareerMinutes(p) > 0) return false;
   // Rookie with no prior draft scouting and no film yet
@@ -82,11 +94,10 @@ export function isHidden(p, proGames = 0) {
 }
 
 // Uncertainty (half-width of the fog window). Callers should check isHidden
-// first; this returns 0 for fully-known players.
-export function scoutUncertainty(p, proGames = 0) {
+// first; this returns 0 for fully-known players. teamId is the viewing team.
+export function scoutUncertainty(p, teamId, proGames = 0) {
   if (isDraftProspect(p)) {
-    const legacyPts = (p.scout?.watched ?? 0) * 33;
-    const pts = p.scout?.draftPoints ?? legacyPts;
+    const pts = getDraftPoints(p, teamId);
     const u = 15 - (Math.min(pts, 100) / 100) * 13;
     return Math.round(clamp(u, 2, 16));
   }
@@ -102,8 +113,8 @@ export function scoutUncertainty(p, proGames = 0) {
 // Builds the displayed [lo, hi] range. The true value can sit anywhere within
 // it — the seeded noise decides where, so it's stable within a season but
 // genuinely unpredictable to the user.
-export function scoutRange(p, trueValue, season, key, proGames = 0) {
-  const width = 2 * scoutUncertainty(p, proGames);
+export function scoutRange(p, trueValue, season, key, teamId, proGames = 0) {
+  const width = 2 * scoutUncertainty(p, teamId, proGames);
   const below = Math.round(noise01(p.id, season, key) * width);
   return [
     Math.max(25, trueValue - below),
@@ -111,23 +122,23 @@ export function scoutRange(p, trueValue, season, key, proGames = 0) {
   ];
 }
 
-export function scoutedOverallRange(p, season, proGames = 0) {
-  return scoutRange(p, overall(p), season, 'ovr', proGames);
+export function scoutedOverallRange(p, season, teamId, proGames = 0) {
+  return scoutRange(p, overall(p), season, 'ovr', teamId, proGames);
 }
 
 // Midpoint of the displayed range — used for sort order. The midpoint itself
 // has noise proportional to uncertainty, so sort order is genuinely unreliable
 // at wide fog and becomes accurate as fog narrows.
-export function scoutedOverall(p, season, proGames = 0) {
-  const [lo, hi] = scoutedOverallRange(p, season, proGames);
+export function scoutedOverall(p, season, teamId, proGames = 0) {
+  const [lo, hi] = scoutedOverallRange(p, season, teamId, proGames);
   return (lo + hi) / 2;
 }
 
 const GRADES = [[92, 'A+'], [86, 'A'], [80, 'B+'], [74, 'B'], [68, 'C+'], [60, 'C'], [-Infinity, 'D']];
 
-export function scoutedPotential(p, season, fogged, proGames = 0) {
+export function scoutedPotential(p, season, fogged, teamId, proGames = 0) {
   let v = p.potential;
-  if (fogged) v += Math.round((noise01(p.id, season, 'pot') - 0.5) * scoutUncertainty(p, proGames) * 1.5);
+  if (fogged) v += Math.round((noise01(p.id, season, 'pot') - 0.5) * scoutUncertainty(p, teamId, proGames) * 1.5);
   return clamp(v, 25, 99);
 }
 

@@ -14,10 +14,11 @@ function ovrClass(o) {
 // else, uncolored so the tier color doesn't give anything away.
 export function Ovr({ p, league, fogged }) {
   if (fogged) {
+    const teamId = league.userTeamId;
     const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-    if (isHidden(p, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
-    const [lo, hi] = scoutedOverallRange(p, league.season, proGames);
-    const u = scoutUncertainty(p, proGames);
+    if (isHidden(p, teamId, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+    const [lo, hi] = scoutedOverallRange(p, league.season, teamId, proGames);
+    const u = scoutUncertainty(p, teamId, proGames);
     return (
       <span className="ovr" title={`Scouting uncertainty ±${u}`}>
         {lo}–{hi}{' '}
@@ -34,7 +35,7 @@ export function Ovr({ p, league, fogged }) {
 // "?" when there's no scouting information at all.
 export function Pot({ p, league, fogged }) {
   const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
-  const band = traitBand(p, league.season, proGames, fogged);
+  const band = traitBand(p, league.season, league.userTeamId, proGames, fogged);
   if (band === null) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
   if (band.lo === band.hi) {
     return <span className="ovr" style={{ color: TRAIT_COLORS[band.lo] }}>{band.lo}</span>;
@@ -64,9 +65,10 @@ export function Origin({ p, full }) {
 export function Sta({ p, league, fogged }) {
   if (p.stamina == null) return <span className="ovr">–</span>;
   if (fogged) {
+    const teamId = league.userTeamId;
     const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-    if (isHidden(p, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
-    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta', proGames);
+    if (isHidden(p, teamId, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta', teamId, proGames);
     return <span className="ovr">{lo}–{hi}</span>;
   }
   return <span className="ovr">{p.stamina}</span>;

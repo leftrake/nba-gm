@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { scoutedOverall, scoutUncertainty, isHidden, fogColor } from '../engine/scouting.js';
+import { scoutedOverall, scoutUncertainty, isHidden, fogColor, getDraftPoints } from '../engine/scouting.js';
 import {
-  workoutProspect, gameWatchProspect, sweepRegion, poachIntel,
+  workoutProspect, gameWatchProspect, sweepRegion, poachIntel, domesticSweep,
   markProWatch, removeProWatch,
   hireScout, fireScout, getScouts,
   isDiscovered,
   DRAFT_POINTS_MAX, PRO_SCOUT_GAMES_FULL, PRO_WATCH_SLOTS,
-  SWEEP_COSTS, WORKOUT_COSTS, GAME_WATCH_COSTS, POACH_COST,
+  SWEEP_COSTS, WORKOUT_COSTS, GAME_WATCH_COSTS, POACH_COST, DOMESTIC_SWEEP_COST,
   SCOUT_TYPES, MAX_SCOUTS,
   totalScoutSalary, scoutingBudget,
 } from '../engine/scoutingTrips.js';
@@ -70,11 +70,11 @@ function ProspectRow({ p, league, budget, userId, hasBigBoard, hasSleeper, sleep
   const region = regionFor(p);
   const wkCost = WORKOUT_COSTS[region] ?? WORKOUT_COSTS.Domestic;
   const gwCost = GAME_WATCH_COSTS[region] ?? GAME_WATCH_COSTS.Domestic;
-  const pts = p.scout?.draftPoints ?? 0;
+  const pts = getDraftPoints(p, userId);
   const full = pts >= DRAFT_POINTS_MAX;
   const isSleeper = hasSleeper && sleeperIds.includes(p.id);
   const bbRank = hasBigBoard ? bigBoardIds.indexOf(p.id) : -1;
-  const hidden = isHidden(p);
+  const hidden = isHidden(p, userId);
   const pct = Math.min(100, Math.round((pts / DRAFT_POINTS_MAX) * 100));
 
   const doMission = (fn) => {
@@ -146,7 +146,7 @@ function DraftClassSection({ dc, label, league, budget, userId, scouts, commit }
   const bigBoardIds = hasBigBoard ? (league.scouting?.bigBoardRanks?.[userId] ?? []) : [];
 
   const discovered = dc.prospects.filter((p) => isDiscovered(p, userId, league));
-  const draftSortOvr = (p) => (isHidden(p) ? -Infinity : scoutedOverall(p, league.season));
+  const draftSortOvr = (p) => (isHidden(p, userId) ? -Infinity : scoutedOverall(p, league.season, userId));
   const sorted = [...discovered].sort((a, b) => draftSortOvr(b) - draftSortOvr(a));
 
   const undiscoveredByRegion = {};
@@ -227,6 +227,13 @@ function DraftBoardTab({ league, commit }) {
     else alert(res.error);
   };
 
+  const domesticSweepUsed = !!s.domesticSweepUsed?.[userId];
+  const doDomesticSweep = () => {
+    const res = domesticSweep(league, userId);
+    if (res.ok) commit();
+    else alert(res.error);
+  };
+
   const currentClass = s.prospects?.length
     ? [{ draftSeason: league.season, prospects: s.prospects, label: `Draft Class ${league.season} (current)` }]
     : [];
@@ -240,21 +247,33 @@ function DraftBoardTab({ league, commit }) {
     <>
       <GuideTooltip
         tipKey="scouting_draft_board"
-        text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. The board spans 3 years so you can start building your board years in advance."
+        text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. You also get one lifetime Domestic Sweep that gives every domestic prospect a flat scouting bump for a flat fee. The board spans 3 years so you can start building your board years in advance."
         block
       >
         <SectionHeader
           title="Draft Board"
           subtitle={<>Budget: <b>{dollars(budget)}</b></>}
           action={
-            <Button
-              size="sm" variant="secondary"
-              disabled={budget < POACH_COST}
-              onClick={doPoach}
-              title="Reveals which prospects 2 other teams have been scouting this offseason"
-            >
-              Poach Intel ({dollars(POACH_COST)})
-            </Button>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+              <Button
+                size="sm" variant="secondary"
+                disabled={domesticSweepUsed || budget < DOMESTIC_SWEEP_COST}
+                onClick={doDomesticSweep}
+                title={domesticSweepUsed
+                  ? 'Already used — one-time mission'
+                  : `One-time mission — gives every domestic prospect ${dollars(DOMESTIC_SWEEP_COST)} worth of scouting in one pass`}
+              >
+                {domesticSweepUsed ? 'Domestic Sweep ✓' : `Domestic Sweep (${dollars(DOMESTIC_SWEEP_COST)})`}
+              </Button>
+              <Button
+                size="sm" variant="secondary"
+                disabled={budget < POACH_COST}
+                onClick={doPoach}
+                title="Reveals which prospects 2 other teams have been scouting this offseason"
+              >
+                Poach Intel ({dollars(POACH_COST)})
+              </Button>
+            </div>
           }
         />
       </GuideTooltip>
@@ -372,7 +391,7 @@ function ProScoutingTab({ league, commit, openPlayer }) {
     if (!found) return null;
     const { p, team } = found;
     const games = proWatching[id] ?? 0;
-    const u = isHidden(p, games) ? null : scoutUncertainty(p, games);
+    const u = isHidden(p, userId, games) ? null : scoutUncertainty(p, userId, games);
     return {
       _key: id,
       _p: p,

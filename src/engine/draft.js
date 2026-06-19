@@ -3,6 +3,7 @@ import { makeRng, randInt, gauss, clamp } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract } from './players.js';
 import { pushNews } from './save.js';
 import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
+import { getDraftPoints } from './scouting.js';
 
 // ---------- NBA Draft ----------
 // Runs between the playoffs and free agency. Two rounds of 30 picks: a
@@ -54,7 +55,7 @@ export function generateDraftClass(rng, opts = {}) {
     if (opts.boardSeason != null) playerOpts._forcedId = -(opts.boardSeason * CLASS_SIZE + i + 1);
     const p = generatePlayer(rng, playerOpts);
     p.contract = null;
-    p.scout = { draftPoints: 0 };
+    p.scout = { draftPoints: {} }; // per scouting-team: { [teamId]: pts }
     prospects.push(p);
   }
   return prospects;
@@ -164,8 +165,10 @@ export function makeDraftPick(league, prospectId) {
   p.draftYear = d.season;
   p.draftRound = pick <= 30 ? 1 : 2;
   p.draftPick = pick;
-  // Carry draft scouting into the pro track so heavily scouted rookies start partially known
-  if (p.scout) p.scout.priorDraftPoints = p.scout.draftPoints ?? 0;
+  // Carry draft scouting into the pro track so heavily scouted rookies start
+  // partially known — from the human user's own scouting, regardless of which
+  // team drafted the player (pro-track fog is a user-only display mechanic).
+  if (p.scout) p.scout.priorDraftPoints = getDraftPoints(p, league.userTeamId);
   if (teamId === league.userTeamId) {
     league.gmLegacy.draftWatchlist.push({ playerId: p.id, season: d.season, pick });
     p.everOnUserTeam = true;
@@ -225,7 +228,7 @@ export function finishDraft(league) {
     // Carry draft scouting into the pro track so knowledge isn't lost when
     // an undrafted prospect eventually signs as a free agent.
     for (const p of d.prospects) {
-      if (p.scout) p.scout.priorDraftPoints = p.scout.draftPoints ?? 0;
+      if (p.scout) p.scout.priorDraftPoints = getDraftPoints(p, league.userTeamId);
     }
     league.freeAgents.push(...d.prospects); // contracts are already null
     d.prospects = [];

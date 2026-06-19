@@ -88,8 +88,8 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
   const seenOvr = (p) => {
     if (!fogged(p)) return overall(p);
     const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-    if (isHidden(p, proGames)) return -Infinity;
-    return scoutedOverall(p, league.season, proGames);
+    if (isHidden(p, userId, proGames)) return -Infinity;
+    return scoutedOverall(p, league.season, userId, proGames);
   };
   const sortedRoster = [...team.roster].sort((a, b) => seenOvr(b) - seenOvr(a));
   const needs = team.id !== userId ? teamNeeds(team) : null;
