@@ -27,6 +27,13 @@ export const NEWS_MAX = 100;
 // (keyed by season, chronological) for the "biggest stories" history view.
 export const ARCHIVE_PER_SEASON = 20;
 
+// How many seasons back league.newsArchive and league.tradeHistory reach.
+// Both grow without bound across a long franchise otherwise (20 archived
+// headlines per season, forever; one row per trade, forever) — neither is
+// read by the record book or any other derived stat, so dropping seasons
+// older than this only trims the History screens, nothing computed.
+export const HISTORY_RETENTION_SEASONS = 20;
+
 // Every news item carries:
 //   { day, text, category, season, phase, teamIds?, major? }
 // category: trade | signing | injury | draft | award | milestone | league
@@ -54,6 +61,22 @@ export function archivePastNews(league) {
   }
   for (const n of old.reverse()) archiveItem(league, n);
   league.news = keep;
+  const cutoff = league.season - HISTORY_RETENTION_SEASONS;
+  for (const season of Object.keys(league.newsArchive)) {
+    if (Number(season) < cutoff) delete league.newsArchive[season];
+  }
+}
+
+// Logs an executed trade to league.tradeHistory for the News screen's trade
+// ledger, trimming entries older than HISTORY_RETENTION_SEASONS (the array
+// is chronological, so old entries are always at the front).
+export function recordTrade(league, entry) {
+  if (!league.tradeHistory) league.tradeHistory = [];
+  league.tradeHistory.push(entry);
+  const cutoff = league.season - HISTORY_RETENTION_SEASONS;
+  let i = 0;
+  while (i < league.tradeHistory.length && league.tradeHistory[i].season < cutoff) i++;
+  if (i > 0) league.tradeHistory.splice(0, i);
 }
 
 // All news goes through here: stamps the season/phase, rolls finished

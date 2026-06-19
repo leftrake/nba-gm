@@ -1,7 +1,7 @@
 import { overall } from './players.js';
 import { getTeam, payroll, recordSeasonStint, tradesLocked } from './league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
-import { pushNews } from './save.js';
+import { pushNews, recordTrade } from './save.js';
 import { clamp } from './rng.js';
 import { bumpTurmoil, adjustMorale } from './morale.js';
 import { reputationMult, tradedAwayPenalty } from './backstory.js';
@@ -208,7 +208,7 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
     major: [...outA, ...outB].some((p) => overall(p) >= 80),
     text: `TRADE: ${tradeText}`,
   });
-  league.tradeHistory.push({
+  recordTrade(league, {
     season: league.season,
     day: league.dayIndex,
     teamIds: [a.id, b.id],
@@ -375,7 +375,7 @@ export function executeMultiTrade(league, teamIds, sends) {
     major,
     text: legs.length > 2 ? `${legs.length}-TEAM TRADE: ${summary}.` : `TRADE: ${summary}.`,
   });
-  league.tradeHistory.push({
+  recordTrade(league, {
     season: league.season,
     day: league.dayIndex,
     teamIds: legs.map((l) => l.team.id),

@@ -313,11 +313,17 @@ export function snapshotRatings(p, season) {
 }
 
 // Logs a signed deal (new contract, re-sign, extension kicking in, etc.) to
-// the player's contract history for the Player Profile screen.
+// the player's contract history for the Player Profile screen. Capped at
+// HISTORY_SEASONS like ratingHistory above — nothing derives totals from
+// this, it's purely a display list, so trimming old entries is lossless
+// except for the display itself.
 export function recordContract(p, season, teamId, contract) {
   if (!contract) return;
   if (!p.contractHistory) p.contractHistory = [];
   p.contractHistory.push({ season, team: teamId, salary: contract.salary, years: contract.years });
+  if (p.contractHistory.length > HISTORY_SEASONS) {
+    p.contractHistory.splice(0, p.contractHistory.length - HISTORY_SEASONS);
+  }
 }
 
 // "Similar to" — the closest matches across the league for a player's

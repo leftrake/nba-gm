@@ -55,8 +55,8 @@ export default function News({ league, openTeam }) {
   const teams = [...league.teams].sort((a, b) =>
     a.id === league.userTeamId ? -1 : b.id === league.userTeamId ? 1 : a.city.localeCompare(b.city));
 
-  // Every executed trade, regardless of how "major" it was — unlike the news
-  // feed/archive, this list is never trimmed. Grouped by season, newest first.
+  // Every executed trade, regardless of how "major" it was, going back
+  // HISTORY_RETENTION_SEASONS (engine/save.js). Grouped by season, newest first.
   const tradesBySeason = [];
   for (const t of [...(league.tradeHistory || [])].reverse()) {
     if (teamId !== 'all' && !t.teamIds.includes(teamId)) continue;

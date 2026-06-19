@@ -712,6 +712,47 @@ export function weeklyRecapNews(league, startDay) {
   pushNews(league, { day: league.dayIndex, category: 'league', major: true, teamIds: [userTeamId], text });
 }
 
+// Full per-play text is by far the biggest thing in an active save (every
+// play of every user-team game, regular season or playoffs) — and it's only
+// ever read for the game just played (see BoxScore.jsx's play-by-play tab).
+// Past a couple of games back nobody re-opens old play-by-play, so once a
+// game ages past KEEP_PBP_GAMES-many newer user games, drop `playByPlay`/
+// `events` and keep the box score (still wanted by Schedule/Calendar's
+// "view this past game" links).
+const KEEP_PBP_GAMES = 2;
+
+function trimPlayByPlay(containers, keep = KEEP_PBP_GAMES) {
+  for (let i = 0; i < containers.length - keep; i++) {
+    delete containers[i].playByPlay;
+    delete containers[i].events;
+  }
+}
+
+function collectRegularPbpGames(league) {
+  const out = [];
+  for (const day of league.resultsByDay || []) {
+    for (const r of day) if (r.playByPlay) out.push(r);
+  }
+  return out;
+}
+
+// Same idea for the playoffs: gathers every game still carrying play-by-play
+// (i.e. the user's games — see simPlayoffGame) across completed series and
+// the in-progress round, ordered round-then-game-index so trimPlayByPlay
+// drops the oldest ones first.
+function collectPlayoffPbpGames(po) {
+  const out = [];
+  const addSeries = (round, m) => {
+    if (!m?.games) return;
+    m.games.forEach((g, idx) => { if (g.playByPlay) out.push({ round, idx, g }); });
+  };
+  for (const { round, series } of po.completed || []) addSeries(round, series);
+  if (po.round < 3) {
+    for (const conf of ['East', 'West']) for (const m of po[conf] || []) addSeries(po.round, m);
+  } else if (po.finals) addSeries(3, po.finals);
+  return out.sort((a, b) => a.round - b.round || a.idx - b.idx).map((x) => x.g);
+}
+
 // Simulate one day of games. Returns results.
 export function simDay(league) {
   if (league.phase !== 'regular' || league.dayIndex >= league.schedule.length) return [];
@@ -761,9 +802,9 @@ export function simDay(league) {
   if (!league.resultsByDay) league.resultsByDay = []; // saves predating this field
   // What persists per game (resultsByDay resets every season, so nothing
   // piles up across years): the user's games keep the full box scores and
-  // game-flow events; everyone else's keep just the quarter line score and
-  // each side's top performers, so a season of results stays well under
-  // ~1MB of localStorage. Boxes store in compact array form (see BOX_COLS).
+  // game-flow events/play-by-play (trimmed to the last KEEP_PBP_GAMES below);
+  // everyone else's keep just the quarter line score and each side's top
+  // performers. Boxes store in compact array form (see BOX_COLS).
   league.resultsByDay[league.dayIndex] = results.map((r) => {
     const slim = { home: r.home, away: r.away, homePts: r.homePts, awayPts: r.awayPts, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, injuryReport: r.injuryReport };
     if (r.home === league.userTeamId || r.away === league.userTeamId) {
@@ -771,6 +812,7 @@ export function simDay(league) {
     }
     return { ...slim, homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) };
   });
+  trimPlayByPlay(collectRegularPbpGames(league));
   updateConditions(league, results);
   dailyMoraleUpdate(league, results);
   updateTradeDemands(league);
@@ -889,7 +931,8 @@ export function simPlayoffGame(league) {
     // resets when the next season starts), so unlike a single regular-season
     // day, this data sits in the save through development/draft/free agency.
     // Mirror resultsByDay's rule: full box + play-by-play only for games
-    // involving the user's team; everyone else gets quarter lines + top
+    // involving the user's team (and even then, play-by-play is trimmed to
+    // the last KEEP_PBP_GAMES below); everyone else gets quarter lines + top
     // performers, which is enough for "click a series for results".
     const isUserGame = homeId === league.userTeamId || awayId === league.userTeamId;
     const game = {
@@ -955,6 +998,7 @@ export function simPlayoffGame(league) {
       league.nextPlayerId = getNextPlayerId();
     }
   }
+  trimPlayByPlay(collectPlayoffPbpGames(po));
   return played;
 }
 
