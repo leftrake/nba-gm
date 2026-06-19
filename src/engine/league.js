@@ -885,13 +885,20 @@ export function simPlayoffGame(league) {
       }
     }
     if (!m.games) m.games = [];
-    // playoff games keep their full box scores and game log for the season
-    // (league.playoffs resets every year, so they don't accumulate)
+    // playoff games persist for the whole offseason (league.playoffs only
+    // resets when the next season starts), so unlike a single regular-season
+    // day, this data sits in the save through development/draft/free agency.
+    // Mirror resultsByDay's rule: full box + play-by-play only for games
+    // involving the user's team; everyone else gets quarter lines + top
+    // performers, which is enough for "click a series for results".
+    const isUserGame = homeId === league.userTeamId || awayId === league.userTeamId;
     const game = {
       home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
-      homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay,
-      homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox),
+      homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs,
       injuryReport: hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft })),
+      ...(isUserGame
+        ? { events: r.events, playByPlay: r.playByPlay, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox) }
+        : { homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) }),
     };
     m.games.push(game);
     played.push({ series: m, game, round: po.round });

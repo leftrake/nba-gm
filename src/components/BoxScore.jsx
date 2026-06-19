@@ -321,7 +321,7 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
             </>
           ) : (
             <p style={{ color: 'var(--muted)', fontSize: 12 }}>
-              Full box scores are kept for your games and playoff games; other games keep the line score and top performers.
+              Full box scores are kept for your games; other games keep the line score and top performers.
             </p>
           )}
           <GameFlow events={game.events} />

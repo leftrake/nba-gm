@@ -73,6 +73,7 @@ export default function App() {
   const [viewGame, setViewGame] = useState(null); // { game, title }
   const [theme, setTheme] = useState(loadTheme);
   const [accentColor, setAccentColor] = useState(loadAccent);
+  const [saveError, setSaveError] = useState(null);
 
   useEffect(() => { applyTheme(theme, accentColor); }, [theme, accentColor]);
 
@@ -142,8 +143,19 @@ export default function App() {
 
   useEffect(() => {
     if (league) {
-      try { localStorage.setItem(SAVE_KEY, JSON.stringify(league)); } catch {}
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(league));
+        if (saveError) setSaveError(null); // a later write succeeded — e.g. quota freed up
+      } catch (e) {
+        // Most likely QuotaExceededError: the save stops persisting from here on, but
+        // play continues in memory, so silently swallowing this would let progress
+        // (everything past this point) vanish on the next reload with no warning.
+        setSaveError(e?.name === 'QuotaExceededError'
+          ? 'Your save is too large for browser storage and stopped saving. Progress from here on will be lost on reload — export a save file from Settings now as a backup.'
+          : 'Your save failed to write and progress is not being persisted. Export a save file from Settings as a backup.');
+      }
     }
+    // saveError is deliberately not a dependency — it's set here as a result, not a trigger.
   }, [league]);
 
   const newGame = (teamId, fantasyDraft) => {
@@ -388,6 +400,19 @@ export default function App() {
         </div>
       </aside>
       <div className="app-main">
+      {saveError && (
+        <div style={{
+          margin: 'var(--sp-3) var(--sp-3) 0',
+          padding: 'var(--sp-3)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--color-danger-soft)',
+          border: '1px solid var(--color-danger-line)',
+        }}>
+          <p style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-snug)', margin: 0 }}>
+            ⚠️ {saveError}
+          </p>
+        </div>
+      )}
       <main>
         {league.phase === 'playoffs' && (
           <div className="controls">
