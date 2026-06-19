@@ -9,6 +9,7 @@ import Roster from './components/Roster.jsx';
 import FuturePayroll from './components/FuturePayroll.jsx';
 import Standings from './components/Standings.jsx';
 import Stats from './components/Stats.jsx';
+import Players from './components/Players.jsx';
 import Schedule from './components/Schedule.jsx';
 import AllStarScreen from './components/AllStarScreen.jsx';
 import TradeMachine from './components/TradeMachine.jsx';
@@ -329,6 +330,7 @@ export default function App() {
     [
       ['standings', 'Standings'],
       ['stats', 'Stats'],
+      ['players', 'Players'],
       ['schedule', 'Schedule'],
     ],
     [
@@ -479,6 +481,7 @@ export default function App() {
         {screen === 'futurecap' && <FuturePayroll league={league} commit={commit} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
         {screen === 'standings' && <Standings league={league} openTeam={openTeam} />}
         {screen === 'stats' && <Stats league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+        {screen === 'players' && <Players league={league} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'schedule' && <Schedule league={league} openTeam={openTeam} openGame={openGame} />}
         {screen === 'allstar' && (
           <AllStarScreen
