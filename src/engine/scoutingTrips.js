@@ -505,19 +505,30 @@ export function sweepRegion(league, teamId, region) {
   return { ok: true, text, discovered: newCount };
 }
 
-// One-time-ever mission per team. Domestic prospects are never hidden, so
-// there's nothing to "discover" — this just hands every domestic prospect
-// (current class + future board) a flat scouting bump for a flat fee.
+// Cooldown mission per team, reusable once a new draft class has had time to
+// form. Domestic prospects are never hidden, so there's nothing to
+// "discover" — this just hands every domestic prospect (current class +
+// future board) a flat scouting bump for a flat fee.
+export const DOMESTIC_SWEEP_COOLDOWN_YEARS = 2;
+
+export function domesticSweepAvailable(league, teamId) {
+  const lastUsed = league.scouting?.domesticSweepUsed?.[teamId];
+  // Legacy saves stored `true` for a one-time-ever use; treat that as never used
+  // under the new cooldown so existing saves aren't permanently locked out.
+  if (lastUsed == null || lastUsed === true) return true;
+  return league.season - lastUsed >= DOMESTIC_SWEEP_COOLDOWN_YEARS;
+}
+
 export function domesticSweep(league, teamId) {
   const s = league.scouting;
   if (!s) return { ok: false, error: 'Scouting not available.' };
-  if (s.domesticSweepUsed?.[teamId]) return { ok: false, error: 'Domestic sweep already used.' };
+  if (!domesticSweepAvailable(league, teamId)) return { ok: false, error: 'Domestic sweep is on cooldown.' };
   if ((s.budgets[teamId] ?? 0) < DOMESTIC_SWEEP_COST) return { ok: false, error: 'Not enough scouting budget.' };
   const targets = getAllDraftProspects(league).filter((p) => regionFor(p) === 'Domestic');
   for (const p of targets) addDraftPoints(p, teamId, DRAFT_POINTS_DOMESTIC_SWEEP);
   s.budgets[teamId] -= DOMESTIC_SWEEP_COST;
   if (!s.domesticSweepUsed) s.domesticSweepUsed = {};
-  s.domesticSweepUsed[teamId] = true;
+  s.domesticSweepUsed[teamId] = league.season;
   const text = `Domestic sweep: ${targets.length} domestic prospect${targets.length === 1 ? '' : 's'} evaluated (${DRAFT_POINTS_DOMESTIC_SWEEP} scouting pts each).`;
   addReport(league, teamId, text);
   return { ok: true, text };
@@ -682,8 +693,8 @@ export function aiScoutTurn(league, team, rng) {
       continue;
     }
 
-    // One-time domestic sweep, if not yet used and affordable
-    if (!s.domesticSweepUsed?.[team.id] && budget >= DOMESTIC_SWEEP_COST && rng() < sweepChance) {
+    // Domestic sweep, if off cooldown and affordable
+    if (domesticSweepAvailable(league, team.id) && budget >= DOMESTIC_SWEEP_COST && rng() < sweepChance) {
       domesticSweep(league, team.id);
       continue;
     }

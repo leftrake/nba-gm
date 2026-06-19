@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { scoutedOverall, scoutUncertainty, isHidden, fogColor, getDraftPoints } from '../engine/scouting.js';
 import {
-  workoutProspect, gameWatchProspect, sweepRegion, poachIntel, domesticSweep,
+  workoutProspect, gameWatchProspect, sweepRegion, poachIntel, domesticSweep, domesticSweepAvailable,
   markProWatch, removeProWatch,
   hireScout, fireScout, getScouts,
   isDiscovered,
   DRAFT_POINTS_MAX, PRO_SCOUT_GAMES_FULL, PRO_WATCH_SLOTS,
-  SWEEP_COSTS, WORKOUT_COSTS, GAME_WATCH_COSTS, POACH_COST, DOMESTIC_SWEEP_COST,
+  SWEEP_COSTS, WORKOUT_COSTS, GAME_WATCH_COSTS, POACH_COST, DOMESTIC_SWEEP_COST, DOMESTIC_SWEEP_COOLDOWN_YEARS,
   SCOUT_TYPES, MAX_SCOUTS,
   totalScoutSalary, scoutingBudget,
 } from '../engine/scoutingTrips.js';
@@ -227,7 +227,8 @@ function DraftBoardTab({ league, commit }) {
     else alert(res.error);
   };
 
-  const domesticSweepUsed = !!s.domesticSweepUsed?.[userId];
+  const domesticSweepOnCooldown = !domesticSweepAvailable(league, userId);
+  const domesticSweepReadySeason = (s.domesticSweepUsed?.[userId] ?? -Infinity) + DOMESTIC_SWEEP_COOLDOWN_YEARS;
   const doDomesticSweep = () => {
     const res = domesticSweep(league, userId);
     if (res.ok) commit();
@@ -247,7 +248,7 @@ function DraftBoardTab({ league, commit }) {
     <>
       <GuideTooltip
         tipKey="scouting_draft_board"
-        text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. You also get one lifetime Domestic Sweep that gives every domestic prospect a flat scouting bump for a flat fee. The board spans 3 years so you can start building your board years in advance."
+        text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. You also get a Domestic Sweep that gives every domestic prospect a flat scouting bump for a flat fee, reusable every 2 years once a new class comes around. The board spans 3 years so you can start building your board years in advance."
         block
       >
         <SectionHeader
@@ -257,13 +258,13 @@ function DraftBoardTab({ league, commit }) {
             <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
               <Button
                 size="sm" variant="secondary"
-                disabled={domesticSweepUsed || budget < DOMESTIC_SWEEP_COST}
+                disabled={domesticSweepOnCooldown || budget < DOMESTIC_SWEEP_COST}
                 onClick={doDomesticSweep}
-                title={domesticSweepUsed
-                  ? 'Already used — one-time mission'
-                  : `One-time mission — gives every domestic prospect ${dollars(DOMESTIC_SWEEP_COST)} worth of scouting in one pass`}
+                title={domesticSweepOnCooldown
+                  ? `On cooldown — available again in ${domesticSweepReadySeason}`
+                  : `Gives every domestic prospect ${dollars(DOMESTIC_SWEEP_COST)} worth of scouting in one pass — reusable every ${DOMESTIC_SWEEP_COOLDOWN_YEARS} years`}
               >
-                {domesticSweepUsed ? 'Domestic Sweep ✓' : `Domestic Sweep (${dollars(DOMESTIC_SWEEP_COST)})`}
+                {domesticSweepOnCooldown ? `Domestic Sweep (cooldown)` : `Domestic Sweep (${dollars(DOMESTIC_SWEEP_COST)})`}
               </Button>
               <Button
                 size="sm" variant="secondary"
