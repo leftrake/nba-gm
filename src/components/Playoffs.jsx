@@ -206,7 +206,7 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
     return (
       <div>
         <Card style={{ marginBottom: 'var(--sp-4)' }}>
-          <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-2)' }}>Projected Playoff Bracket</span>
+          <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>Projected Playoff Bracket</span>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>The playoffs haven't started yet. Here's how the bracket would look if the regular season ended today — it will keep shifting as teams win and lose.</p>
         </Card>
         <Card noPad>
@@ -228,7 +228,7 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
             text="Best-of-7 series, home court goes to the higher seed. Rest and rotation matter more than ever — tired stars in the fourth quarter lose series."
             block
           >
-            <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-2)' }}>Current Round: {roundName}</span>
+            <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>Current Round: {roundName}</span>
           </GuideTooltip>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>"Sim Next Playoff Game" plays one game in every active series; "Sim Playoff Round" fast-forwards the round. Click a series for game-by-game results and stat leaders.</p>
         </Card>
@@ -238,7 +238,7 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
       </Card>
       {po.log.length > 0 && (
         <Card style={{ marginTop: 'var(--sp-4)' }}>
-          <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-3)' }}>Series Results</span>
+          <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-3)' }}>Series Results</span>
           {po.log.map((l, i) => <div className="news-item" key={i}><NewsText text={l} openTeam={openTeam} /></div>)}
         </Card>
       )}
