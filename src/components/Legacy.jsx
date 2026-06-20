@@ -161,7 +161,7 @@ function HallOfFame({ league, openPlayer }) {
   const inductees = [...(league.hallOfFame || [])].sort((a, b) => b.inductedSeason - a.inductedSeason);
   return (
     <Card>
-      <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-4)' }}>Hall of Fame</span>
+      <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-4)' }}>Hall of Fame</span>
       {inductees.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No one has been inducted yet.</p>}
       {inductees.map((h, idx) => {
         const p = findPlayerById(league, h.playerId);
@@ -196,7 +196,7 @@ function Dynasties({ league, openPlayer, openTeam }) {
   const dynasties = [...(league.dynasties || [])].sort((a, b) => b.endSeason - a.endSeason);
   return (
     <Card>
-      <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-4)' }}>Dynasties</span>
+      <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-4)' }}>Dynasties</span>
       {dynasties.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No dynasty has emerged yet — win 2+ championships within a 4-year span.</p>}
       {dynasties.map((d, idx) => (
         <div key={d.teamId + '-' + d.startSeason} style={idx > 0 ? { borderTop: '1px solid var(--border)', paddingTop: 'var(--sp-4)', marginTop: 'var(--sp-4)' } : {}}>
@@ -231,7 +231,7 @@ function MyLegacy({ league, openPlayer, openTeam }) {
   const winPct = gm.totalWins + gm.totalLosses > 0 ? (gm.totalWins / (gm.totalWins + gm.totalLosses) * 100).toFixed(1) : '–';
   return (
     <Card>
-      <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-4)' }}>My Legacy</span>
+      <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-4)' }}>My Legacy</span>
 
       <div className="ui-table-wrap" style={{ marginBottom: 'var(--sp-5)' }}>
         <table className="ui-table">
@@ -334,7 +334,7 @@ function Honors({ league, openPlayer, openTeam }) {
     const matches = allPlayersEver(league).filter((p) => (p.awards || []).length && p.name.toLowerCase().includes(q));
     return (
       <Card>
-        <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-2)' }}>Honors</span>
+        <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>Honors</span>
         {searchBar}
         {matches.length === 0 && <p style={{ color: 'var(--text-muted)', marginTop: 'var(--sp-3)' }}>No award history for "{query}".</p>}
         {matches.map((p) => (
@@ -362,7 +362,7 @@ function Honors({ league, openPlayer, openTeam }) {
   if (!season) {
     return (
       <Card>
-        <span className="ui-section-title" style={{ display: 'block', marginBottom: 'var(--sp-2)' }}>Honors</span>
+        <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>Honors</span>
         {searchBar}
         <p style={{ color: 'var(--text-muted)', marginTop: 'var(--sp-3)' }}>No award history yet — honors are recorded at the end of each season.</p>
       </Card>
