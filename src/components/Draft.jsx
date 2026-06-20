@@ -2,7 +2,7 @@ import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { makeDraftPick, onTheClock, rookieSalary, rookieContractYears } from '../engine/draft.js';
 import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
-import { Ovr, Pot, money, PlayerLink, TeamLink, Origin } from './shared.jsx';
+import { Ovr, Pot, money, PlayerLink, TeamLink, TeamBadge, Origin } from './shared.jsx';
 import { Section, SectionHeader } from './ui/index.js';
 
 function boardValue(p, season, teamId) {
@@ -70,7 +70,7 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
           <>
             <SectionHeader title="Big Board" />
             <div className="ui-table-wrap">
-              <table className="ui-table">
+              <table className="ui-table zebra">
                 <thead>
                   <tr><th className="num">#</th><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th>From</th><th></th></tr>
                 </thead>
@@ -101,7 +101,7 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
       {d.results.length > 0 && (
         <Section title="Picks" spacing="sm">
           <div className="ui-table-wrap">
-            <table className="ui-table">
+            <table className="ui-table zebra">
               <thead>
                 <tr><th className="num">Pick</th><th>Team</th><th>Player</th><th>Pos</th><th></th></tr>
               </thead>
@@ -112,7 +112,12 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
                   return (
                     <tr key={r.pick} style={mine ? { background: 'var(--color-success-soft)' } : undefined}>
                       <td className="num" style={mine ? { fontWeight: 'var(--weight-bold)' } : undefined}>{r.pick}</td>
-                      <td><TeamLink team={getTeam(league, r.teamId)} openTeam={openTeam} /></td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                          <TeamBadge team={getTeam(league, r.teamId)} size="small" />
+                          <TeamLink team={getTeam(league, r.teamId)} openTeam={openTeam} />
+                        </span>
+                      </td>
                       <td style={mine ? { fontWeight: 'var(--weight-bold)' } : undefined}>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : r.playerName}</td>
                       <td>{r.pos}</td>
                       <td>

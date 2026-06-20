@@ -148,7 +148,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
       {/* Sends */}
       <div className="ui-section-title" style={{ marginTop: 'var(--sp-4)', marginBottom: 'var(--sp-2)' }}>Sends</div>
       <div className="ui-table-wrap">
-        <table className="ui-table">
+        <table className="ui-table zebra">
           <thead>
             <tr>
               <th></th><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th>
@@ -187,7 +187,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
 
       {picks.length > 0 && (
         <div className="ui-table-wrap" style={{ marginTop: 'var(--sp-2)' }}>
-          <table className="ui-table">
+          <table className="ui-table zebra">
             <thead>
               <tr>
                 <th></th><th>Pick</th><th className="num">Value</th>
@@ -224,7 +224,7 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
         <>
           <div className="ui-section-title" style={{ marginTop: 'var(--sp-4)', marginBottom: 'var(--sp-2)' }}>Receives</div>
           <div className="ui-table-wrap">
-            <table className="ui-table">
+            <table className="ui-table zebra">
               <thead>
                 <tr>
                   <th>Ovr</th><th>Pot</th><th>Player / Pick</th><th>Pos</th>

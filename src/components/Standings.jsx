@@ -41,10 +41,20 @@ function RankArrow({ prevRank, rank }) {
     : <span style={{ color: 'var(--color-danger)' }}> ▼{rank - prevRank}</span>;
 }
 
+function StreakBadge({ streak }) {
+  if (streak === '–') return <span style={{ color: 'var(--text-muted)' }}>–</span>;
+  const win = streak.startsWith('W');
+  return (
+    <span className={`ui-badge ${win ? 'ui-badge--success' : 'ui-badge--danger'}`} style={{ fontFamily: 'var(--font-tabular)' }}>
+      {streak}
+    </span>
+  );
+}
+
 function ConfTableBody({ league, conf, openTeam, prevRanks, comfortable }) {
   const rows = standings(league, conf);
   return (
-    <table className={`ui-table${comfortable ? ' comfortable' : ''}`}>
+    <table className={`ui-table zebra${comfortable ? ' comfortable' : ''}`}>
       <thead>
         <tr>
           <th style={{ width: 36 }}>#</th>
@@ -63,26 +73,35 @@ function ConfTableBody({ league, conf, openTeam, prevRanks, comfortable }) {
           const streak = currentStreak(log);
           const isUser = t.id === league.userTeamId;
           return (
-            <tr key={t.id} style={isUser ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
-              <td style={{ color: 'var(--text-muted)' }}>
-                {i + 1}{i === 7 ? ' —' : ''}
-                <RankArrow prevRank={prevRanks?.get(t.id)} rank={i} />
-              </td>
-              <td>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                  <TeamBadge team={t} size="small" />
-                  <TeamLink team={t} openTeam={openTeam} />
-                </span>
-              </td>
-              <td className="num">{t.wins}</td>
-              <td className="num">{t.losses}</td>
-              <td className="num">{(t.wins + t.losses) ? (t.wins / (t.wins + t.losses)).toFixed(3) : '–'}</td>
-              <td className="num">{gamesBack(rows[0], t)}</td>
-              <td className="num">{last10(log)}</td>
-              <td className="num" style={{ color: streak.startsWith('W') ? 'var(--color-success)' : streak.startsWith('L') ? 'var(--color-danger)' : undefined }}>
-                {streak}
-              </td>
-            </tr>
+            <React.Fragment key={t.id}>
+              <tr style={isUser ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
+                <td style={{ color: 'var(--text-muted)' }}>
+                  {i + 1}
+                  <RankArrow prevRank={prevRanks?.get(t.id)} rank={i} />
+                </td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                    <TeamBadge team={t} size="small" />
+                    <TeamLink team={t} openTeam={openTeam} />
+                  </span>
+                </td>
+                <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{t.wins}</td>
+                <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{t.losses}</td>
+                <td className="num">{(t.wins + t.losses) ? (t.wins / (t.wins + t.losses)).toFixed(3) : '–'}</td>
+                <td className="num">{gamesBack(rows[0], t)}</td>
+                <td className="num">{last10(log)}</td>
+                <td className="num"><StreakBadge streak={streak} /></td>
+              </tr>
+              {i === 7 && (
+                <tr className="standings-cutoff-row">
+                  <td colSpan={8}>
+                    <div className="standings-cutoff-line">
+                      <span className="standings-cutoff-label">Playoff Line</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
           );
         })}
       </tbody>
@@ -123,7 +142,7 @@ function LeagueTable({ league, openTeam, prevRanks }) {
         <span className="ui-section-title">All 30 Teams</span>
       </div>
       <div className="ui-table-wrap">
-        <table className="ui-table">
+        <table className="ui-table zebra">
           <thead>
             <tr>
               <th style={{ width: 36 }}>#</th>
@@ -155,14 +174,12 @@ function LeagueTable({ league, openTeam, prevRanks }) {
                     </span>
                   </td>
                   <td style={{ color: 'var(--text-muted)' }}>{t.conf}</td>
-                  <td className="num">{t.wins}</td>
-                  <td className="num">{t.losses}</td>
+                  <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{t.wins}</td>
+                  <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{t.losses}</td>
                   <td className="num">{(t.wins + t.losses) ? (t.wins / (t.wins + t.losses)).toFixed(3) : '–'}</td>
                   <td className="num">{gamesBack(rows[0], t)}</td>
                   <td className="num">{last10(log)}</td>
-                  <td className="num" style={{ color: streak.startsWith('W') ? 'var(--color-success)' : streak.startsWith('L') ? 'var(--color-danger)' : undefined }}>
-                    {streak}
-                  </td>
+                  <td className="num"><StreakBadge streak={streak} /></td>
                 </tr>
               );
             })}

@@ -61,7 +61,7 @@ function BracketCard({ league, m, openTeam, openSeries, roundName, seeds }) {
       <div key={team.id}>
         <div className={`bracket-team${isWinner ? ' winner' : ''}`}>
           <span className="seed-num">({seeds.get(team.id)})</span>
-          <span className="team-logo" style={{ background: team.color, color: textOnColor(team.color) }}>{team.id}</span>
+          <span className="team-logo" style={{ '--logo-color': team.color, color: textOnColor(team.color) }}>{team.id}</span>
           <TeamLink team={team} openTeam={openTeam}>{team.name}</TeamLink>
           {clickable && <span className="score">{wins}</span>}
         </div>

@@ -241,11 +241,6 @@ export function OvrArc({ value, size = 38 }) {
   );
 }
 
-// Left-border accent class for a player's primary position
-export function posStripe(p) {
-  return `pos-stripe-${p.pos}`;
-}
-
 export function PlayerLink({ p, openPlayer, children }) {
   if (!openPlayer) return <>{children ?? p.name}</>;
   return (
@@ -258,15 +253,15 @@ export function PlayerLink({ p, openPlayer, children }) {
 // Small colored circle with the team's abbreviation, matching the bracket
 // chips on the Playoffs screen. `size` controls the chip's diameter/font.
 const TEAM_BADGE_SIZES = {
-  small: { size: 18, fontSize: 9 },
-  medium: { size: 26, fontSize: 11 },
-  large: { size: 56, fontSize: 20 },
+  small: { size: 18, fontSize: 8 },
+  medium: { size: 26, fontSize: 10 },
+  large: { size: 56, fontSize: 17 },
 };
 
 export function TeamBadge({ team, size = 'medium' }) {
   const { size: px, fontSize } = TEAM_BADGE_SIZES[size] || TEAM_BADGE_SIZES.medium;
   return (
-    <span className="team-logo" style={{ width: px, height: px, fontSize, background: team.color, color: textOnColor(team.color) }}>
+    <span className="team-logo" style={{ width: px, height: px, fontSize, '--logo-color': team.color, color: textOnColor(team.color) }}>
       {team.id}
     </span>
   );

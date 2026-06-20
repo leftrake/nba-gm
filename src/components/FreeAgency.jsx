@@ -230,7 +230,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
       {myRfas.length > 0 && (
         <>
           <Section title="Your Restricted Free Agents">
-            <Table columns={rfaCols} rows={rfaRows} />
+            <Table columns={rfaCols} rows={rfaRows} zebra />
           </Section>
           <Divider />
         </>
@@ -379,7 +379,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
           </Card>
         )}
 
-        <Table columns={faCols} rows={faRows} onSort={handleSort} />
+        <Table columns={faCols} rows={faRows} onSort={handleSort} zebra />
       </Section>
     </div>
   );

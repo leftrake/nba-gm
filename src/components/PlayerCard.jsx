@@ -1,13 +1,13 @@
 import React, { useEffect } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
-import { durabilityNote, ratingRow, posLabel, similarPlayers, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
+import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards } from '../engine/awards.js';
 import { scoutRange, isHidden } from '../engine/scouting.js';
 import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
 import { personalityNote, scoutBackstoryNote } from '../engine/backstory.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
-import { Ovr, Pot, Cond, money, perGame, fgPct, TeamLink, PlayerLink, Origin } from './shared.jsx';
+import { Ovr, OvrArc, Pot, Cond, money, perGame, fgPct, TeamLink, TeamBadge, PlayerLink, Origin } from './shared.jsx';
 
 const RATINGS = [
   ['inside', 'Inside'],
@@ -260,23 +260,33 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
 
   return (
     <div className="ui-modal-overlay" onClick={onClose}>
-      <div className="ui-modal ui-modal--wide" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="ui-modal ui-modal--wide"
+        onClick={(e) => e.stopPropagation()}
+        style={team ? {
+          borderTop: `4px solid ${team.color}`,
+          backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${team.color} 14%, var(--surface-1)) 0%, var(--surface-1) 60%)`,
+        } : undefined}
+      >
 
         {/* Header */}
         <div className="ui-modal-header">
-          <div style={{ minWidth: 0 }}>
-            <div className="ui-modal-title">{p.name}</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 4 }}>
-              {posLabel(p)} · {p.age} yrs
-              {p.exp != null && <> · {p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`}</>}
-              {' · '}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
-              {isTwoWay && <span className="ui-badge ui-badge--default" style={{ marginLeft: 'var(--sp-2)' }}>Two-Way</span>}
-            </div>
-            {p.nationality && (
-              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>
-                <Origin p={p} full />
+          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
+            {team && <TeamBadge team={team} size="large" />}
+            <div style={{ minWidth: 0 }}>
+              <div className="ui-modal-title">{p.name}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 4 }}>
+                {posLabel(p)} · {p.age} yrs
+                {p.exp != null && <> · {p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`}</>}
+                {' · '}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
+                {isTwoWay && <span className="ui-badge ui-badge--default" style={{ marginLeft: 'var(--sp-2)' }}>Two-Way</span>}
               </div>
-            )}
+              {p.nationality && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>
+                  <Origin p={p} full />
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'flex-start', flexShrink: 0 }}>
             {team && onTradeFor && !isTwoWay && (
@@ -301,7 +311,9 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
         {/* Headline stat strip */}
         <div style={{ display: 'flex', gap: 'var(--sp-5)', flexWrap: 'wrap', padding: 'var(--sp-3) 0', borderBottom: '1px solid var(--border)', marginBottom: 'var(--sp-4)' }}>
           <div className="ui-stat ui-stat--md">
-            <span className="ui-stat__value"><Ovr p={p} league={league} fogged={fogged} /></span>
+            {fogged
+              ? <span className="ui-stat__value"><Ovr p={p} league={league} fogged={fogged} /></span>
+              : <OvrArc value={overall(p)} size={44} />}
             <span className="ui-stat__label">Overall</span>
           </div>
           <div className="ui-stat ui-stat--md">

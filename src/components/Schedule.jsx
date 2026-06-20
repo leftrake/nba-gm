@@ -56,13 +56,12 @@ export default function Schedule({ league, openTeam, openGame }) {
     if (!r) return <td className="num" colSpan={2}>–</td>;
     const myPts = g.home === me ? r.homePts : r.awayPts;
     const oppPts = g.home === me ? r.awayPts : r.homePts;
+    const won = myPts > oppPts;
     const score = `${myPts}-${oppPts}`;
     return (
       <>
-        <td style={{ color: myPts > oppPts ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-          {myPts > oppPts ? 'W' : 'L'}
-        </td>
-        <td className="num">
+        <td><span className={`ui-badge ${won ? 'ui-badge--success' : 'ui-badge--danger'}`}>{won ? 'W' : 'L'}</span></td>
+        <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>
           {viewable(r)
             ? <a className="team-link" title="View game" onClick={() => openGame(r, fmtDate(dateForDay(league, di)))}>{score}</a>
             : score}
@@ -92,7 +91,7 @@ export default function Schedule({ league, openTeam, openGame }) {
           )}
           {upcoming.length > 0 && (
             <div className="ui-table-wrap" style={{ maxHeight: 380, overflowY: 'auto' }}>
-              <table className="ui-table">
+              <table className="ui-table zebra">
                 <thead><tr><th>Date</th><th>Opponent</th><th className="num">Opp Record</th></tr></thead>
                 <tbody>
                   {upcoming.map(({ di, g }) => {
@@ -115,7 +114,7 @@ export default function Schedule({ league, openTeam, openGame }) {
           {past.length === 0 && <p style={{ color: 'var(--muted)' }}>No games played yet.</p>}
           {past.length > 0 && (
             <div className="ui-table-wrap" style={{ maxHeight: 380, overflowY: 'auto' }}>
-              <table className="ui-table">
+              <table className="ui-table zebra">
                 <thead><tr><th>Date</th><th>Opponent</th><th>W/L</th><th className="num">Score</th></tr></thead>
                 <tbody>
                   {past.map(({ di, g, r }) => {
@@ -137,22 +136,21 @@ export default function Schedule({ league, openTeam, openGame }) {
         {playoffGames.length > 0 && (
           <Section title="Playoff Games" spacing="sm">
             <div className="ui-table-wrap" style={{ maxHeight: 380, overflowY: 'auto' }}>
-              <table className="ui-table">
+              <table className="ui-table zebra">
                 <thead><tr><th>Round</th><th>Opponent</th><th>W/L</th><th className="num">Score</th></tr></thead>
                 <tbody>
                   {playoffGames.map(({ round, gameNo, g }) => {
                     const opp = getTeam(league, g.home === me ? g.away : g.home);
                     const myPts = g.home === me ? g.homePts : g.awayPts;
                     const oppPts = g.home === me ? g.awayPts : g.homePts;
+                    const won = myPts > oppPts;
                     const title = `${ROUND_NAMES[round]} · Game ${gameNo}`;
                     return (
                       <tr key={`${round}-${gameNo}`}>
                         <td>{title}</td>
                         <td>{g.home === me ? 'vs' : '@'} <TeamBadge team={opp} size="small" /> <TeamLink team={opp} openTeam={openTeam} /></td>
-                        <td style={{ color: myPts > oppPts ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-                          {myPts > oppPts ? 'W' : 'L'}
-                        </td>
-                        <td className="num">
+                        <td><span className={`ui-badge ${won ? 'ui-badge--success' : 'ui-badge--danger'}`}>{won ? 'W' : 'L'}</span></td>
+                        <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>
                           <a className="team-link" title="View game" onClick={() => openGame(g, title)}>{myPts}-{oppPts}</a>
                         </td>
                       </tr>

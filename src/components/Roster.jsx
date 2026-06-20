@@ -7,7 +7,7 @@ import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
-import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 import { Section, Tooltip } from './ui/index.js';
 
@@ -260,7 +260,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
       {/* ══ TEAM HEADER ══ */}
       <div className="ui-card" style={{ borderLeft: '4px solid var(--team-color-safe)', borderRadius: 'var(--radius-md) var(--radius-md) 0 0', borderBottom: '1px solid var(--border)', marginBottom: 0 }}>
         <div style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className="team-logo" style={{ width: 56, height: 56, fontSize: 20, background: team.color, color: textOnColor(team.color) }}>{team.id}</div>
+          <div className="team-logo" style={{ width: 56, height: 56, fontSize: 17, '--logo-color': team.color, color: textOnColor(team.color) }}>{team.id}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 2 }}>{team.city}</div>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-bold)', lineHeight: 'var(--leading-tight)', display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
@@ -405,7 +405,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                                   )}
                                 </button>
                               </td>
-                              <td className="num">{p ? overall(p) : '–'}</td>
+                              <td className="num">{p ? <OvrArc value={overall(p)} size={30} /> : '–'}</td>
                               <td>
                                 {p && fit < 1 && (
                                   <span className="ui-badge" style={{ color: fit <= 0.85 ? 'var(--color-danger)' : 'var(--text-muted)' }}>
@@ -461,7 +461,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                               <td className="drag-handle" title="Drag to reorder">⠿</td>
                               <td><PlayerLink p={p} openPlayer={openPlayer} />{isInjured(p) ? ' 🩹' : ''}</td>
                               <td>{posLabel(p)}</td>
-                              <td className="num">{overall(p)}</td>
+                              <td className="num"><OvrArc value={overall(p)} size={28} /></td>
                               <td className="num"><Cond p={p} /></td>
                               <td className="num">
                                 <MinInput value={b.min} onChange={(v) => setBenchMin(b.id, v)} />
@@ -621,7 +621,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 </thead>
                 <tbody>
                   {sorted.map((p) => (
-                    <tr key={p.id} className={`clickable ${posStripe(p)}`} onClick={() => openPlayer?.(p)}>
+                    <tr key={p.id} className="clickable" onClick={() => openPlayer?.(p)}>
                       <td>{isUser ? <OvrArc value={overall(p)} /> : <Ovr p={p} league={league} fogged={!isUser} />}</td>
                       <td><Pot p={p} league={league} fogged={!isUser} /></td>
                       <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
@@ -688,7 +688,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                             </td>
                           </tr>
                         )}
-                        <tr className={`clickable ${posStripe(p)}`} onClick={() => openPlayer?.(p)}>
+                        <tr className="clickable" onClick={() => openPlayer?.(p)}>
                           <td>{isUser ? <OvrArc value={overall(p)} /> : <Ovr p={p} league={league} fogged={!isUser} />}</td>
                           <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                           <td>{posLabel(p)}</td>
@@ -831,7 +831,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                       {twoWayPlayers.map((p) => {
                         const calledUp = team.roster.includes(p);
                         return (
-                          <tr key={p.id} className={`clickable ${posStripe(p)}`} onClick={() => openPlayer?.(p)}>
+                          <tr key={p.id} className="clickable" onClick={() => openPlayer?.(p)}>
                             <td><OvrArc value={overall(p)} /></td>
                             <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                             <td>{posLabel(p)}</td>
@@ -932,7 +932,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     const lastOvr = lastEntry?.[1];
                     const delta = lastOvr != null ? overall(p) - lastOvr : null;
                     return (
-                      <tr key={p.id} className={`clickable ${posStripe(p)}`} onClick={() => openPlayer?.(p)}>
+                      <tr key={p.id} className="clickable" onClick={() => openPlayer?.(p)}>
                         <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                         <td>{posLabel(p)}</td>
                         <td className="num">{p.age}</td>

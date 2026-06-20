@@ -163,7 +163,7 @@ function DraftClassSection({ dc, label, league, budget, userId, scouts, commit }
   return (
     <Section title={label} spacing="sm">
       <div className="ui-table-wrap">
-        <table className="ui-table">
+        <table className="ui-table zebra">
           <thead>
             <tr>
               {hasBigBoard && <th title="Big Board Analyst rank">#</th>}
@@ -458,7 +458,7 @@ function ProScoutingTab({ league, commit, openPlayer }) {
         </p>
       ) : (
         <>
-          <Table columns={watchCols} rows={watchRows} />
+          <Table columns={watchCols} rows={watchRows} zebra />
           <Divider />
         </>
       )}
@@ -474,7 +474,7 @@ function ProScoutingTab({ league, commit, openPlayer }) {
         {query.trim().length >= 2 && (
           matches.length === 0
             ? <p style={{ color: 'var(--text-muted)' }}>No matching players found.</p>
-            : <Table columns={searchCols} rows={searchRows} />
+            : <Table columns={searchCols} rows={searchRows} zebra />
         )}
       </Section>
 
@@ -558,7 +558,7 @@ function StaffTab({ league, commit }) {
 
       {scouts.length > 0 ? (
         <>
-          <Table columns={staffCols} rows={staffRows} />
+          <Table columns={staffCols} rows={staffRows} zebra />
           <Divider />
         </>
       ) : (

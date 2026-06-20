@@ -2,17 +2,17 @@ import React, { useState } from 'react';
 import { NewsText, fmtDate } from './shared.jsx';
 
 const CATS = [
-  ['all', 'All'],
-  ['game', 'Games'],
-  ['trade', 'Trades'],
-  ['signing', 'Signings'],
-  ['injury', 'Injuries'],
-  ['draft', 'Draft'],
-  ['morale', 'Morale'],
-  ['award', 'Awards'],
-  ['milestone', 'Milestones'],
-  ['owner', 'Ownership'],
-  ['league', 'League'],
+  ['all', '🗞️ All'],
+  ['game', '🏀 Games'],
+  ['trade', '🔄 Trades'],
+  ['signing', '✍️ Signings'],
+  ['injury', '🩹 Injuries'],
+  ['draft', '🎓 Draft'],
+  ['morale', '💬 Morale'],
+  ['award', '🏆 Awards'],
+  ['milestone', '📈 Milestones'],
+  ['owner', '🏛️ Ownership'],
+  ['league', '🌐 League'],
 ];
 
 const PHASE_LABELS = { offseason: 'Offseason', draft: 'Draft', freeagency: 'Free Agency' };

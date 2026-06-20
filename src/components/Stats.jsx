@@ -4,7 +4,7 @@ import {
   perGame, fgPct, tpPct, ftPct, tsPct, possessions,
   teamStatTotals, pointsAllowed, allPlayerStatRows, leaderRows,
 } from '../engine/stats.js';
-import { PlayerLink, TeamLink } from './shared.jsx';
+import { PlayerLink, TeamLink, TeamBadge } from './shared.jsx';
 import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
 
@@ -97,7 +97,7 @@ function PlayerStatsTab({ league, openPlayer, openTeam }) {
         <p style={{ color: 'var(--text-muted)', padding: 'var(--sp-8)', textAlign: 'center' }}>No players meet this filter yet.</p>
       ) : (
         <div className="ui-table-wrap">
-          <table className="ui-table">
+          <table className="ui-table zebra">
             <thead>
               <tr>
                 <th>Player</th><th>Team</th><th className="num">GP</th>
@@ -107,13 +107,22 @@ function PlayerStatsTab({ league, openPlayer, openTeam }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ p, team, stats }) => (
+              {rows.map(({ p, team, stats }, i) => (
                 <tr key={p.id} style={team.id === league.userTeamId ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
-                  <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                  <td>
+                    {i < 3 && <span style={{ marginRight: 4 }}>{['🥇', '🥈', '🥉'][i]}</span>}
+                    <PlayerLink p={p} openPlayer={openPlayer} />
+                  </td>
                   <td><TeamLink team={team} openTeam={openTeam}>{team.id}</TeamLink></td>
                   <td className="num">{stats.gp}</td>
                   {PLAYER_COLS.map(([key]) => (
-                    <td className="num" key={key}>{fmtCol(colValue(stats, key, perGameMode), key, perGameMode)}</td>
+                    <td
+                      className="num"
+                      key={key}
+                      style={key === sortKey ? { color: 'var(--color-primary)', fontWeight: 'var(--weight-bold)', fontFamily: 'var(--font-tabular)' } : undefined}
+                    >
+                      {fmtCol(colValue(stats, key, perGameMode), key, perGameMode)}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -153,7 +162,7 @@ function TeamStatsTab({ league, openTeam }) {
   return (
     <Card noPad>
       <div className="ui-table-wrap">
-        <table className="ui-table">
+        <table className="ui-table zebra">
           <thead>
             <tr>
               <th>Team</th><th className="num">GP</th>
@@ -165,7 +174,12 @@ function TeamStatsTab({ league, openTeam }) {
           <tbody>
             {sorted.map((r) => (
               <tr key={r.team.id} style={r.team.id === league.userTeamId ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
-                <td><TeamLink team={r.team} openTeam={openTeam} /></td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                    <TeamBadge team={r.team} size="small" />
+                    <TeamLink team={r.team} openTeam={openTeam} />
+                  </span>
+                </td>
                 <td className="num">{r.gp}</td>
                 <td className="num">{r.ppg.toFixed(1)}</td>
                 <td className="num">{r.pace.toFixed(1)}</td>

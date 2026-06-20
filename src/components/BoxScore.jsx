@@ -41,7 +41,7 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
   return (
     <div>
       <h3 style={{ marginBottom: 'var(--sp-2)' }}><TeamBadge team={team} size="small" /> <TeamLink team={team} openTeam={openTeam} />{pts != null && <> · {pts}</>}</h3>
-      <table className="ui-table">
+      <table className="ui-table zebra">
         <thead>
           <tr>
             <th>Player</th><th className="num">MIN</th><th className="num">PTS</th><th className="num">REB</th>
@@ -282,13 +282,23 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card wide" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ marginBottom: 0 }}>
-            {title ? `${title} · ` : ''}
-            <span className={game.awayPts > game.homePts ? 'winner' : ''}><TeamBadge team={away} size="small" /> {away.name} {game.awayPts}</span>
-            {' @ '}
-            <span className={game.homePts > game.awayPts ? 'winner' : ''}><TeamBadge team={home} size="small" /> {home.name} {game.homePts}</span>
-          </h2>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            {title && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 2 }}>
+                {title}
+              </div>
+            )}
+            <div className="score-big" style={{ fontSize: 26, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span className={game.awayPts > game.homePts ? 'winner' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <TeamBadge team={away} size="medium" /> {away.name} {game.awayPts}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 18 }}>@</span>
+              <span className={game.homePts > game.awayPts ? 'winner' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <TeamBadge team={home} size="medium" /> {home.name} {game.homePts}
+              </span>
+            </div>
+          </div>
           <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
         </div>
         <div style={{ marginTop: 12 }}>

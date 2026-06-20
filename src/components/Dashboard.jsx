@@ -2,7 +2,7 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { Ovr, money, perGame, fmtDate, TeamLink, NewsText, PlayerLink, GuideTooltip } from './shared.jsx';
+import { OvrArc, money, perGame, fmtDate, TeamLink, TeamBadge, NewsText, PlayerLink, GuideTooltip } from './shared.jsx';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -60,14 +60,23 @@ function Banner({ league, team, seed, openTeam }) {
   }
 
   return (
-    <Card style={{ borderLeft: '4px solid var(--team-color)', marginBottom: 'var(--sp-5)' }}>
-      <div style={{ marginBottom: 'var(--sp-4)' }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 2 }}>
-          {league.season} Season
+    <Card
+      style={{
+        borderLeft: '4px solid var(--team-color)',
+        marginBottom: 'var(--sp-5)',
+        backgroundImage: 'linear-gradient(135deg, color-mix(in srgb, var(--team-color) 16%, var(--surface-1)) 0%, var(--surface-1) 70%)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', marginBottom: 'var(--sp-4)' }}>
+        <TeamBadge team={team} size="large" />
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 2 }}>
+            {league.season} Season
+          </div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', lineHeight: 'var(--leading-tight)', marginTop: 'var(--sp-1)', color: 'var(--text-primary)' }}>
+            {team.city} {team.name}
+          </h1>
         </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-3xl)', lineHeight: 'var(--leading-tight)', marginTop: 'var(--sp-1)', color: 'var(--text-primary)' }}>
-          {team.city} {team.name}
-        </h1>
       </div>
       <div style={{ display: 'flex', gap: 'var(--sp-8)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <Stat size="xl" value={`${team.wins}-${team.losses}`} label="Record" color="var(--team-color-safe)" />
@@ -187,7 +196,7 @@ function StandingsSection({ league, team, openTeam }) {
   return (
     <Section title={`${team.conf}ern Conference`} spacing="sm">
       <div className="ui-table-wrap">
-        <table className="ui-table">
+        <table className="ui-table zebra">
           <thead>
             <tr><th>#</th><th>Team</th><th className="num">W</th><th className="num">L</th></tr>
           </thead>
@@ -196,10 +205,15 @@ function StandingsSection({ league, team, openTeam }) {
               const rank = start + i;
               return (
                 <tr key={t.id} style={t.id === team.id ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : undefined}>
-                  <td>{rank + 1}{rank === 7 ? ' —' : ''}</td>
-                  <td><TeamLink team={t} openTeam={openTeam} /></td>
-                  <td className="num">{t.wins}</td>
-                  <td className="num">{t.losses}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{rank + 1}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                      <TeamBadge team={t} size="small" />
+                      <TeamLink team={t} openTeam={openTeam} />
+                    </span>
+                  </td>
+                  <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{t.wins}</td>
+                  <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{t.losses}</td>
                 </tr>
               );
             })}
@@ -300,7 +314,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
               ]}
               rows={topPlayers.map((p) => ({
                 _key: p.id,
-                ovr: <Ovr p={p} />,
+                ovr: <OvrArc value={overall(p)} size={30} />,
                 name: <PlayerLink p={p} openPlayer={openPlayer} />,
                 pos: p.pos,
                 pts: perGame(p.stats, 'pts'),

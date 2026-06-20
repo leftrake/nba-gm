@@ -3,7 +3,7 @@ import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { overall, posLabel } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
-import { Ovr, Pot, Origin, PlayerLink, TeamLink, money } from './shared.jsx';
+import { Ovr, Pot, Origin, PlayerLink, TeamLink, TeamBadge, money } from './shared.jsx';
 import { Section, SectionHeader, Button, Table } from './ui/index.js';
 
 const FILTERS_KEY = 'nba-gm-players-filters';
@@ -91,7 +91,12 @@ export default function Players({ league, openPlayer, openTeam }) {
     { key: 'age', label: `Age${arrow('age')}`, numeric: true, sortable: true },
     { key: 'team', label: `Team${arrow('team')}`, sortable: true,
       render: (row) => row._team
-        ? <TeamLink team={row._team} openTeam={openTeam}>{row._team.id}</TeamLink>
+        ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <TeamBadge team={row._team} size="small" />
+            <TeamLink team={row._team} openTeam={openTeam}>{row._team.id}</TeamLink>
+          </span>
+        )
         : <span className="tag" style={{ color: 'var(--text-muted)' }}>FA</span> },
     { key: 'origin', label: 'From', render: (row) => <Origin p={row._p} /> },
     { key: 'contract', label: 'Contract', numeric: true,
@@ -151,7 +156,7 @@ export default function Players({ league, openPlayer, openTeam }) {
           </span>
         </div>
 
-        <Table columns={cols} rows={rows} onSort={handleSort} />
+        <Table columns={cols} rows={rows} onSort={handleSort} zebra />
       </Section>
     </div>
   );
