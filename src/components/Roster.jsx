@@ -840,6 +840,11 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                               <span className={`ui-badge ${calledUp ? 'ui-badge--success' : 'ui-badge--default'}`}>
                                 {calledUp ? 'Active' : 'Reserve'}
                               </span>
+                              {!calledUp && p.gLeagueStats?.gp > 0 && (
+                                <span style={{ marginLeft: 'var(--sp-2)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                                  G League: {perGame(p.gLeagueStats, 'pts')}/{perGame(p.gLeagueStats, 'reb')}/{perGame(p.gLeagueStats, 'ast')} in {p.gLeagueStats.gp}G
+                                </span>
+                              )}
                             </td>
                             <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                               {calledUp ? (

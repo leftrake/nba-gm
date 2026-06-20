@@ -2,7 +2,7 @@ import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROST
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
-import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines } from './sim.js';
+import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame } from './sim.js';
 import { initDraft } from './draft.js';
 import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -373,6 +373,9 @@ export function backfillPlayers(league) {
     // saves predating playoff stat tracking
     if (!p.playoffStats) p.playoffStats = emptyStats();
     if (!p.playoffCareerStats) p.playoffCareerStats = [];
+    // saves predating G-League assignment tracking for two-way players
+    if (!p.gLeagueStats) p.gLeagueStats = emptyStats();
+    if (!p.gLeagueCareerStats) p.gLeagueCareerStats = [];
     // saves predating the legacy/records system
     if (p.championships == null) p.championships = 0;
     // saves predating dev-trait fog collapse counter
@@ -775,6 +778,11 @@ export function simDay(league) {
     const home = getTeam(league, g.home);
     const away = getTeam(league, g.away);
     const r = simGame(home, away, rng);
+    // Two-way players on assignment play a G-League game the same night
+    // instead of riding the NBA bench.
+    for (const team of [home, away]) {
+      for (const p of team.twoWay) applyBoxToStats([p], [simGLeagueGame(p, rng)], 'gLeagueStats');
+    }
     // Roll injuries before tallying stats so a player hurt mid-game banks
     // only the minutes he actually played.
     const hurt = [
@@ -1186,7 +1194,7 @@ export function advanceOffseason(league) {
   const devEntries = []; // the user team's development report rows
   for (const team of league.teams) {
     const isUserTeam = team.id === league.userTeamId;
-    for (const p of team.roster) {
+    for (const p of [...team.roster, ...team.twoWay]) {
       // archive season stats, split into one row per team if traded mid-season
       let prev = emptyStats();
       for (const stint of p.seasonStints) {
@@ -1202,6 +1210,11 @@ export function advanceOffseason(league) {
       // unlike regular-season stats this never needs to split into stints
       if (p.playoffStats.gp > 0) p.playoffCareerStats.push({ season: league.season, team: team.id, ...p.playoffStats });
       p.playoffStats = emptyStats();
+      // assignment production resets the same way — no stint-splitting since
+      // two-way players can't currently be traded mid-season
+      const gLeagueGp = p.gLeagueStats.gp;
+      if (gLeagueGp > 0) p.gLeagueCareerStats.push({ season: league.season, team: team.id, ...p.gLeagueStats });
+      p.gLeagueStats = emptyStats();
       p.condition = 100; // a summer off heals everything
       p.injury = null; // ...including last spring's torn ACL
       // Track qualifying seasons for dev-trait fog collapse.
@@ -1219,7 +1232,10 @@ export function advanceOffseason(league) {
       }
       snapshotRatings(p, league.season); // progression history: ratings before this summer's development
       const oldRow = ratingRow(p);
-      developPlayer(p, rng, devBonus(team.coach));
+      // A full season of G-League reps speeds up closing the gap to his
+      // existing ceiling — separate from devBonus, which nudges the ceiling itself.
+      const repBonus = clamp(gLeagueGp / 12, 0, 2.5);
+      developPlayer(p, rng, devBonus(team.coach), repBonus);
       maybeRevealBackstory(league, p, team); // backstory.js: reputation emerges after 2 seasons
       const entry = isUserTeam
         ? { id: p.id, name: p.name, pos: p.pos, age: p.age, old: oldRow, now: ratingRow(p) }
@@ -1309,6 +1325,7 @@ export function advanceOffseason(league) {
   const newlyRetired = [];
   for (const { team, p } of retiring) {
     team.roster = team.roster.filter((x) => x.id !== p.id);
+    team.twoWay = team.twoWay.filter((x) => x.id !== p.id);
     const snap = snapshotRetiree(p, league, team.id);
     league.retiredPlayers.push(snap);
     newlyRetired.push(snap);
@@ -1342,6 +1359,7 @@ export function advanceOffseason(league) {
     if (wasRookieScale) {
       // restrictedFA/formerTeamId already set when his rookie deal expired
       team.roster = team.roster.filter((x) => x.id !== p.id);
+      team.twoWay = team.twoWay.filter((x) => x.id !== p.id);
       league.freeAgents.push(p);
       pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name}'s rookie-scale contract expires without an extension — he enters restricted free agency.` });
       continue;
@@ -1366,15 +1384,21 @@ export function advanceOffseason(league) {
       }
     }
     team.roster = team.roster.filter((x) => x.id !== p.id);
+    team.twoWay = team.twoWay.filter((x) => x.id !== p.id);
     league.freeAgents.push(p);
   }
 
-  // Age free agents, drop retirees, top up the pool
+  // Age free agents, drop retirees, top up the pool. Players who just hit
+  // the market above were already aged/developed once this offseason while
+  // still rostered — skip them here so they don't get a second growth roll.
+  const justExpiredIds = new Set(expiring.map((e) => e.p.id));
   league.freeAgents = league.freeAgents.filter((p) => {
     p.condition = 100;
     p.injury = null;
-    snapshotRatings(p, league.season);
-    developPlayer(p, rng);
+    if (!justExpiredIds.has(p.id)) {
+      snapshotRatings(p, league.season);
+      developPlayer(p, rng);
+    }
     if (overall(p) >= 38 && !shouldRetire(p, rng)) return true;
     announceRetirement(league, p);
     return false;

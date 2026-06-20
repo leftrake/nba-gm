@@ -217,6 +217,8 @@ export function generatePlayer(rng = rand, opts = {}) {
     careerStats: [],
     playoffStats: emptyStats(),
     playoffCareerStats: [],
+    gLeagueStats: emptyStats(), // production while on a two-way assignment — see engine/sim.js simGLeagueGame
+    gLeagueCareerStats: [],
     qualitySeasons: 0, // count of seasons with 1000+ minutes — collapses dev-trait fog
     awards: [], // { season, award } — filled by engine/awards.js
     seasonStints: [], // { team, stats } — filled by engine/league.js on trades
@@ -375,7 +377,7 @@ export const TRAINING_FOCUS_OPTIONS = [
 // 25 close on their ceiling fast (3–6 overall a year, with occasional
 // breakout leaps), modest ceilings inch along and plateau early. Decline is
 // noticeable from 31 and steep after 33.
-export function developPlayer(p, rng = rand, coachBonus = 0) {
+export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
   // A development-focused coach nudges a young player's ceiling up (or down)
   // a little each offseason, rather than directly inflating this year's growth.
   if (coachBonus && p.age < 25) p.potential = clamp(p.potential + coachBonus, 25, 99);
@@ -406,6 +408,7 @@ export function developPlayer(p, rng = rand, coachBonus = 0) {
     const speed = p.potential >= 85 ? 5.5 : p.potential >= 75 ? 4.0 : 1.8;
     delta = Math.max(0, gauss(speed, 1.5, rng)); // a bad year can mean no growth, but never guaranteed creep
     if (p.potential >= 78 && rng() < 0.15) delta += 3 + rng() * 3; // breakout season
+    delta += repBonus; // extra reps (e.g. a G-League assignment) close the gap to his ceiling faster
     delta = Math.min(delta, room);
   } else if (p.age < 25) {
     delta = gauss(0, 0.6, rng); // hit his ceiling early — plateaued

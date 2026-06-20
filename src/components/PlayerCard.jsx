@@ -427,6 +427,14 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           </div>
         )}
 
+        {/* G-League assignment */}
+        {p.gLeagueStats?.gp > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header"><div className="ui-section-title">This Season — G League ({league.season})</div></div>
+            <SeasonStats stats={p.gLeagueStats} />
+          </div>
+        )}
+
         {/* Awards */}
         {p.awards?.length > 0 && (
           <div className="ui-section">
@@ -452,6 +460,14 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           <div className="ui-section">
             <div className="ui-section-header"><div className="ui-section-title">Career — Playoffs</div></div>
             <CareerStatsTable league={league} rows={p.playoffCareerStats} openTeam={openTeam} />
+          </div>
+        )}
+
+        {/* Career G-League stats */}
+        {p.gLeagueCareerStats?.length > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header"><div className="ui-section-title">Career — G League</div></div>
+            <CareerStatsTable league={league} rows={p.gLeagueCareerStats} openTeam={openTeam} />
           </div>
         )}
 

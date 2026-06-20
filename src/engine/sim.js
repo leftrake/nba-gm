@@ -719,6 +719,42 @@ export function starLines(box, n = 3) {
   return box.filter((l) => l.min > 0).sort((a, b) => gameScore(b) - gameScore(a)).slice(0, n);
 }
 
+// A two-way player on assignment plays G-League minutes instead of riding
+// the NBA bench. There's no opposing roster to simulate against here — this
+// synthesizes a single game's box line straight from his ratings, with a
+// flat inflation factor for the weaker competition, in the same spirit as
+// gamePlayer's rating-to-production weighting above but without possessions.
+export function simGLeagueGame(p, rng = rand) {
+  const r = p.ratings;
+  const min = Math.round(clamp(gauss(29, 5, rng), 10, 38));
+  const m = min / 36;
+  const INFLATE = 1.15;
+  const scoreSkill = (r.inside * 0.45 + r.mid * 0.25 + r.three * 0.35) / 100;
+  const fga = Math.max(0, Math.round(gauss(scoreSkill * 16, 3, rng) * m * INFLATE));
+  const threeShare = clamp(r.three / 130, 0.1, 0.55);
+  const tpa = Math.round(fga * threeShare);
+  const twoA = fga - tpa;
+  const twoPct = clamp(0.46 + (r.inside - 55) * 0.004, 0.35, 0.62);
+  const tpPct = clamp(0.27 + (r.three - 55) * 0.0045, 0.2, 0.45);
+  const twoM = Math.min(twoA, Math.round(twoA * twoPct));
+  const tpm = Math.min(tpa, Math.round(tpa * tpPct));
+  const fgm = twoM + tpm;
+  const fta = Math.max(0, Math.round(gauss((r.inside / 100) * 5, 1.5, rng) * m * INFLATE));
+  const ftm = Math.min(fta, Math.round(fta * 0.72));
+  const reb = Math.max(0, Math.round(gauss((r.rebounding / 100) * 11, 2.2, rng) * m * INFLATE));
+  const oreb = Math.round(reb * 0.27);
+  const dreb = reb - oreb;
+  const ast = Math.max(0, Math.round(gauss((r.passing / 100) * 8, 2, rng) * m * INFLATE));
+  const stl = Math.max(0, Math.round(gauss((r.defense / 100) * 2.2, 1, rng) * m));
+  const blk = Math.max(0, Math.round(gauss((r.defense / 100) * 1.6, 0.9, rng) * m));
+  const tov = Math.max(0, Math.round(gauss((r.passing / 100) * 3.2, 1.2, rng) * m));
+  const pf = Math.round(clamp(gauss(2.5, 1, rng), 0, 6));
+  return {
+    playerId: p.id, min, pts: twoM * 2 + tpm * 3 + ftm, reb, oreb, dreb, ast, stl, blk,
+    fgm, fga, tpm, tpa, ftm, fta, tov, pf, pm: 0,
+  };
+}
+
 // ---------- Box-score storage ----------
 // Saves keep every game's box score, so lines are stored as flat number
 // arrays in this column order instead of objects (roughly 4x smaller in
