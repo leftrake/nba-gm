@@ -2,7 +2,7 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { OvrArc, money, perGame, fmtDate, TeamLink, TeamBadge, NewsText, PlayerLink, GuideTooltip } from './shared.jsx';
+import { OvrArc, money, perGame, fmtDate, TeamLink, TeamBadge, PlayerLink, GuideTooltip } from './shared.jsx';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -404,85 +404,6 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
           );
         })()}
       </Section>
-
-      {/* Founding Fantasy Draft */}
-      {league.fantasyDraftResults?.length > 0 && (
-        <>
-          <Divider />
-          <Section title="Founding Fantasy Draft" spacing="sm">
-            <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-3)' }}>
-              How this franchise was built: every team drafted its roster from a
-              league-wide player pool in a 15-round snake draft.
-            </p>
-            <details>
-              <summary className="stories-toggle">All {league.fantasyDraftResults.length} picks</summary>
-              <div className="ui-table-wrap">
-                <table className="ui-table">
-                  <thead>
-                    <tr><th className="num">Pick</th><th>Rnd</th><th>Team</th><th>Player</th><th>Pos</th></tr>
-                  </thead>
-                  <tbody>
-                    {league.fantasyDraftResults.map((r) => {
-                      const p = getTeam(league, r.teamId).roster.find((x) => x.id === r.playerId);
-                      const mine = r.teamId === league.userTeamId;
-                      return (
-                        <tr key={r.pick} style={mine ? { color: 'var(--color-success)' } : undefined}>
-                          <td className="num">{r.pick}</td>
-                          <td className="num">{r.round}</td>
-                          <td><TeamLink team={getTeam(league, r.teamId)} openTeam={openTeam} /></td>
-                          <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : r.playerName}</td>
-                          <td>{r.pos}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </Section>
-        </>
-      )}
-
-      {/* Season History */}
-      {league.history.length > 0 && (
-        <>
-          <Divider />
-          <Section title="History" spacing="sm">
-            <div className="ui-table-wrap">
-              <table className="ui-table">
-                <thead><tr><th>Season</th><th>Champion</th><th>MVP</th><th>Your Record</th></tr></thead>
-                <tbody>
-                  {[...league.history].reverse().map((h) => {
-                    const stories = league.newsArchive?.[h.season] ?? [];
-                    return (
-                      <React.Fragment key={h.season}>
-                        <tr>
-                          <td>{h.season}</td>
-                          <td>{h.champion ? <TeamLink team={getTeam(league, h.champion)} openTeam={openTeam} /> : '–'}</td>
-                          <td>{h.awards?.mvp?.name ?? '–'}</td>
-                          <td>{h.userRecord}</td>
-                        </tr>
-                        {stories.length > 0 && (
-                          <tr>
-                            <td colSpan={4} style={{ padding: '0 8px 6px' }}>
-                              <details>
-                                <summary className="stories-toggle">That year's biggest stories ({stories.length})</summary>
-                                {stories.map((n, i) => (
-                                  <div className="news-item" key={i}><NewsText text={n.text} openTeam={openTeam} /></div>
-                                ))}
-                              </details>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Section>
-        </>
-      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import {
   SINGLE_SEASON_CATS, CAREER_CATS, GAME_HIGH_CATS, formatCatValue, findPlayerById, PACE_CATS,
 } from '../engine/legacy.js';
 import { groupAwards } from '../engine/awards.js';
-import { TeamLink, PlayerLink, money } from './shared.jsx';
+import { TeamLink, PlayerLink, NewsText, money } from './shared.jsx';
 import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
 
@@ -14,6 +14,7 @@ const TABS = [
   { key: 'dynasties', label: 'Dynasties' },
   { key: 'legacy', label: 'My Legacy' },
   { key: 'honors', label: 'Honors' },
+  { key: 'history', label: 'Season History' },
 ];
 
 function HolderCell({ league, entry, openPlayer, openTeam }) {
@@ -466,6 +467,93 @@ function Honors({ league, openPlayer, openTeam }) {
   );
 }
 
+function FantasyDraftHistory({ league, openPlayer, openTeam }) {
+  if (!league.fantasyDraftResults?.length) return null;
+  return (
+    <Card style={{ marginBottom: 'var(--sp-4)' }}>
+      <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>Founding Fantasy Draft</span>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-3)' }}>
+        How this franchise was built: every team drafted its roster from a
+        league-wide player pool in a 15-round snake draft.
+      </p>
+      <details>
+        <summary className="stories-toggle">All {league.fantasyDraftResults.length} picks</summary>
+        <div className="ui-table-wrap">
+          <table className="ui-table">
+            <thead>
+              <tr><th className="num">Pick</th><th>Rnd</th><th>Team</th><th>Player</th><th>Pos</th></tr>
+            </thead>
+            <tbody>
+              {league.fantasyDraftResults.map((r) => {
+                const p = getTeam(league, r.teamId).roster.find((x) => x.id === r.playerId);
+                const mine = r.teamId === league.userTeamId;
+                return (
+                  <tr key={r.pick} style={mine ? { color: 'var(--color-success)' } : undefined}>
+                    <td className="num">{r.pick}</td>
+                    <td className="num">{r.round}</td>
+                    <td><TeamLink team={getTeam(league, r.teamId)} openTeam={openTeam} /></td>
+                    <td>{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : r.playerName}</td>
+                    <td>{r.pos}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </Card>
+  );
+}
+
+function SeasonHistory({ league, openPlayer, openTeam }) {
+  return (
+    <>
+      <FantasyDraftHistory league={league} openPlayer={openPlayer} openTeam={openTeam} />
+      <Card noPad>
+        <div style={{ padding: 'var(--sp-4) var(--sp-4) var(--sp-2)' }}>
+          <span className="ui-section-title">Season History</span>
+        </div>
+        {league.history.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', padding: '0 var(--sp-4) var(--sp-4)' }}>No completed seasons yet.</p>
+        ) : (
+          <div className="ui-table-wrap">
+            <table className="ui-table">
+              <thead><tr><th>Season</th><th>Champion</th><th>MVP</th><th>Your Record</th></tr></thead>
+              <tbody>
+                {[...league.history].reverse().map((h) => {
+                  const stories = league.newsArchive?.[h.season] ?? [];
+                  return (
+                    <React.Fragment key={h.season}>
+                      <tr>
+                        <td>{h.season}</td>
+                        <td>{h.champion ? <TeamLink team={getTeam(league, h.champion)} openTeam={openTeam} /> : '–'}</td>
+                        <td>{h.awards?.mvp?.name ?? '–'}</td>
+                        <td>{h.userRecord}</td>
+                      </tr>
+                      {stories.length > 0 && (
+                        <tr>
+                          <td colSpan={4} style={{ padding: '0 8px 6px' }}>
+                            <details>
+                              <summary className="stories-toggle">That year's biggest stories ({stories.length})</summary>
+                              {stories.map((n, i) => (
+                                <div className="news-item" key={i}><NewsText text={n.text} openTeam={openTeam} /></div>
+                              ))}
+                            </details>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </>
+  );
+}
+
 export default function Legacy({ league, openPlayer, openTeam }) {
   const [tab, setTab] = useState('records');
   return (
@@ -476,6 +564,7 @@ export default function Legacy({ league, openPlayer, openTeam }) {
       {tab === 'dynasties' && <Dynasties league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'legacy' && <MyLegacy league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'honors' && <Honors league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+      {tab === 'history' && <SeasonHistory league={league} openPlayer={openPlayer} openTeam={openTeam} />}
     </div>
   );
 }
