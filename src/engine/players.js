@@ -379,6 +379,26 @@ export function developPlayer(p, rng = rand, coachBonus = 0) {
   // A development-focused coach nudges a young player's ceiling up (or down)
   // a little each offseason, rather than directly inflating this year's growth.
   if (coachBonus && p.age < 25) p.potential = clamp(p.potential + coachBonus, 25, 99);
+  // A prospect's true ceiling isn't perfectly known at the draft — it's a
+  // one-time re-evaluation after his rookie season, not a fixed number:
+  // most prospects converge almost exactly to their drafted potential given
+  // enough healthy years (growth never reverses, only stalls), so without
+  // this, "potential" is closer to a guaranteed outcome than a real ceiling.
+  // A single event (not a yearly drift) avoids compounding bias from
+  // repeatedly clamping a random walk against the current-overall floor.
+  // Busts trend down, gems trend up (reusing the existing backstory
+  // archetypes); floored at current overall since you can't have less
+  // ceiling than you've already shown.
+  if (p.exp === 1 && p.age < 26) {
+    // A small negative bias on the default case offsets the structural
+    // upward skew from clamping a two-sided roll against a one-sided floor
+    // (current overall) — without it, the floor-clipped downside draws get
+    // truncated while upward draws mostly pass through untouched, and the
+    // league's average overall creeps up indefinitely.
+    const driftMean = p.backstory === 'bust' ? -3.2 : p.backstory === 'gem' ? 1.5 : -1.5;
+    const drift = gauss(driftMean, 2.5, rng);
+    p.potential = clamp(Math.round(p.potential + drift), Math.round(overall(p)), 99);
+  }
   const ovr = overall(p);
   const room = p.potential - ovr;
   let delta;
