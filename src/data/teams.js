@@ -45,3 +45,9 @@ export const ROSTER_MAX = 15;
 // Mid-level exception: once per offseason, a team already over the cap can
 // still sign one free agent using this much room (real-NBA non-taxpayer MLE).
 export const MLE_AMOUNT = 12_000_000;
+// Two-way contracts: a development slot alongside the standard roster.
+// Fixed low salary, doesn't count against the cap, and is only open to
+// players early in their career (real-NBA two-way eligibility).
+export const TWO_WAY_MAX = 2;
+export const TWO_WAY_SALARY = 600_000;
+export const TWO_WAY_MAX_EXP = 4;

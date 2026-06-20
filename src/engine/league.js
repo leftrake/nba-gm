@@ -1,6 +1,6 @@
-import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines } from './sim.js';
 import { initDraft } from './draft.js';
@@ -39,6 +39,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const teams = TEAMS.map((t) => ({
     ...t,
     roster: fantasy ? [] : makeRoster(rng),
+    twoWay: [], // up to TWO_WAY_MAX players on cap-exempt two-way deals — see signToTwoWay
     deadMoney: [], // { playerName, salary, years } — cap hits from waived contracts
     wins: 0,
     losses: 0,
@@ -62,7 +63,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     playoffs: null,
     freeAgents: fantasy ? [] : Array.from({ length: 60 }, () => {
       // unsigned for a reason: the open market skews toward fringe talent
-      const p = generatePlayer(rng, { base: clamp(gauss(48, 8, rng), 35, 72) });
+      const p = generatePlayer(rng, { base: clamp(gauss(FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, rng), FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL) });
       p.contract = null;
       return p;
     }),
@@ -120,7 +121,7 @@ function makeRoster(rng) {
   // inflating toward a stronger steady state.
   const tiers = [
     [81, 10], [75, 8], [71, 7], [67, 6], [67, 6], [63, 6], [63, 6],
-    [57, 6], [57, 6], [57, 6], [48, 6], [48, 6], [48, 6], [48, 6],
+    [57, 6], [57, 6], [57, 6], [53, 6], [53, 6], [53, 6], [53, 6],
   ];
   // positional coverage: 2 of each position + 4 random, shuffled so the
   // star slot isn't always a point guard
@@ -142,7 +143,7 @@ function makeRoster(rng) {
     return generatePlayer(rng, {
       pos: positions[i] || undefined,
       age,
-      base: clamp(gauss(mean + ageAdj, spread, rng), 35, 90),
+      base: clamp(gauss(mean + ageAdj, spread, rng), 42, 90),
       // A young opening-day star keeps a superstar ceiling. Without these,
       // the league hits a star drought in seasons 2-4: opening primes have
       // declined and the first drafted superstars haven't matured yet.
@@ -382,6 +383,7 @@ export function backfillPlayers(league) {
     }
   };
   for (const team of league.teams) team.roster.forEach(fill);
+  for (const team of league.teams) (team.twoWay || []).forEach(fill);
   if (!league.settings) league.settings = {};
   if (league.settings.suppressInjuryAlerts == null) league.settings.suppressInjuryAlerts = false;
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
@@ -391,6 +393,8 @@ export function backfillPlayers(league) {
     if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
     // saves predating dead-money tracking from waived contracts
     if (!team.deadMoney) team.deadMoney = [];
+    // saves predating two-way contracts
+    if (!team.twoWay) team.twoWay = [];
     // saves predating the coaching staff system
     if (!team.coach) team.coach = generateCoach(rng);
     if (!team.coach.style) team.coach.style = 'balanced';
@@ -480,6 +484,7 @@ export function backfillPlayers(league) {
   if (league.nextPlayerId == null) {
     const allIds = [
       ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+      ...league.teams.flatMap((t) => (t.twoWay || []).map((p) => p.id)),
       ...league.freeAgents.map((p) => p.id),
       ...(league.retiredPlayers || []).map((p) => p.id),
       ...(league.scouting?.prospects || []).map((p) => p.id),
@@ -507,6 +512,7 @@ function repairDuplicateLivePlayerIds(league, nextId) {
     groups.get(p.id).push(p);
   };
   for (const t of league.teams) for (const p of t.roster) add(p);
+  for (const t of league.teams) for (const p of (t.twoWay || [])) add(p);
   for (const p of league.freeAgents) add(p);
   for (const players of groups.values()) {
     if (players.length < 2) continue;
@@ -532,7 +538,7 @@ export function dayIndexForDate(league, date) {
 }
 
 export function payroll(team) {
-  return team.roster.reduce((s, p) => s + (p.contract?.salary || 0), 0) + deadMoneyTotal(team);
+  return team.roster.reduce((s, p) => s + (p.contract?.twoWay ? 0 : (p.contract?.salary || 0)), 0) + deadMoneyTotal(team);
 }
 
 export function deadMoneyTotal(team) {
@@ -547,7 +553,7 @@ export function deadMoneyTotal(team) {
 // signings from double-spending cap space that's about to evaporate.
 export function projectedPayroll(team) {
   const roster = team.roster.reduce((s, p) => {
-    if (!p.contract) return s;
+    if (!p.contract || p.contract.twoWay) return s;
     if (p.contract.years > 1) return s + p.contract.salary;
     return s + (p.extension ? p.extension.salary : 0);
   }, 0);
@@ -1375,7 +1381,7 @@ export function advanceOffseason(league) {
   });
   while (league.freeAgents.length < 50) {
     // pool top-ups are fringe talent — quality starters rarely go unsigned
-    const p = generatePlayer(rng, { age: randInt(19, 30, rng), base: clamp(gauss(48, 8, rng), 35, 70) });
+    const p = generatePlayer(rng, { age: randInt(19, 30, rng), base: clamp(gauss(FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, rng), FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL) });
     p.contract = null;
     league.freeAgents.push(p);
   }
@@ -1965,6 +1971,98 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   if (league.negotiations) delete league.negotiations[playerId];
   // a star changing teams in free agency is a headline
   pushNews(league, { day: 0, category: 'signing', major: overall(p) >= 80, teamIds: [team.id], text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
+  return true;
+}
+
+// ---------- Two-way contracts ----------
+// A small development slot alongside the standard roster: fixed low salary,
+// cap-exempt (see payroll() above), and limited to players early in their
+// career. Lives in team.twoWay, separate from team.roster, so it never
+// affects ROSTER_MAX or lineup eligibility — call up a player to make him
+// playable, which moves him into team.roster but keeps his contract exempt.
+
+export function twoWayEligible(p) {
+  return (p.exp ?? 0) <= TWO_WAY_MAX_EXP;
+}
+
+export function signToTwoWay(league, teamId, playerId) {
+  const team = getTeam(league, teamId);
+  if (team.twoWay.length >= TWO_WAY_MAX) return { ok: false, error: `Two-way slots full (${TWO_WAY_MAX}).` };
+  const idx = league.freeAgents.findIndex((p) => p.id === playerId);
+  if (idx === -1) return { ok: false, error: 'That player is no longer a free agent.' };
+  const p = league.freeAgents[idx];
+  if (p.restrictedFA) return { ok: false, error: `${p.name} is a restricted free agent — his rights remain with his former team.` };
+  if (!twoWayEligible(p)) return { ok: false, error: `${p.name} has too much NBA experience for a two-way contract (max ${TWO_WAY_MAX_EXP} years).` };
+  p.contract = { salary: TWO_WAY_SALARY, years: 1, twoWay: true };
+  recordContract(p, league.season, team.id, p.contract);
+  delete p.extOfferMade;
+  p.restrictedFA = false;
+  p.offerSheetPending = false;
+  delete p.formerTeamId;
+  league.freeAgents.splice(idx, 1);
+  if (teamId === league.userTeamId) p.everOnUserTeam = true;
+  team.twoWay.push(p);
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} sign ${p.name} to a two-way contract.` });
+  return { ok: true, player: p };
+}
+
+export function callUpTwoWay(league, teamId, playerId) {
+  const team = getTeam(league, teamId);
+  if (team.roster.length >= ROSTER_MAX) return { ok: false, error: `Roster full (${ROSTER_MAX}). Waive someone first.` };
+  const idx = team.twoWay.findIndex((p) => p.id === playerId);
+  if (idx === -1) return { ok: false, error: 'Not on this team\'s two-way roster.' };
+  const p = team.twoWay.splice(idx, 1)[0];
+  team.roster.push(p);
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} call up two-way player ${p.name}.` });
+  return { ok: true, player: p };
+}
+
+export function sendDownTwoWay(league, teamId, playerId) {
+  const team = getTeam(league, teamId);
+  const idx = team.roster.findIndex((p) => p.id === playerId);
+  if (idx === -1) return { ok: false, error: 'Not on this team\'s roster.' };
+  const p = team.roster[idx];
+  if (!p.contract?.twoWay) return { ok: false, error: `${p.name} is on a standard contract — only two-way players can be sent down.` };
+  if (team.twoWay.length >= TWO_WAY_MAX) return { ok: false, error: `Two-way slots full (${TWO_WAY_MAX}).` };
+  team.roster.splice(idx, 1);
+  team.twoWay.push(p);
+  return { ok: true, player: p };
+}
+
+// Converts a two-way deal into a standard contract — the player permanently
+// takes a regular roster spot and counts against the cap from here on.
+export function convertTwoWayToStandard(league, teamId, playerId, salary, years) {
+  const team = getTeam(league, teamId);
+  const twoWayIdx = team.twoWay.findIndex((p) => p.id === playerId);
+  const onRoster = twoWayIdx === -1 ? team.roster.find((p) => p.id === playerId && p.contract?.twoWay) : null;
+  if (twoWayIdx === -1 && !onRoster) return { ok: false, error: 'Not a two-way player on this team.' };
+  if (twoWayIdx !== -1 && team.roster.length >= ROSTER_MAX) return { ok: false, error: `Roster full (${ROSTER_MAX}). Waive someone first.` };
+  const p = twoWayIdx !== -1 ? team.twoWay[twoWayIdx] : onRoster;
+  p.contract = {
+    salary: salary ?? salaryFor(overall(p), p.age),
+    years: years ?? 2,
+  };
+  recordContract(p, league.season, team.id, p.contract);
+  if (twoWayIdx !== -1) {
+    team.twoWay.splice(twoWayIdx, 1);
+    team.roster.push(p);
+  }
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} convert ${p.name} to a standard contract (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
+  return { ok: true, player: p };
+}
+
+export function releaseTwoWay(league, teamId, playerId) {
+  const team = getTeam(league, teamId);
+  let fromRoster = false;
+  let idx = team.twoWay.findIndex((p) => p.id === playerId);
+  if (idx === -1) { idx = team.roster.findIndex((p) => p.id === playerId && p.contract?.twoWay); fromRoster = true; }
+  if (idx === -1) return false;
+  const arr = fromRoster ? team.roster : team.twoWay;
+  const p = arr.splice(idx, 1)[0];
+  p.contract = null;
+  league.freeAgents.push(p);
+  league.freeAgents.sort((a, b) => overall(b) - overall(a));
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} release two-way player ${p.name}.` });
   return true;
 }
 

@@ -254,7 +254,8 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
     return <RetiredMemorial league={league} p={p} onClose={onClose} openTeam={openTeam} />;
   }
 
-  const team = league.teams.find((t) => t.roster.some((x) => x.id === p.id));
+  const team = league.teams.find((t) => t.roster.some((x) => x.id === p.id) || (t.twoWay || []).some((x) => x.id === p.id));
+  const isTwoWay = !!p.contract?.twoWay;
   const fogged = team?.id !== league.userTeamId && !p.everOnUserTeam;
 
   return (
@@ -269,6 +270,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
               {posLabel(p)} · {p.age} yrs
               {p.exp != null && <> · {p.exp === 0 ? 'Rookie' : `${p.exp} yr${p.exp === 1 ? '' : 's'} exp`}</>}
               {' · '}{team ? <TeamLink team={team} openTeam={openTeam} /> : 'Free Agent'}
+              {isTwoWay && <span className="ui-badge ui-badge--default" style={{ marginLeft: 'var(--sp-2)' }}>Two-Way</span>}
             </div>
             {p.nationality && (
               <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>
@@ -277,7 +279,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
             )}
           </div>
           <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'flex-start', flexShrink: 0 }}>
-            {team && onTradeFor && (
+            {team && onTradeFor && !isTwoWay && (
               <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => onTradeFor(p)}>Trade</button>
             )}
             {fogged && commit && (() => {

@@ -16,7 +16,7 @@ export const APRON = LUXURY_TAX + 17_500_000;
 //   - includeExtensions=false models the worst case: only the current
 //     contract counts, as if no extension had been signed.
 export function projectedSalary(p, seasonsOut, includeExtensions = true) {
-  if (!p.contract) return null;
+  if (!p.contract || p.contract.twoWay) return null;
   if (seasonsOut < p.contract.years) return p.contract.salary;
   if (includeExtensions && p.extension) {
     const extYearsOut = seasonsOut - p.contract.years;

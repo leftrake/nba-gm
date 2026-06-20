@@ -601,6 +601,7 @@ export function tickProScouting(league) {
   if (!s.proReports) s.proReports = [];
   const activeIds = new Set([
     ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+    ...league.teams.flatMap((t) => (t.twoWay || []).map((p) => p.id)),
     ...league.freeAgents.map((p) => p.id),
   ]);
   s.proWatchList = s.proWatchList.filter((id) => activeIds.has(id));

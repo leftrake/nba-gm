@@ -249,6 +249,17 @@ export function emptyStats() {
   return { gp: 0, min: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0, pm: 0 };
 }
 
+// Floor for generated fringe talent (open free agency, roster replenishment,
+// fantasy-draft pool tail): even a player who'll never be rotation-caliber
+// represents real NBA/G-League-adjacent talent, not a replacement-level
+// zero. Kept just under the SALARY_CURVE minimum-salary anchor below, so it
+// doesn't redefine what "minimum salary" means — it just stops generation
+// from dropping players far below it.
+export const FRINGE_OVR_MEAN = 53;
+export const FRINGE_OVR_SPREAD = 7;
+export const FRINGE_OVR_FLOOR = 45;
+export const FRINGE_OVR_CEIL = 72;
+
 // Market salary by overall, linear between the tier breakpoints below:
 // stars (85+) $40–50M, good starters (75–84) $25–35M, solid starters
 // (65–74) $12–22M, rotation players (55–64) $5–10M, end of bench near the

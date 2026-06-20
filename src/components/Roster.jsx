@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, offerExtension } from '../engine/league.js';
+import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay } from '../engine/league.js';
 import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
-import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
+import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, posStripe, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
@@ -15,7 +15,7 @@ import { Section, Tooltip } from './ui/index.js';
 function CapBreakdown({ team, pay, dead }) {
   const scale = Math.max(LUXURY_TAX, pay + dead) * 1.02;
   const segs = [...team.roster]
-    .filter((p) => p.contract)
+    .filter((p) => p.contract && !p.contract.twoWay)
     .sort((a, b) => b.contract.salary - a.contract.salary)
     .map((p) => {
       const yrs = p.contract.years;
@@ -213,6 +213,17 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     } else {
       setExtMessage(null);
     }
+    commit();
+  };
+
+  const [twoWayMessage, setTwoWayMessage] = useState(null);
+  const twoWayPlayers = [...team.twoWay, ...team.roster.filter((p) => p.contract?.twoWay)];
+
+  const runTwoWay = (fn, p) => {
+    const res = fn(league, teamId, p.id);
+    if (res === false) { setTwoWayMessage({ type: 'err', text: 'That action failed.' }); }
+    else if (res && res.ok === false) setTwoWayMessage({ type: 'err', text: res.error });
+    else setTwoWayMessage(null);
     commit();
   };
 
@@ -792,6 +803,74 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {isUser && (
+            <div className="ui-section">
+              <div className="ui-section-header">
+                <div className="ui-section-header__left">
+                  <GuideTooltip tipKey="two_way" text="Two-way contracts are cap-exempt development slots. Call a player up to make him eligible for your lineup; send him back down to free a roster spot without giving him up." block>
+                    <div className="ui-section-title">Two-Way Contracts</div>
+                  </GuideTooltip>
+                  <div className="ui-section-subtitle">{twoWayPlayers.length}/{TWO_WAY_MAX} slots used — sign eligible free agents from Free Agency.</div>
+                </div>
+              </div>
+              {twoWayMessage && (
+                <p style={{ color: twoWayMessage.type === 'err' ? 'var(--color-danger)' : 'var(--color-success)', marginBottom: 'var(--sp-2)' }}>{twoWayMessage.text}</p>
+              )}
+              {twoWayPlayers.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)' }}>No two-way players signed.</p>
+              ) : (
+                <div className="ui-table-wrap">
+                  <table className="ui-table">
+                    <thead>
+                      <tr><th>Ovr</th><th>Player</th><th>Pos</th><th className="num">Age</th><th>Status</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                      {twoWayPlayers.map((p) => {
+                        const calledUp = team.roster.includes(p);
+                        return (
+                          <tr key={p.id} className={`clickable ${posStripe(p)}`} onClick={() => openPlayer?.(p)}>
+                            <td><OvrArc value={overall(p)} /></td>
+                            <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
+                            <td>{posLabel(p)}</td>
+                            <td className="num">{p.age}</td>
+                            <td>
+                              <span className={`ui-badge ${calledUp ? 'ui-badge--success' : 'ui-badge--default'}`}>
+                                {calledUp ? 'Active' : 'Reserve'}
+                              </span>
+                            </td>
+                            <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                              {calledUp ? (
+                                <button className="ui-btn ui-btn--sm ui-btn--secondary" style={{ marginRight: 'var(--sp-1)' }} onClick={() => runTwoWay(sendDownTwoWay, p)}>Send Down</button>
+                              ) : (
+                                <button
+                                  className="ui-btn ui-btn--sm ui-btn--secondary"
+                                  style={{ marginRight: 'var(--sp-1)' }}
+                                  disabled={team.roster.length >= ROSTER_MAX}
+                                  title={team.roster.length >= ROSTER_MAX ? `Roster full (${ROSTER_MAX})` : ''}
+                                  onClick={() => runTwoWay(callUpTwoWay, p)}
+                                >Call Up</button>
+                              )}
+                              <button
+                                className="ui-btn ui-btn--sm ui-btn--secondary"
+                                style={{ marginRight: 'var(--sp-1)' }}
+                                disabled={!calledUp && team.roster.length >= ROSTER_MAX}
+                                onClick={() => runTwoWay((l, t, id) => convertTwoWayToStandard(l, t, id), p)}
+                              >Convert</button>
+                              <button
+                                className="ui-btn ui-btn--sm ui-btn--danger"
+                                onClick={() => { if (confirm(`Release ${p.name} from his two-way contract?`)) runTwoWay(releaseTwoWay, p); }}
+                              >Release</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, salaryFor, recordContract } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, salaryFor, recordContract, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { autoLineup } from './lineup.js';
 import { evaluateStrategies } from './strategy.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -21,7 +21,7 @@ const PICKS_PER_ROUND = 30;
 // so 15 players come out of each "team's worth" of the pool.
 const POOL_TIERS = [
   [81, 10], [75, 8], [71, 7], [67, 6], [67, 6], [63, 6], [63, 6],
-  [57, 6], [57, 6], [57, 6], [48, 6], [48, 6], [48, 6], [48, 6], [45, 6],
+  [57, 6], [57, 6], [57, 6], [53, 6], [53, 6], [53, 6], [53, 6], [51, 6],
 ];
 const FRINGE_COUNT = 90; // extra players beyond the 450 that get drafted
 
@@ -34,14 +34,14 @@ export function generateFantasyPool(rng) {
       const ageAdj = age <= 24 ? -4 : age <= 32 ? 6 : 2;
       const p = generatePlayer(rng, {
         age,
-        base: clamp(gauss(mean + ageAdj, spread, rng), 35, 90),
+        base: clamp(gauss(mean + ageAdj, spread, rng), 42, 90),
       });
       p.contract = null;
       pool.push(p);
     }
   }
   for (let i = 0; i < FRINGE_COUNT; i++) {
-    const p = generatePlayer(rng, { base: clamp(gauss(48, 8, rng), 35, 72) });
+    const p = generatePlayer(rng, { base: clamp(gauss(FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, rng), FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL) });
     p.contract = null;
     pool.push(p);
   }
@@ -61,6 +61,7 @@ export function initFantasyDraft(league, rng) {
     const maxId = Math.max(
       0,
       ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+      ...league.teams.flatMap((t) => (t.twoWay || []).map((p) => p.id)),
       ...league.freeAgents.map((p) => p.id),
     );
     resetPlayerIds(maxId + 1);

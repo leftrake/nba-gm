@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet } from '../engine/league.js';
+import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet, signToTwoWay, twoWayEligible } from '../engine/league.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { overall } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
-import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX } from '../data/teams.js';
+import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX } from '../data/teams.js';
 import { Ovr, Pot, money, PlayerLink, GuideTooltip } from './shared.jsx';
 import { Card, Button, Badge, Section, SectionHeader, Divider, Table } from './ui/index.js';
 
@@ -72,6 +72,14 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     const res = signMidSeasonFA(league, team.id, p.id);
     setMessage(res.ok
       ? { type: 'ok', text: `${p.name} signed for the rest of the season (${money(res.player.contract.salary)}) — available for the next game.` }
+      : { type: 'err', text: res.error });
+    commit();
+  };
+
+  const signTwoWay = (p) => {
+    const res = signToTwoWay(league, team.id, p.id);
+    setMessage(res.ok
+      ? { type: 'ok', text: `${p.name} signed to a two-way contract.` }
       : { type: 'err', text: res.error });
     commit();
   };
@@ -153,6 +161,18 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     { key: 'age', label: `Age${arrow('age')}`, numeric: true, sortable: true },
     { key: 'asking', label: `Asking${arrow('asking')}`, numeric: true, sortable: true,
       render: (row) => money(askingPrice(row._p)) },
+    { key: 'twoway', label: '', render: (row) => {
+      if (!twoWayEligible(row._p) || row._p.restrictedFA) return null;
+      return (
+        <Button size="sm" variant="secondary"
+          disabled={team.twoWay.length >= TWO_WAY_MAX}
+          title={team.twoWay.length >= TWO_WAY_MAX ? `Two-way slots full (${TWO_WAY_MAX})` : 'Cap-exempt development slot'}
+          onClick={() => signTwoWay(row._p)}
+        >
+          Sign 2-Way
+        </Button>
+      );
+    }},
     { key: 'action', label: '', render: (row) => {
       if (isSeason) {
         if (!midSeasonSignable(row._p)) {
@@ -228,6 +248,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
               <span>
                 Cap room: <b style={{ color: room > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{money(room)}</b>
                 {' · '}Roster: {team.roster.length}/{ROSTER_MAX}
+                {' · '}2-Way: {team.twoWay.length}/{TWO_WAY_MAX}
                 {room <= 0 && (
                   <> · MLE: <b style={{ color: team.usedMLE ? 'var(--color-danger)' : 'var(--color-success)' }}>
                     {team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}

@@ -45,12 +45,22 @@ export function generateDraftClass(rng, opts = {}) {
   const superstars = randInt(1, 3, rng);
   const starters = superstars + randInt(4, 7, rng);
   for (let i = 0; i < CLASS_SIZE; i++) {
-    let age, potential;
-    if (i < superstars) { age = randInt(18, 20, rng); potential = randInt(88, 97, rng); }
-    else if (i < starters) { age = randInt(18, 21, rng); potential = randInt(76, 87, rng); }
-    else { age = randInt(18, 22, rng); potential = Math.round(clamp(gauss(60, 9, rng), 42, 74)); }
-    const gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
-    const base = clamp(potential - gap, 30, 76);
+    let age, potential, gap;
+    if (i < superstars) {
+      age = randInt(18, 20, rng); potential = randInt(88, 97, rng);
+      gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
+    } else if (i < starters) {
+      age = randInt(18, 21, rng); potential = randInt(76, 87, rng);
+      gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
+    } else {
+      // Beyond the lottery/starter tiers, age alone shouldn't swallow a
+      // prospect's potential — a mid-60s-potential 18-year-old should still
+      // be able to crack a bad team's rotation, with development variance
+      // (not a depressed debut) deciding whether he busts.
+      age = randInt(18, 22, rng); potential = Math.round(clamp(gauss(60, 9, rng), 50, 74));
+      gap = Math.max(5, (23 - age) * 2 + 3 + gauss(0, 2.5, rng));
+    }
+    const base = clamp(potential - gap, i < starters ? 42 : 45, 76);
     const playerOpts = { age, base, exp: 0, potential };
     if (opts.boardSeason != null) playerOpts._forcedId = -(opts.boardSeason * CLASS_SIZE + i + 1);
     const p = generatePlayer(rng, playerOpts);
@@ -72,6 +82,7 @@ export function initDraft(league, rng) {
     const maxId = Math.max(
       0,
       ...league.teams.flatMap((t) => t.roster.map((p) => p.id)),
+      ...league.teams.flatMap((t) => (t.twoWay || []).map((p) => p.id)),
       ...league.freeAgents.map((p) => p.id),
       ...(league.retiredPlayers || []).map((p) => p.id),
     );

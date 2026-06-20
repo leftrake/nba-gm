@@ -33,6 +33,7 @@ export default function Players({ league, openPlayer, openTeam }) {
   const all = [];
   for (const team of league.teams) {
     for (const p of team.roster) all.push({ p, team });
+    for (const p of team.twoWay) all.push({ p, team });
   }
   for (const p of league.freeAgents) all.push({ p, team: null });
 

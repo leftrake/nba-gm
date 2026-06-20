@@ -152,7 +152,7 @@ export default function FuturePayroll({ league, commit, openPlayer, onTradeFor, 
   const seasonLabel = (so) => league.season + so;
 
   const roster = [...team.roster]
-    .filter((p) => p.contract)
+    .filter((p) => p.contract && !p.contract.twoWay)
     .sort((a, b) => b.contract.salary - a.contract.salary);
 
   const deadMoney = team.deadMoney;
