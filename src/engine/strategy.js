@@ -1,7 +1,7 @@
 import { overall } from './players.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from './trade.js';
 import { getTeamPicks, violatesStepien } from './draftPicks.js';
-import { payroll, payrollTarget } from './league.js';
+import { payroll, payrollTarget, projectedPayroll, projectedPayrollLimit } from './league.js';
 import { SALARY_CAP, LUXURY_TAX, ROSTER_MAX } from '../data/teams.js';
 
 // Front-office strategies. Every team is tagged 'contending' (top ~10 by
@@ -145,6 +145,10 @@ export function maybeAiSalaryDump(league, rng) {
     const vet = badContracts[0];
     const capRoom = SALARY_CAP - payroll(taker);
     if (vet.contract.salary > capRoom) continue; // taker can't absorb without matching
+    // Multi-year bad contracts carry into next season same as a free-agent
+    // signing would — a rebuilder shouldn't eat one just for a sweetener
+    // pick if it blows past the cap discipline its own strategy calls for.
+    if (vet.contract.years > 1 && projectedPayroll(taker) + vet.contract.salary > projectedPayrollLimit(taker)) continue;
     // sweeten with a spare future 2nd if the dumper has one (2nds never
     // trip the Stepien rule, so no extra check needed)
     const dumperSeconds = getTeamPicks(league, dumper.id).filter((p) => p.round === 2);
