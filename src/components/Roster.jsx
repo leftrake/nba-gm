@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay } from '../engine/league.js';
+import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay, TRADE_DEADLINE_DAY } from '../engine/league.js';
 import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
@@ -727,7 +727,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                                   const deadMsg = c
                                     ? `Their ${money(c.salary)}/yr stays on your cap as dead money for ${c.years} more season${c.years === 1 ? '' : 's'} (${money(c.salary * c.years)} total).`
                                     : 'No contract — no dead money.';
-                                  if (confirm(`Waive ${p.name}? ${deadMsg}`)) { releasePlayer(league, teamId, p.id); commit(); }
+                                  const isBuyout = league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY;
+                                  const prompt = isBuyout ? `Agree to a buyout with ${p.name}? ${deadMsg}` : `Waive ${p.name}? ${deadMsg}`;
+                                  if (confirm(prompt)) { releasePlayer(league, teamId, p.id); commit(); }
                                 }}
                               >Waive</button>
                             </td>

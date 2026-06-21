@@ -1,8 +1,8 @@
 import { overall } from './players.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from './trade.js';
 import { getTeamPicks, violatesStepien } from './draftPicks.js';
-import { payroll, payrollTarget, projectedPayroll, projectedPayrollLimit } from './league.js';
-import { SALARY_CAP, LUXURY_TAX, ROSTER_MAX } from '../data/teams.js';
+import { payroll, payrollTarget, projectedPayroll, projectedPayrollLimit, releasePlayer, TRADE_DEADLINE_DAY } from './league.js';
+import { SALARY_CAP, LUXURY_TAX, ROSTER_MAX, ROSTER_MIN } from '../data/teams.js';
 
 // Front-office strategies. Every team is tagged 'contending' (top ~10 by
 // record and roster strength), 'rebuilding' (bottom ~8), or 'retooling'
@@ -158,5 +158,22 @@ export function maybeAiSalaryDump(league, rng) {
     if (!aiEvaluateTrade(league, taker.id, [vet], [], sweetener, []).accept) continue;
     executeTrade(league, dumper.id, [vet.id], taker.id, [], sweetenerIds, []);
     return;
+  }
+}
+
+// Once trades lock at the deadline, a disgruntled star who never found a
+// trade partner has one way left out: his rebuilding team releases him
+// outright (a real-NBA buyout) so he can chase a ring elsewhere.
+export function maybeAiBuyoutRelease(league, rng) {
+  if (league.phase !== 'regular' || league.dayIndex <= TRADE_DEADLINE_DAY) return;
+  if (rng() >= 0.03) return;
+  const rebuilders = league.teams.filter((t) => t.id !== league.userTeamId && t.strategy === 'rebuilding');
+  for (const team of rebuilders) {
+    if (team.roster.length <= ROSTER_MIN) continue;
+    const disgruntled = team.roster.find((p) => p.tradeDemand && p.contract);
+    if (disgruntled) {
+      releasePlayer(league, team.id, disgruntled.id);
+      return;
+    }
   }
 }

@@ -7,7 +7,7 @@ import { initDraft } from './draft.js';
 import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
 import { computeAwards, honorsSummary } from './awards.js';
-import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump } from './strategy.js';
+import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump, maybeAiBuyoutRelease } from './strategy.js';
 import { autoLineup } from './lineup.js';
 import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
 import {
@@ -836,8 +836,10 @@ export function simDay(league) {
   maybeShopDisgruntled(league, rng);
   maybeAiTrade(league, rng);
   maybeAiSalaryDump(league, rng);
+  maybeAiBuyoutRelease(league, rng);
   aiExtensions(league, rng);
   maybeAiMidSeasonSigning(league, rng);
+  maybeAiBuyoutSigning(league, rng);
   expireTradeOffers(league);
   maybeGenerateTradeOffer(league, rng);
   const userTeam = league.userTeamId ? getTeam(league, league.userTeamId) : null;
@@ -1642,6 +1644,13 @@ export function midSeasonSignable(p) {
   return overall(p) < 68;
 }
 
+// A vet waived after the trade deadline (a "buyout") will sign for a
+// rest-of-season minimum same as a fringe player, regardless of his rating —
+// that's the whole story of a real-NBA buyout candidate chasing a ring.
+export function buyoutEligible(p) {
+  return p.waivedDuringSeason != null;
+}
+
 // Minimum salary prorated over the days left in the season; the deal runs
 // 1 year, so it comes off the books in the offseason.
 export function proratedMinSalary(league) {
@@ -1657,7 +1666,8 @@ export function signMidSeasonFA(league, teamId, playerId) {
   const idx = league.freeAgents.findIndex((p) => p.id === playerId);
   if (idx === -1) return { ok: false, error: 'That player is no longer a free agent.' };
   const p = league.freeAgents[idx];
-  if (!midSeasonSignable(p)) {
+  const buyout = buyoutEligible(p);
+  if (!midSeasonSignable(p) && !buyout) {
     return { ok: false, error: `${p.name} won't take a minimum deal mid-season — he's holding out for a real contract in the offseason.` };
   }
   p.contract = { salary: proratedMinSalary(league), years: 1 };
@@ -1666,7 +1676,10 @@ export function signMidSeasonFA(league, teamId, playerId) {
   if (team.id === league.userTeamId) p.everOnUserTeam = true;
   team.roster.push(p); // on the roster now — available for the next game
   bumpTurmoil(team, 0.5);
-  pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.` });
+  const text = buyout
+    ? `The ${team.city} ${team.name} sign bought-out ${p.name} for the stretch run.`
+    : `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.`;
+  pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text });
   return { ok: true, player: p };
 }
 
@@ -1680,6 +1693,21 @@ function maybeAiMidSeasonSigning(league, rng) {
     if (rng() >= (healthy < 10 ? 0.25 : 0.01)) continue;
     // pool is sorted best-first; nobody signs a guy who's also hurt
     const target = league.freeAgents.find((p) => midSeasonSignable(p) && !p.injury);
+    if (target) signMidSeasonFA(league, team.id, target.id);
+  }
+}
+
+// Once the trade deadline passes, contenders go shopping in earnest for
+// bought-out vets — unlike the fringe pickups above, this targets the best
+// available buyout candidate (not a random thin-roster fill).
+function maybeAiBuyoutSigning(league, rng) {
+  if (league.dayIndex <= TRADE_DEADLINE_DAY) return;
+  for (const team of league.teams) {
+    if (team.id === league.userTeamId) continue;
+    if (team.strategy !== 'contending') continue;
+    if (team.roster.length >= ROSTER_MAX) continue;
+    if (rng() >= 0.12) continue;
+    const target = league.freeAgents.find((p) => buyoutEligible(p) && !p.injury);
     if (target) signMidSeasonFA(league, team.id, target.id);
   }
 }
@@ -2134,9 +2162,19 @@ export function releasePlayer(league, teamId, playerId) {
     team.deadMoney.push({ playerName: p.name, salary: p.contract.salary, years: p.contract.years });
   }
   p.contract = null;
+  // a fresh start: whatever grudge he held against this front office is
+  // moot once he's no longer on its roster (mirrors executeTrade's reset)
+  p.tradeDemand = false;
+  p.tradeDemandTeam = null;
+  p.moraleLowStreak = 0;
+  const isBuyout = league.phase === 'regular' && league.dayIndex > TRADE_DEADLINE_DAY;
+  if (isBuyout) p.waivedDuringSeason = league.dayIndex;
   league.freeAgents.push(p);
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
-  pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `The ${team.name} waive ${p.name}.` });
+  const text = isBuyout
+    ? `The ${team.city} ${team.name} and ${p.name} agree to a buyout, making him a free agent.`
+    : `The ${team.name} waive ${p.name}.`;
+  pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text });
   return true;
 }
 

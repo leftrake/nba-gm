@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet, signToTwoWay, twoWayEligible } from '../engine/league.js';
+import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, buyoutEligible, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet, signToTwoWay, twoWayEligible, TRADE_DEADLINE_DAY } from '../engine/league.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { overall } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
@@ -156,7 +156,12 @@ export default function FreeAgency({ league, commit, openPlayer }) {
       render: (row) => <Ovr p={row._p} league={league} fogged={!row._p.everOnUserTeam} /> },
     { key: 'pot', label: `Pot${arrow('pot')}`, numeric: true, sortable: true,
       render: (row) => <Pot p={row._p} league={league} fogged={!row._p.everOnUserTeam} /> },
-    { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
+    { key: 'name', label: 'Player', render: (row) => (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+        <PlayerLink p={row._p} openPlayer={openPlayer} />
+        {buyoutEligible(row._p) && <Badge variant="info" title="Waived after the trade deadline — signable for the minimum regardless of rating">Buyout</Badge>}
+      </span>
+    ) },
     { key: 'pos', label: `Pos${arrow('pos')}`, sortable: true },
     { key: 'age', label: `Age${arrow('age')}`, numeric: true, sortable: true },
     { key: 'asking', label: `Asking${arrow('asking')}`, numeric: true, sortable: true,
@@ -175,7 +180,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     }},
     { key: 'action', label: '', render: (row) => {
       if (isSeason) {
-        if (!midSeasonSignable(row._p)) {
+        if (!midSeasonSignable(row._p) && !buyoutEligible(row._p)) {
           return (
             <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}
                   title="Won't take a minimum deal — available in offseason free agency">
@@ -263,7 +268,9 @@ export default function FreeAgency({ league, commit, openPlayer }) {
           {isOpen
             ? "Negotiate salary and years — players weigh money, your record, and their role. Other teams sign players every round, including ones you're talking to."
             : isSeason
-            ? `In-season market: rest-of-season minimum deals only (${money(proratedMinSalary(league))}), and you need an open roster spot.`
+            ? `In-season market: rest-of-season minimum deals only (${money(proratedMinSalary(league))}), and you need an open roster spot.${
+                league.dayIndex > TRADE_DEADLINE_DAY ? ' Vets bought out after the trade deadline sign for the same minimum, regardless of rating.' : ''
+              }`
             : 'Signings open during the Free Agency phase (after the offseason advance), but you can browse anytime.'}
         </p>
 
