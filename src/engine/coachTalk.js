@@ -6,6 +6,8 @@
 
 import { overall, salaryFor } from './players.js';
 import { adjustMorale, bumpRosterMorale, MORALE_WARNING_STREAK, TRADE_DEMAND_STREAK } from './morale.js';
+import { decodeBox } from './sim.js';
+import { fgPct } from './stats.js';
 import { pushNews } from './save.js';
 
 const ROLE_TALK_STREAK = 8; // consecutive underplayed nights before the coach brings it up
@@ -16,6 +18,12 @@ const UNDERPAID_MORALE_CEILING = 45; // contract frustration only registers once
 const UNDERPAID_VALUE_RATIO = 0.75; // current salary vs. salaryFor() below this reads as "underpaid"
 const BREAKOUT_MORALE_FLOOR = 78;
 const BREAKOUT_MAX_AGE = 23;
+const SERIES_MIN_GAMES = 2; // minimum games played in the current series before a shooting trend means anything
+const STAR_SLUMP_MIN_FGA = 15;
+const STAR_SLUMP_MAX_FG_PCT = 0.40;
+const ROLE_SERIES_BREAKOUT_MIN_FGA = 10;
+const ROLE_SERIES_BREAKOUT_MIN_FG_PCT = 0.55;
+const ROLE_SERIES_BREAKOUT_MIN_PPG = 12;
 
 export const COACH_TALK_OPTIONS = {
   minutes: [
@@ -44,10 +52,51 @@ export const COACH_TALK_OPTIONS = {
     { id: 'praise_publicly', label: 'Praise him publicly to the media' },
     { id: 'praise_privately', label: 'Praise him one-on-one, low-key' },
   ],
+  trailing_0_2: [
+    { id: 'rally', label: 'Rally the team — refocus for the next game' },
+    { id: 'stay_quiet', label: 'Let the players work through it themselves' },
+  ],
+  star_struggling: [
+    { id: 'reassure', label: 'Tell him to keep shooting — stay confident' },
+    { id: 'adjust_role', label: 'Ease the pressure on him next game' },
+    { id: 'dismiss', label: 'Say nothing for now' },
+  ],
+  role_breakout: [
+    { id: 'praise_publicly', label: 'Praise him publicly to the media' },
+    { id: 'praise_privately', label: 'Praise him one-on-one, low-key' },
+  ],
 };
 
 function coachName(team) {
   return team.coach?.name ?? 'Your coach';
+}
+
+// The user's own currently-active series, if any — reimplemented locally
+// (rather than importing league.js's teamPlayoffStatus) to avoid a circular
+// import, since league.js imports maybeCoachConversation from this module.
+function activeSeriesFor(league, team) {
+  const po = league.playoffs;
+  if (!po) return null;
+  if (po.finals && !po.finals.winner && (po.finals.high === team.id || po.finals.low === team.id)) return po.finals;
+  for (const m of po[team.conf] || []) {
+    if (!m.winner && (m.high === team.id || m.low === team.id)) return m;
+  }
+  return null;
+}
+
+// Sums one player's box lines across every game played so far in a series.
+function seriesTotalsForPlayer(series, playerId) {
+  const totals = { gp: 0, min: 0, pts: 0, fgm: 0, fga: 0 };
+  for (const g of series.games || []) {
+    for (const box of [g.homeBox, g.awayBox]) {
+      if (!box) continue;
+      const line = decodeBox(box).find((l) => l.playerId === playerId);
+      if (line && line.min > 0) {
+        totals.gp += 1; totals.min += line.min; totals.pts += line.pts; totals.fgm += line.fgm; totals.fga += line.fga;
+      }
+    }
+  }
+  return totals;
 }
 
 export function coachTalkQuote(league, team, talk) {
@@ -75,6 +124,17 @@ export function coachTalkQuote(league, team, talk) {
   if (talk.cause === 'breakout_player') {
     if (!p) return null;
     return `${coachName(team)} can't help but smile: "${p.name}'s been terrific lately. A kid his age playing with that kind of confidence — that's worth recognizing."`;
+  }
+  if (talk.cause === 'trailing_0_2') {
+    return `${coachName(team)} gathers the team: "We're down 0-2. Nobody panics — but we need a response, starting now."`;
+  }
+  if (talk.cause === 'star_struggling') {
+    if (!p) return null;
+    return `${coachName(team)} pulls you aside: "${p.name}'s pressing. He's missing shots he normally makes — the moment might be getting to him a little."`;
+  }
+  if (talk.cause === 'role_breakout') {
+    if (!p) return null;
+    return `${coachName(team)} can't hide a grin: "${p.name}'s playing the best ball of his career right now. Nobody saw this series coming from him."`;
   }
   return null;
 }
@@ -117,20 +177,59 @@ function findBreakoutPlayer(team) {
   return candidates.length ? { cause: 'breakout_player', playerId: candidates[0].id } : null;
 }
 
+function findTrailingOhTwo(league, team) {
+  const series = activeSeriesFor(league, team);
+  if (!series) return null;
+  const isHigh = series.high === team.id;
+  const myWins = isHigh ? series.highWins : series.lowWins;
+  const oppWins = isHigh ? series.lowWins : series.highWins;
+  return (myWins === 0 && oppWins === 2) ? { cause: 'trailing_0_2' } : null;
+}
+
+function findStarStruggling(league, team) {
+  const series = activeSeriesFor(league, team);
+  if (!series || (series.games?.length ?? 0) < SERIES_MIN_GAMES) return null;
+  const candidates = team.roster
+    .filter((p) => overall(p) >= 75 && (p.morale ?? 50) >= 55 && !p.tradeDemand)
+    .map((p) => ({ p, totals: seriesTotalsForPlayer(series, p.id) }))
+    .filter(({ totals }) => totals.gp >= SERIES_MIN_GAMES && totals.fga >= STAR_SLUMP_MIN_FGA && fgPct(totals) < STAR_SLUMP_MAX_FG_PCT)
+    .sort((a, b) => fgPct(a.totals) - fgPct(b.totals));
+  return candidates.length ? { cause: 'star_struggling', playerId: candidates[0].p.id } : null;
+}
+
+function findRoleBreakout(league, team) {
+  const series = activeSeriesFor(league, team);
+  if (!series || (series.games?.length ?? 0) < SERIES_MIN_GAMES) return null;
+  const candidates = team.roster
+    .filter((p) => overall(p) < 70)
+    .map((p) => ({ p, totals: seriesTotalsForPlayer(series, p.id) }))
+    .filter(({ totals }) => totals.gp >= SERIES_MIN_GAMES && totals.fga >= ROLE_SERIES_BREAKOUT_MIN_FGA
+      && fgPct(totals) >= ROLE_SERIES_BREAKOUT_MIN_FG_PCT && totals.pts / totals.gp >= ROLE_SERIES_BREAKOUT_MIN_PPG)
+    .sort((a, b) => fgPct(b.totals) - fgPct(a.totals));
+  return candidates.length ? { cause: 'role_breakout', playerId: candidates[0].p.id } : null;
+}
+
 // Checked in this order so a brewing problem always wins out over flavor
 // good news on a day where both happen to be true.
-const FINDERS = [
-  findStarUnhappy, findLosingSkid, findMinutesFrustration, findUnderpaid, findHotStreak, findBreakoutPlayer,
+const REGULAR_FINDERS = [
+  (league, team) => findStarUnhappy(team), (league, team) => findLosingSkid(team),
+  (league, team) => findMinutesFrustration(team), (league, team) => findUnderpaid(team),
+  (league, team) => findHotStreak(team), (league, team) => findBreakoutPlayer(team),
 ];
+const PLAYOFF_FINDERS = [findTrailingOhTwo, findStarStruggling, findRoleBreakout];
 
 // Looks for one conversation-worthy issue on the user's team and queues it
 // as team.pendingCoachTalk for the UI to surface; no-op if one is already
-// pending or the cooldown since the last conversation hasn't elapsed.
+// pending or the cooldown since the last conversation hasn't elapsed. The
+// regular-season causes key off state (team.streak, roleLowStreak, etc.)
+// that's only updated by simDay, so they're skipped during the playoffs —
+// otherwise they'd fire off stale data frozen from the regular season.
 export function maybeCoachConversation(league, team, rng) {
   if (team.pendingCoachTalk || team.pendingMilestoneAlert || team.pendingCallUpPrompt) return;
   if (league.dayIndex - (team.lastCoachTalkDay ?? -Infinity) < COOLDOWN_DAYS) return;
-  for (const find of FINDERS) {
-    const found = find(team);
+  const finders = league.phase === 'playoffs' ? PLAYOFF_FINDERS : REGULAR_FINDERS;
+  for (const find of finders) {
+    const found = find(league, team);
     if (found) {
       team.pendingCoachTalk = { ...found, day: league.dayIndex };
       team.lastCoachTalkDay = league.dayIndex;
@@ -197,6 +296,30 @@ export function resolveCoachTalk(league, team, optionId) {
     } else {
       adjustMorale(p, 2);
       news(`You praise ${p.name} one-on-one. He appreciates the recognition.`);
+    }
+  } else if (talk.cause === 'trailing_0_2') {
+    if (optionId === 'rally') {
+      bumpRosterMorale(team, 2);
+      news(`You rally the team down 0-2. The room responds heading into the next game.`);
+    } else {
+      news(`You let the players work through being down 0-2 on their own.`);
+    }
+  } else if (talk.cause === 'star_struggling' && p) {
+    if (optionId === 'reassure' || optionId === 'adjust_role') {
+      adjustMorale(p, 2);
+      news(optionId === 'reassure'
+        ? `You tell ${p.name} to keep shooting and stay confident.`
+        : `You ease the pressure on ${p.name} heading into the next game.`);
+    } else {
+      news(`You leave ${p.name}'s shooting slump unaddressed for now.`);
+    }
+  } else if (talk.cause === 'role_breakout' && p) {
+    if (optionId === 'praise_publicly') {
+      adjustMorale(p, 3);
+      news(`${p.name} is glowing after public praise for his breakout series.`, true);
+    } else {
+      adjustMorale(p, 2);
+      news(`You praise ${p.name} one-on-one for his breakout series.`);
     }
   }
 

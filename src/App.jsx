@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { TEAMS } from './data/teams.js';
-import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason, backfillPlayers } from './engine/league.js';
+import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason, backfillPlayers, callUpTwoWay } from './engine/league.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
@@ -31,11 +31,14 @@ import Settings from './components/Settings.jsx';
 import StyleGuide from './components/StyleGuide.jsx';
 import GameModal from './components/BoxScore.jsx';
 import Walkthrough from './components/Walkthrough.jsx';
-import { isWalkthroughDone, markWalkthroughDone, resetTutorial, InjuryAlertModal } from './components/shared.jsx';
+import { isWalkthroughDone, markWalkthroughDone, resetTutorial, InjuryAlertModal, CoachTalkModal, MilestoneAlertModal, CallUpPromptModal } from './components/shared.jsx';
 import { safeAccent, textOnColor } from './engine/colorUtils.js';
 import { checkSave, pushNews } from './engine/save.js';
 import { bumpTurmoil } from './engine/morale.js';
 import { readCrossSaveLegacy } from './engine/legacy.js';
+import { maybeCoachConversation, resolveCoachTalk } from './engine/coachTalk.js';
+import { checkMilestoneAlerts } from './engine/milestoneAlerts.js';
+import { resolveCallUpPrompt } from './engine/callUps.js';
 import { loadTheme, loadAccent, applyTheme, THEME_KEY, ACCENT_KEY } from './theme.js';
 
 const SAVE_KEY = 'nba-gm-save';
@@ -313,6 +316,14 @@ export default function App() {
     const before = captureUserInjuries();
     const played = simPlayoffGame(league);
     trackFeaturedPlayoff(played);
+    // Only the single-game sim checks for an interactive coach-talk/milestone
+    // moment — "Sim Playoff Round" fast-forwards through several games per
+    // series with no pause point, so a mid-series trigger would either be
+    // stale or skipped by the time the user sees the bracket again.
+    if (userTeam) {
+      maybeCoachConversation(league, userTeam, Math.random);
+      checkMilestoneAlerts(league, userTeam, []);
+    }
     commit();
     checkPlayoffInjuryAlert(before);
     if (played.length > 0) {
@@ -558,6 +569,23 @@ export default function App() {
           alert={injuryAlert}
           onClose={() => setInjuryAlert(null)}
           onGoToRoster={() => { setInjuryAlert(null); setScreen('roster'); }}
+        />
+        <CoachTalkModal
+          league={league}
+          team={userTeam}
+          onResolve={(optionId) => { resolveCoachTalk(league, userTeam, optionId); commit(); }}
+        />
+        <MilestoneAlertModal
+          team={userTeam}
+          onClose={() => { userTeam.pendingMilestoneAlert = null; commit(); }}
+        />
+        <CallUpPromptModal
+          team={userTeam}
+          onResolve={(accept) => {
+            if (accept) callUpTwoWay(league, userTeam.id, userTeam.pendingCallUpPrompt.playerId);
+            resolveCallUpPrompt(league, userTeam, accept);
+            commit();
+          }}
         />
         {league.phase === 'awards' && (
           <AwardCeremony

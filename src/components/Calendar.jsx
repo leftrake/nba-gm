@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews, callUpTwoWay,
+  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews,
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
-import { resolveCoachTalk } from '../engine/coachTalk.js';
-import { resolveCallUpPrompt } from '../engine/callUps.js';
-import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal, CoachTalkModal, MilestoneAlertModal, CallUpPromptModal } from './shared.jsx';
+import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal } from './shared.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 // At most one interactive prompt blocks the sim at a time — see
@@ -289,23 +287,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         onClose={() => setInjuryAlert(null)}
         onGoToRoster={() => { setInjuryAlert(null); setScreen('roster'); }}
       />
-      <CoachTalkModal
-        league={league}
-        team={myTeam}
-        onResolve={(optionId) => { resolveCoachTalk(league, myTeam, optionId); commit(); }}
-      />
-      <MilestoneAlertModal
-        team={myTeam}
-        onClose={() => { myTeam.pendingMilestoneAlert = null; commit(); }}
-      />
-      <CallUpPromptModal
-        team={myTeam}
-        onResolve={(accept) => {
-          if (accept) callUpTwoWay(league, myTeam.id, myTeam.pendingCallUpPrompt.playerId);
-          resolveCallUpPrompt(league, myTeam, accept);
-          commit();
-        }}
-      />
+      {/* CoachTalkModal/MilestoneAlertModal/CallUpPromptModal render once,
+          globally, in App.jsx — they're engine-state-driven (not local to
+          this screen) and need to show during playoffs too. */}
     </div>
   );
 }

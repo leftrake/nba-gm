@@ -1,11 +1,27 @@
 import React, { useMemo, useState } from 'react';
-import { getTeam, standings, makeRoundMatchups } from '../engine/league.js';
+import { getTeam, standings, makeRoundMatchups, teamPlayoffStatus } from '../engine/league.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { TeamLink, NewsText, GuideTooltip } from './shared.jsx';
 import { Card } from './ui/Card.jsx';
 import SeriesModal from './SeriesModal.jsx';
 
 export const ROUND_NAMES = ['First Round', 'Conference Semifinals', 'Conference Finals', 'NBA Finals'];
+
+// If the user's team is in an active series where the opponent has 3 wins,
+// tonight's game (or the next one simmed) eliminates them if they lose —
+// covers everything from down 0-3 through a winner-take-all Game 7.
+function eliminationContext(league) {
+  const userId = league.userTeamId;
+  if (!userId) return null;
+  const status = teamPlayoffStatus(league, userId);
+  if (!status?.active || !status.series) return null;
+  const m = status.series;
+  const isHigh = m.high === userId;
+  const myWins = isHigh ? m.highWins : m.lowWins;
+  const oppWins = isHigh ? m.lowWins : m.highWins;
+  if (oppWins !== 3) return null;
+  return { myWins, oppWins, oppId: isHigh ? m.low : m.high };
+}
 
 const ROUND_COUNTS = [4, 2, 1];
 
@@ -218,9 +234,20 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
 
   const roundName = ROUND_NAMES[po.round] || '';
   const openSeries = (m, rn) => setSeriesView({ m, roundName: rn });
+  const elim = !po.champion ? eliminationContext(league) : null;
 
   return (
     <div>
+      {elim && (
+        <Card style={{ marginBottom: 'var(--sp-4)', border: '1px solid var(--color-danger-line)', background: 'var(--color-danger-soft)' }}>
+          <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)', color: 'var(--color-danger)' }}>⚠️ Win or Go Home</span>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: 0 }}>
+            {elim.myWins === 3
+              ? "It's Game 7. Win tonight and you're moving on — lose, and the season's over."
+              : `Down ${elim.myWins}-${elim.oppWins} to the ${getTeam(league, elim.oppId).city} ${getTeam(league, elim.oppId).name}. Lose tonight and the season's over.`}
+          </p>
+        </Card>
+      )}
       {!po.champion && (
         <Card style={{ marginBottom: 'var(--sp-4)' }}>
           <GuideTooltip
