@@ -4,6 +4,7 @@ import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } 
 import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
+import { teamGameLog, keyFindings, recentForm, homeAwaySplit, clutchRecord, strengthOfSchedule } from '../engine/analytics.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
@@ -89,6 +90,7 @@ function MinInput({ value, onChange, disabled }) {
 const TABS = [
   { key: 'lineup', label: 'Lineup' },
   { key: 'stats', label: 'Stats' },
+  { key: 'analytics', label: 'Analytics' },
   { key: 'contracts', label: 'Contracts' },
   { key: 'development', label: 'Development' },
 ];
@@ -647,6 +649,66 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
             </div>
           </div>
         )}
+
+        {/* ─── ANALYTICS ─── */}
+        {tab === 'analytics' && (() => {
+          const games = teamGameLog(league, team.id);
+          if (games.length === 0) {
+            return <p style={{ color: 'var(--text-muted)', padding: 'var(--sp-4) 0' }}>No games played yet this season.</p>;
+          }
+          const findings = keyFindings(league, team);
+          const { recent } = recentForm(games, 10);
+          const { home, away } = homeAwaySplit(games);
+          const clutch = clutchRecord(games);
+          const sos = strengthOfSchedule(league, games);
+          return (
+            <>
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Key Findings</div></div>
+                {findings.length === 0
+                  ? <p style={{ color: 'var(--text-muted)' }}>No standout trends yet — check back after a few more games.</p>
+                  : (
+                    <ul style={{ margin: 0, paddingLeft: 'var(--sp-5)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                      {findings.map((f, i) => <li key={i}>{f}</li>)}
+                    </ul>
+                  )}
+              </div>
+
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Last {recent.gp} Games</div></div>
+                <div style={{ display: 'flex', gap: 'var(--sp-5)', flexWrap: 'wrap' }}>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{recent.w}-{recent.l}</span><span className="ui-stat__label">Record</span></div>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{recent.ppg.toFixed(1)}</span><span className="ui-stat__label">PPG</span></div>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{recent.oppPpg.toFixed(1)}</span><span className="ui-stat__label">OPP PPG</span></div>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{recent.ortg.toFixed(1)}</span><span className="ui-stat__label">ORTG</span></div>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{recent.drtg.toFixed(1)}</span><span className="ui-stat__label">DRTG</span></div>
+                  <div className="ui-stat ui-stat--sm">
+                    <span className="ui-stat__value" style={{ color: recent.netRtg >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                      {recent.netRtg >= 0 ? '+' : ''}{recent.netRtg.toFixed(1)}
+                    </span>
+                    <span className="ui-stat__label">Net Rtg</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Splits</div></div>
+                <div style={{ display: 'flex', gap: 'var(--sp-5)', flexWrap: 'wrap' }}>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{home.w}-{home.l}</span><span className="ui-stat__label">Home</span></div>
+                  <div className="ui-stat ui-stat--sm"><span className="ui-stat__value">{away.w}-{away.l}</span><span className="ui-stat__label">Away</span></div>
+                  <div className="ui-stat ui-stat--sm">
+                    <span className="ui-stat__value">{clutch.w}-{clutch.l}</span>
+                    <span className="ui-stat__label" title="Games decided by 5 points or fewer">Clutch (≤5)</span>
+                  </div>
+                  <div className="ui-stat ui-stat--sm">
+                    <span className="ui-stat__value">{(sos * 100).toFixed(0)}%</span>
+                    <span className="ui-stat__label" title="Combined current win% of opponents faced so far this season">Opp. Win%</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
 
         {/* ─── CONTRACTS ─── */}
         {tab === 'contracts' && (<>

@@ -88,3 +88,32 @@ export function ddTd(line) {
   const cats = ['pts', 'reb', 'ast', 'stl', 'blk'].filter((k) => (line[k] || 0) >= 10).length;
   return cats >= 3 ? 'TD' : cats >= 2 ? 'DD' : null;
 }
+
+// Categories shown in the positional-percentile comparison (PlayerCard).
+export const PERCENTILE_STATS = [
+  ['pts', 'PTS', (s) => perGame(s, 'pts')],
+  ['reb', 'REB', (s) => perGame(s, 'reb')],
+  ['ast', 'AST', (s) => perGame(s, 'ast')],
+  ['stl', 'STL', (s) => perGame(s, 'stl')],
+  ['blk', 'BLK', (s) => perGame(s, 'blk')],
+  ['tsPct', 'TS%', (s) => tsPct(s) * 100],
+];
+
+// Percentile rank (0-100) of `value` among `pool`, splitting ties evenly.
+function percentileRank(value, pool) {
+  if (pool.length === 0) return 50;
+  const below = pool.filter((v) => v < value).length;
+  const equal = pool.filter((v) => v === value).length;
+  return Math.round(((below + 0.5 * equal) / pool.length) * 100);
+}
+
+// A player's per-game stats benchmarked against every league player at the
+// same primary position with at least `minGp` games played.
+export function positionalPercentiles(league, player, minGp = 10) {
+  const peers = allPlayerStatRows(league, minGp).filter((r) => r.p.pos === player.pos && r.p.id !== player.id);
+  return PERCENTILE_STATS.map(([key, label, valueFn]) => {
+    const value = valueFn(player.stats);
+    const pool = peers.map((r) => valueFn(r.stats));
+    return { key, label, value, percentile: percentileRank(value, pool), sampleSize: pool.length };
+  });
+}

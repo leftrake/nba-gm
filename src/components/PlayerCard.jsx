@@ -2,7 +2,8 @@ import React, { useEffect } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
 import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
-import { groupAwards } from '../engine/awards.js';
+import { groupAwards, leaderMinGp } from '../engine/awards.js';
+import { positionalPercentiles } from '../engine/stats.js';
 import { scoutRange, isHidden } from '../engine/scouting.js';
 import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
 import { personalityNote, scoutBackstoryNote } from '../engine/backstory.js';
@@ -430,6 +431,25 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           <div className="ui-section-header"><div className="ui-section-title">This Season ({league.season})</div></div>
           <SeasonStats stats={p.stats} />
         </div>
+
+        {/* Positional percentiles */}
+        {p.stats.gp > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header">
+              <div className="ui-section-header__left">
+                <div className="ui-section-title">Vs. League at {p.pos}</div>
+                <div className="ui-section-subtitle">Percentile this season among same-position players</div>
+              </div>
+            </div>
+            {positionalPercentiles(league, p, leaderMinGp(league)).map((row) => (
+              <div className="rating-row" key={row.key}>
+                <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
+                <div className="rating-bar"><div style={{ width: `${row.percentile}%`, background: barColor(row.percentile) }} /></div>
+                <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.percentile}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* This postseason */}
         {p.playoffStats.gp > 0 && (
