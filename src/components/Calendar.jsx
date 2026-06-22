@@ -4,7 +4,8 @@ import {
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
-import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal } from './shared.jsx';
+import { resolveCoachTalk } from '../engine/coachTalk.js';
+import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal, CoachTalkModal } from './shared.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -51,7 +52,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   // Sim day-by-day toward `target` (exclusive), or indefinitely if null —
   // flashing each cell as it's simmed, fast enough that a week takes ~1-2s.
   const animatedSimTo = async (target, { stopAtGame = false, weeklyRecap = false } = {}) => {
-    if (animatingRef.current) return;
+    if (animatingRef.current || getTeam(leagueRef.current, me).pendingCoachTalk) return;
     animatingRef.current = true;
     setAnimating(true);
     skipRef.current = false;
@@ -82,6 +83,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         setInjuryAlert({ injured, returned });
         break;
       }
+      if (getTeam(leagueRef.current, me).pendingCoachTalk) break;
       if (stopAtGame && mine) break;
       if (leagueRef.current.tradeOffers.length > offersBefore) break;
       if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
@@ -111,7 +113,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   };
 
   const handleCellClick = (di) => {
-    if (animating || league.phase !== 'regular') return;
+    if (simDisabled || league.phase !== 'regular') return;
     if (di == null || di <= league.dayIndex || di > lastDi) return;
     setConfirmDay(di);
   };
@@ -127,17 +129,19 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   const lastMonthStart = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
   const canGoPrev = monthStart > firstMonthStart;
   const canGoNext = monthStart < lastMonthStart;
+  const myTeam = getTeam(league, me);
+  const simDisabled = animating || !!myTeam.pendingCoachTalk;
 
   return (
     <div>
       {league.phase === 'regular' && (
         <div className="controls" data-tour="sim-controls">
-          <button className="ui-btn ui-btn--primary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(league.dayIndex + 1)}>
+          <button className="ui-btn ui-btn--primary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(league.dayIndex + 1)}>
             {todayHasGame ? 'Simulate Game' : 'Next Day'}
           </button>
-          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
-          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
-          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={animating} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
           {animating && <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => { skipRef.current = true; }}>Skip ▸▸</button>}
           {animating && <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => { stopRef.current = true; }}>Stop ⏹</button>}
         </div>
@@ -183,7 +187,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
             const dayEvents = events.filter((e) => e.dayIndex === di);
             const userGame = inRange ? league.schedule[di].find((g) => g.home === me || g.away === me) : null;
             const result = userGame ? resultFor(di, userGame) : null;
-            const clickable = inRange && isFuture && !animating;
+            const clickable = inRange && isFuture && !simDisabled;
             const isPastDay = inRange && di < league.dayIndex;
             const isFutureDay = inRange && di > league.dayIndex;
             const resultIsWin = result
@@ -280,6 +284,11 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         alert={injuryAlert}
         onClose={() => setInjuryAlert(null)}
         onGoToRoster={() => { setInjuryAlert(null); setScreen('roster'); }}
+      />
+      <CoachTalkModal
+        league={league}
+        team={myTeam}
+        onResolve={(optionId) => { resolveCoachTalk(league, myTeam, optionId); commit(); }}
       />
     </div>
   );

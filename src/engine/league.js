@@ -19,6 +19,7 @@ import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
 import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives, exceedsOwnerBudget, applyBudgetOverageEffect } from './owner.js';
+import { maybeCoachConversation } from './coachTalk.js';
 import {
   snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace, checkGameHighs,
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
@@ -846,6 +847,7 @@ export function simDay(league) {
   if (userTeam) {
     dailyApprovalUpdate(userTeam);
     maybeOwnerInterference(league, userTeam, rng);
+    maybeCoachConversation(league, userTeam, rng);
   }
   if (league.dayIndex % 7 === 0) checkRecordPace(league);
   tickProScouting(league); // pro-scouting film accumulates each simmed game-day

@@ -5,6 +5,7 @@ import { scoutRange, scoutedOverallRange, scoutUncertainty, isHidden, fogColor }
 import { traitBand, traitShort, TRAIT_COLORS } from '../engine/devTraits.js';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 import { injuryTimeline } from '../engine/injuries.js';
+import { coachTalkQuote, COACH_TALK_OPTIONS } from '../engine/coachTalk.js';
 import { TEAMS } from '../data/teams.js';
 
 function ovrClass(o) {
@@ -166,6 +167,35 @@ export function InjuryAlertModal({ alert, onClose, onGoToRoster }) {
         <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
           <button className="ui-btn ui-btn--primary ui-btn--md" onClick={onGoToRoster}>Go to Roster</button>
           <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={onClose}>Dismiss</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CoachTalkModal({ league, team, onResolve }) {
+  const talk = team?.pendingCoachTalk;
+  const quote = talk ? coachTalkQuote(league, team, talk) : null;
+  // If the flagged player was traded/waived before the GM responded, the
+  // conversation is moot — auto-clear it rather than leaving the sim
+  // controls stuck disabled with no modal to resolve.
+  useEffect(() => {
+    if (talk && !quote) onResolve('dismiss');
+  }, [talk, quote]);
+  if (!talk || !quote) return null;
+  return (
+    <div className="ui-modal-overlay">
+      <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ui-modal-header">
+          <div className="ui-modal-title">🗣️ A Word From the Coach</div>
+        </div>
+        <p style={{ marginBottom: 'var(--sp-4)' }}>{quote}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          {COACH_TALK_OPTIONS[talk.cause].map((opt) => (
+            <button key={opt.id} className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => onResolve(opt.id)}>
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

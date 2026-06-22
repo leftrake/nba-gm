@@ -135,7 +135,28 @@ export function dailyMoraleUpdate(league, results) {
         if (min > 0) {
           const gap = clamp(min - expectedMinutes(ovr), -15, 15);
           m += gap * 0.015 * caresRole * (1 - coachAuth * 0.5);
+          // How many recent played nights in a row this player has been
+          // meaningfully underused relative to his rating — what a coach
+          // conversation about playing time keys off (see coachTalk.js).
+          if (gap < -4) p.roleLowStreak = (p.roleLowStreak ?? 0) + 1;
+          else if (gap >= -2) p.roleLowStreak = 0;
         }
+      }
+      if (p.minutesPromise && league.dayIndex >= p.minutesPromise.untilDay) {
+        if ((p.roleLowStreak ?? 0) === 0) {
+          m += 4;
+          pushNews(league, {
+            day: league.dayIndex, category: 'morale', teamIds: [team.id],
+            text: `${p.name} feels ${team.coach?.name ?? 'the coaching staff'} followed through on the extra playing time he promised.`,
+          });
+        } else {
+          m -= 6;
+          pushNews(league, {
+            day: league.dayIndex, category: 'morale', major: true, teamIds: [team.id],
+            text: `${p.name} is souring on ${team.coach?.name ?? 'the coaching staff'} after a promise of more playing time went unkept.`,
+          });
+        }
+        p.minutesPromise = null;
       }
       m -= turmoil * 0.01 * (1 - coachAuth * 0.6);
       m -= demandCount * 0.02 * (1 - coachAuth * 0.6);
@@ -151,7 +172,7 @@ export function dailyMoraleUpdate(league, results) {
 }
 
 const TRADE_DEMAND_THRESHOLD = 28;
-const TRADE_DEMAND_STREAK = 25; // consecutive low-morale sim days
+export const TRADE_DEMAND_STREAK = 25; // consecutive low-morale sim days
 const RESCIND_THRESHOLD = 45;
 
 // Early-warning point on the moraleLowStreak — crossing this shows an
