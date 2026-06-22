@@ -1,0 +1,11 @@
+{
+  "name": "run-nba-gm-driver",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node driver.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.61.0"
+  }
+}
