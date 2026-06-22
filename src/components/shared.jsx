@@ -202,6 +202,41 @@ export function CoachTalkModal({ league, team, onResolve }) {
   );
 }
 
+export function MilestoneAlertModal({ team, onClose }) {
+  const alert = team?.pendingMilestoneAlert;
+  if (!alert) return null;
+  return (
+    <div className="ui-modal-overlay" onClick={onClose}>
+      <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ui-modal-header">
+          <div className="ui-modal-title">📈 Heads Up</div>
+        </div>
+        <p style={{ marginBottom: 'var(--sp-4)' }}>{alert.text}</p>
+        <button className="ui-btn ui-btn--primary ui-btn--md" onClick={onClose}>Nice!</button>
+      </div>
+    </div>
+  );
+}
+
+export function CallUpPromptModal({ team, onResolve }) {
+  const prompt = team?.pendingCallUpPrompt;
+  if (!prompt) return null;
+  return (
+    <div className="ui-modal-overlay">
+      <div className="ui-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="ui-modal-header">
+          <div className="ui-modal-title">📞 Call From the G League</div>
+        </div>
+        <p style={{ marginBottom: 'var(--sp-4)' }}>{prompt.text}</p>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+          <button className="ui-btn ui-btn--primary ui-btn--md" onClick={() => onResolve(true)}>Call him up</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => onResolve(false)}>Leave him down</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Front-office strategy badge (see engine/strategy.js)
 const STRATEGY_COLORS = { contending: 'var(--color-success)', retooling: 'var(--color-primary)', rebuilding: 'var(--color-danger)' };
 export function StrategyTag({ team }) {

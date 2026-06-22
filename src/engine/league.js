@@ -20,6 +20,8 @@ import { diffStats } from './stats.js';
 import { buildAllStarEvent } from './allstar.js';
 import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives, exceedsOwnerBudget, applyBudgetOverageEffect } from './owner.js';
 import { maybeCoachConversation } from './coachTalk.js';
+import { checkMilestoneAlerts } from './milestoneAlerts.js';
+import { updateGLeagueHotStreak, maybeQueueCallUpPrompt } from './callUps.js';
 import {
   snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace, checkGameHighs,
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
@@ -782,7 +784,11 @@ export function simDay(league) {
     // Two-way players on assignment play a G-League game the same night
     // instead of riding the NBA bench.
     for (const team of [home, away]) {
-      for (const p of team.twoWay) applyBoxToStats([p], [simGLeagueGame(p, rng)], 'gLeagueStats');
+      for (const p of team.twoWay) {
+        const box = simGLeagueGame(p, rng);
+        applyBoxToStats([p], [box], 'gLeagueStats');
+        updateGLeagueHotStreak(p, box);
+      }
     }
     // Roll injuries before tallying stats so a player hurt mid-game banks
     // only the minutes he actually played.
@@ -848,8 +854,12 @@ export function simDay(league) {
     dailyApprovalUpdate(userTeam);
     maybeOwnerInterference(league, userTeam, rng);
     maybeCoachConversation(league, userTeam, rng);
+    maybeQueueCallUpPrompt(league, userTeam);
   }
-  if (league.dayIndex % 7 === 0) checkRecordPace(league);
+  if (league.dayIndex % 7 === 0) {
+    const flaggedThisWeek = checkRecordPace(league);
+    if (userTeam) checkMilestoneAlerts(league, userTeam, flaggedThisWeek);
+  }
   tickProScouting(league); // pro-scouting film accumulates each simmed game-day
   league.dayIndex += 1;
   if (league.dayIndex === TRADE_DEADLINE_DAY + 1) {

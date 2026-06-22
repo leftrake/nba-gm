@@ -216,12 +216,15 @@ function currentSeasonLeaders(league, statKey, n = 3) {
 
 // Called weekly during the regular season (dayIndex % 7 === 0). Projects
 // each top leader's full-season pace and, the first time it crosses the
-// current record, announces it.
+// current record, announces it. Returns the list of newly-flagged
+// candidates this call so milestoneAlerts.js can surface the user's own
+// player's case as more than a buried news line.
 export function checkRecordPace(league) {
   const season = league.season;
   if (!league.recordPaceFlags) league.recordPaceFlags = {};
   if (!league.recordPaceFlags[season]) league.recordPaceFlags[season] = {};
   const flags = league.recordPaceFlags[season];
+  const newlyFlagged = [];
   for (const cat of PACE_CATS) {
     const record = league.recordBook?.singleSeason?.[cat.key]?.[0];
     if (!record) continue;
@@ -239,8 +242,10 @@ export function checkRecordPace(league) {
         teamIds: [cand.teamId],
         text,
       });
+      newlyFlagged.push({ playerId: cand.playerId, teamId: cand.teamId, text });
     }
   }
+  return newlyFlagged;
 }
 
 // ---------- Game highs ----------

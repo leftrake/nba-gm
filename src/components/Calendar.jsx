@@ -1,13 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews,
+  getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews, callUpTwoWay,
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
 import { resolveCoachTalk } from '../engine/coachTalk.js';
-import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal, CoachTalkModal } from './shared.jsx';
+import { resolveCallUpPrompt } from '../engine/callUps.js';
+import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal, CoachTalkModal, MilestoneAlertModal, CallUpPromptModal } from './shared.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+// At most one interactive prompt blocks the sim at a time — see
+// coachTalk.js / milestoneAlerts.js / callUps.js for what queues each one.
+const hasPendingEvent = (team) => !!(team.pendingCoachTalk || team.pendingMilestoneAlert || team.pendingCallUpPrompt);
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const PHASE_BLURB = {
@@ -52,7 +56,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   // Sim day-by-day toward `target` (exclusive), or indefinitely if null —
   // flashing each cell as it's simmed, fast enough that a week takes ~1-2s.
   const animatedSimTo = async (target, { stopAtGame = false, weeklyRecap = false } = {}) => {
-    if (animatingRef.current || getTeam(leagueRef.current, me).pendingCoachTalk) return;
+    if (animatingRef.current || hasPendingEvent(getTeam(leagueRef.current, me))) return;
     animatingRef.current = true;
     setAnimating(true);
     skipRef.current = false;
@@ -83,7 +87,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         setInjuryAlert({ injured, returned });
         break;
       }
-      if (getTeam(leagueRef.current, me).pendingCoachTalk) break;
+      if (hasPendingEvent(getTeam(leagueRef.current, me))) break;
       if (stopAtGame && mine) break;
       if (leagueRef.current.tradeOffers.length > offersBefore) break;
       if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
@@ -130,7 +134,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   const canGoPrev = monthStart > firstMonthStart;
   const canGoNext = monthStart < lastMonthStart;
   const myTeam = getTeam(league, me);
-  const simDisabled = animating || !!myTeam.pendingCoachTalk;
+  const simDisabled = animating || hasPendingEvent(myTeam);
 
   return (
     <div>
@@ -289,6 +293,18 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         league={league}
         team={myTeam}
         onResolve={(optionId) => { resolveCoachTalk(league, myTeam, optionId); commit(); }}
+      />
+      <MilestoneAlertModal
+        team={myTeam}
+        onClose={() => { myTeam.pendingMilestoneAlert = null; commit(); }}
+      />
+      <CallUpPromptModal
+        team={myTeam}
+        onResolve={(accept) => {
+          if (accept) callUpTwoWay(league, myTeam.id, myTeam.pendingCallUpPrompt.playerId);
+          resolveCallUpPrompt(league, myTeam, accept);
+          commit();
+        }}
       />
     </div>
   );

@@ -127,7 +127,7 @@ const FINDERS = [
 // as team.pendingCoachTalk for the UI to surface; no-op if one is already
 // pending or the cooldown since the last conversation hasn't elapsed.
 export function maybeCoachConversation(league, team, rng) {
-  if (team.pendingCoachTalk) return;
+  if (team.pendingCoachTalk || team.pendingMilestoneAlert || team.pendingCallUpPrompt) return;
   if (league.dayIndex - (team.lastCoachTalkDay ?? -Infinity) < COOLDOWN_DAYS) return;
   for (const find of FINDERS) {
     const found = find(team);
