@@ -446,6 +446,16 @@ export function backfillPlayers(league) {
   }
   league.freeAgents.forEach(fill);
   league.draft?.prospects?.forEach(fill);
+  // Saves predating this patch have other prospect pools carrying the old
+  // rating shape too — easy to miss since they're not under league.draft or
+  // league.freeAgents: the current season's pre-draft scouting pool
+  // (league.scouting.prospects, populated well before league.draft exists)
+  // and the 2 future draft-board classes generated at league creation.
+  league.scouting?.prospects?.forEach(fill);
+  league.scouting?.draftBoard?.forEach((dc) => dc.prospects?.forEach(fill));
+  // Saves predating this patch captured mid-fantasy-draft have an undrafted
+  // pool that's neither a roster nor a free agent yet.
+  league.fantasyDraft?.pool?.forEach(fill);
   // Saves predating draft-pick trading
   ensureDraftPicks(league);
   // Saves predating front-office strategies
