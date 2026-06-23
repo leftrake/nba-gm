@@ -392,8 +392,11 @@ export function initDraftBoard(league, rng) {
 // ---- Report generation ----
 
 const SKILL_LABELS = {
-  inside: 'finishing inside', mid: 'midrange touch', three: 'outside shooting',
-  passing: 'passing', rebounding: 'rebounding', defense: 'defense', athleticism: 'athleticism',
+  closeShot: 'finishing inside', midRange: 'midrange touch', threePoint: 'outside shooting', freeThrow: 'free-throw shooting',
+  passing: 'passing', ballHandling: 'ball-handling',
+  perimeterDefense: 'perimeter defense', interiorDefense: 'rim protection', steal: 'ball-hawking', block: 'shot-blocking',
+  offensiveRebounding: 'offensive rebounding', defensiveRebounding: 'defensive rebounding',
+  speed: 'quickness', strength: 'physicality',
 };
 const topSkills = (p, n = 2) => Object.entries(p.ratings).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => SKILL_LABELS[k]);
 const weakestSkill = (p) => SKILL_LABELS[Object.entries(p.ratings).sort((a, b) => a[1] - b[1])[0][0]];

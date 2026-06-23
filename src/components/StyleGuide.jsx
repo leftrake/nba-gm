@@ -49,7 +49,11 @@ function TypeRow({ label, style }) {
 const demoTeam = TEAMS[3]; // Houston
 const demoPlayer = {
   id: 9999, name: 'Demo Player', pos: 'PG', age: 26, stamina: 78,
-  ratings: { inside: 70, mid: 75, three: 80, passing: 82, rebounding: 55, defense: 74, athleticism: 85 },
+  ratings: {
+    closeShot: 70, midRange: 75, threePoint: 80, freeThrow: 78, passing: 82, ballHandling: 80,
+    perimeterDefense: 74, interiorDefense: 60, steal: 72, block: 50,
+    offensiveRebounding: 50, defensiveRebounding: 58, speed: 85, strength: 65,
+  },
   potential: 84, draftYear: 2020, contract: { salary: 12_400_000, years: 2 },
   careerStats: [{ min: 2200 }], stats: { min: 800 }, condition: 91, morale: 75,
   nationality: 'USA', from: 'Duke',

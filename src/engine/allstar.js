@@ -108,7 +108,13 @@ function exhibitionRoster(league, roster) {
       ...p,
       condition: 100,
       injury: null,
-      ratings: { ...p.ratings, defense: Math.max(25, Math.round(p.ratings.defense * RELAX_DEFENSE)) },
+      ratings: {
+        ...p.ratings,
+        perimeterDefense: Math.max(25, Math.round(p.ratings.perimeterDefense * RELAX_DEFENSE)),
+        interiorDefense: Math.max(25, Math.round(p.ratings.interiorDefense * RELAX_DEFENSE)),
+        steal: Math.max(25, Math.round(p.ratings.steal * RELAX_DEFENSE)),
+        block: Math.max(25, Math.round(p.ratings.block * RELAX_DEFENSE)),
+      },
     };
   });
 }

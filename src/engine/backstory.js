@@ -76,7 +76,7 @@ export function adjustRatingDelta(p, d, key, room, rng) {
       if ((p.exp ?? 0) > 1) d += gauss(0, 0.7, rng);
       break;
     case 'generational':
-      if (key === 'athleticism') {
+      if (key === 'speed' || key === 'strength') {
         if (d < 0) d *= p.age < 33 ? 0.5 : 1.6; // ages slower, then a sharper cliff
       }
       break;

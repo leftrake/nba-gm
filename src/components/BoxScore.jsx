@@ -3,7 +3,18 @@ import { getTeam } from '../engine/league.js';
 import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { ddTd } from '../engine/stats.js';
+import { ZONE_STAT_COLS } from '../engine/shotZones.js';
 import { TeamLink, TeamBadge, PlayerLink } from './shared.jsx';
+import ShotChart from './ShotChart.jsx';
+
+// Sums every zone Fgm/Fga column across a team's box lines, for a
+// team-level shot chart (one chart per game's box is more readable than
+// one per player).
+function teamZoneTotals(lines) {
+  const totals = {};
+  for (const col of ZONE_STAT_COLS) totals[col] = lines.reduce((s, l) => s + (l[col] || 0), 0);
+  return totals;
+}
 
 // Players move teams (or get waived) mid-season, so box-score names resolve
 // against the whole league, not just the current roster of the team shown.
@@ -117,6 +128,9 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
           })}
         </p>
       )}
+      <div style={{ marginTop: 'var(--sp-3)' }}>
+        <ShotChart stats={teamZoneTotals(lines)} />
+      </div>
     </div>
   );
 }

@@ -321,6 +321,7 @@ export function maybeGenerateTradeOffer(league, rng) {
   if (league.tradeOffers.length >= MAX_ACTIVE_OFFERS) return;
 
   const user = getTeam(league, league.userTeamId);
+  if (!user) return; // some headless scripts use a non-matching sentinel id instead of null
   let chance = 0.012;
   if (user.roster.some((p) => p.tradeDemand)) chance += 0.02;
   if (user.roster.some((p) => p.contract && p.contract.years <= 1 && overall(p) >= 68)) chance += 0.015;

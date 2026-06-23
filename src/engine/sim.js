@@ -1,5 +1,6 @@
 import { rand, gauss, clamp } from './rng.js';
-import { overall, ftRating, supportedMinutes } from './players.js';
+import { overall, supportedMinutes } from './players.js';
+import { ZONE_STAT_COLS, shotHash, pickZone } from './shotZones.js';
 import { moraleRatingMod } from './morale.js';
 import { clutchMod } from './backstory.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, playerFit, isInjured, minutesCap } from './lineup.js';
@@ -86,9 +87,9 @@ function rotationFit(rot, style) {
   let sum = 0;
   for (const { p } of rot) {
     const r = p.ratings;
-    if (style === 'pace-and-space')   sum += r.three;
-    else if (style === 'defensive')   sum += r.defense;
-    else if (style === 'grind-it-out') sum += (r.inside + r.rebounding) / 2;
+    if (style === 'pace-and-space')   sum += r.threePoint;
+    else if (style === 'defensive')   sum += (r.perimeterDefense + r.interiorDefense) / 2;
+    else if (style === 'grind-it-out') sum += (r.closeShot + r.defensiveRebounding) / 2;
   }
   return clamp((sum / rot.length - FIT_BASE) / FIT_RANGE, 0, 1);
 }
@@ -99,7 +100,14 @@ function fitEffect(fit) {
 }
 
 // Pre-game: mutates gamePlayer objects to apply shot-mix and defensive shifts.
-// defBase is updated alongside def so applyFatigue tracks off the adjusted baseline.
+// The *Base fields are updated alongside the live ones so applyFatigue
+// tracks off the adjusted baseline. A defensive boost lifts both perimeter
+// and interior defense — the schemes here are about effort/scheme, not a
+// specific assignment.
+function bumpDef(gp, amt) {
+  gp.perimDef += amt; gp.perimDefBase += amt;
+  gp.interiorDef += amt; gp.interiorDefBase += amt;
+}
 function applyStyleAdjustments(coach, rot, players) {
   const style = coach?.style ?? 'balanced';
   if (style === 'balanced') {
@@ -107,8 +115,7 @@ function applyStyleAdjustments(coach, rot, players) {
       gp.wIns   *= 1 + BAL_SHOT_BOOST;
       gp.wMid   *= 1 + BAL_SHOT_BOOST;
       gp.wThree *= 1 + BAL_SHOT_BOOST;
-      gp.def    += BAL_DEF_BOOST;
-      gp.defBase += BAL_DEF_BOOST;
+      bumpDef(gp, BAL_DEF_BOOST);
     }
     return;
   }
@@ -117,12 +124,10 @@ function applyStyleAdjustments(coach, rot, players) {
     if (style === 'pace-and-space') {
       gp.wThree *= 1 + PAS_THREE_BOOST * eff;
     } else if (style === 'defensive') {
-      gp.def    += DEF_RATING_BOOST * eff;
-      gp.defBase += DEF_RATING_BOOST * eff;
+      bumpDef(gp, DEF_RATING_BOOST * eff);
     } else if (style === 'grind-it-out') {
       gp.wIns   *= 1 + GIO_INS_BOOST * eff;
-      gp.def    += GIO_DEF_BOOST * eff;
-      gp.defBase += GIO_DEF_BOOST * eff;
+      bumpDef(gp, GIO_DEF_BOOST * eff);
     }
   }
 }
@@ -135,6 +140,18 @@ function stylePaceBonus(coach, rot) {
   if (style === 'defensive')      return DEF_PACE  * fitEffect(rotationFit(rot, style));
   if (style === 'grind-it-out')   return GIO_PACE  * fitEffect(rotationFit(rot, style));
   return 0;
+}
+
+// Faster rosters create more possessions — a small effect, the same shape
+// as the coaching-style pace bonuses above, minutes-weighted across the
+// rotation actually on the floor.
+const SPEED_PACE_MULT = 0.04;
+function speedPaceBonus(rot) {
+  if (rot.length === 0) return 0;
+  let sum = 0, totalMin = 0;
+  for (const { p, min } of rot) { sum += p.ratings.speed * min; totalMin += min; }
+  const avgSpeed = totalMin > 0 ? sum / totalMin : 60;
+  return (avgSpeed - 60) * SPEED_PACE_MULT;
 }
 
 export function teamStrength(team) {
@@ -174,7 +191,9 @@ function gamePlayer({ p, min, slot }, rng) {
   const r = p.ratings;
   const sharp = form * 2.5; // shooting bump in rating points
   const moraleAdj = moraleRatingMod(p); // small +/- from happiness, see engine/morale.js
-  const score = r.inside * 0.4 + r.mid * 0.25 + r.three * 0.35;
+  // playing out of position mostly bleeds defense and rebounding
+  const defFit = 0.55 + 0.45 * fit;
+  const score = r.closeShot * 0.4 + r.midRange * 0.25 + r.threePoint * 0.35;
   return {
     name: p.name, // for the game-flow log
     targetMin: min,
@@ -184,21 +203,36 @@ function gamePlayer({ p, min, slot }, rng) {
     // without it the league's top ~10 scorers bunch tightly around the
     // same ppg, and no one looks like a season-leading #1 option.
     usage: Math.pow(Math.max(score + sharp, 25) / 60, 2.36) * (1 + Math.max(0, score - 88) * 0.012),
-    ins: r.inside + sharp + moraleAdj,
-    mid: r.mid + sharp + moraleAdj,
-    three: r.three + sharp + moraleAdj,
+    ins: r.closeShot + sharp + moraleAdj,
+    mid: r.midRange + sharp + moraleAdj,
+    three: r.threePoint + sharp + moraleAdj,
+    ft: r.freeThrow + sharp + moraleAdj,
     pass: r.passing + moraleAdj,
-    // playing out of position mostly bleeds defense and rebounding
-    def: r.defense * (0.55 + 0.45 * fit),
-    reb: r.rebounding * (0.55 + 0.45 * fit),
+    ballHandle: r.ballHandling + moraleAdj,
+    perimDef: r.perimeterDefense * defFit,
+    interiorDef: r.interiorDefense * defFit,
+    steal: r.steal * defFit,
+    block: r.block * defFit,
+    oreb: r.offensiveRebounding * defFit,
+    dreb: r.defensiveRebounding * defFit,
+    speed: r.speed,
+    strength: r.strength,
     // Fatigue bases: the fresh values above, restored each stint before the
     // current fatigue penalty is subtracted (see applyFatigue).
-    insBase: r.inside + sharp + moraleAdj,
-    midBase: r.mid + sharp + moraleAdj,
-    threeBase: r.three + sharp + moraleAdj,
+    insBase: r.closeShot + sharp + moraleAdj,
+    midBase: r.midRange + sharp + moraleAdj,
+    threeBase: r.threePoint + sharp + moraleAdj,
+    ftBase: r.freeThrow + sharp + moraleAdj,
     passBase: r.passing + moraleAdj,
-    defBase: r.defense * (0.55 + 0.45 * fit),
-    rebBase: r.rebounding * (0.55 + 0.45 * fit),
+    ballHandleBase: r.ballHandling + moraleAdj,
+    perimDefBase: r.perimeterDefense * defFit,
+    interiorDefBase: r.interiorDefense * defFit,
+    stealBase: r.steal * defFit,
+    blockBase: r.block * defFit,
+    orebBase: r.offensiveRebounding * defFit,
+    drebBase: r.defensiveRebounding * defFit,
+    speedBase: r.speed,
+    strengthBase: r.strength,
     supported: supportedMinutes(p),
     // A workload assigned beyond what stamina supports costs pace all night
     // (he knows he's playing 44 and still wears down), on top of the
@@ -206,17 +240,17 @@ function gamePlayer({ p, min, slot }, rng) {
     planPenalty: Math.max(0, min - supportedMinutes(p)) * 1.0,
     // arriving worn down (heavy recent minutes) costs ratings all night
     condPenalty: (100 - (p.condition ?? 100)) * 0.2,
-    ftPct: clamp(0.465 + ftRating(p) * 0.005, 0.48, 0.95),
     // small make-probability bump in clutch situations for some backstories
     clutchMod: clutchMod(p),
-    wIns: Math.pow(Math.max(r.inside - 25, 5), 2),
-    wMid: Math.pow(Math.max(r.mid - 25, 5), 2) * 0.5,
-    wThree: Math.pow(Math.max(r.three - 25, 5), 2) * 1.05,
+    wIns: Math.pow(Math.max(r.closeShot - 25, 5), 2),
+    wMid: Math.pow(Math.max(r.midRange - 25, 5), 2) * 0.5,
+    wThree: Math.pow(Math.max(r.threePoint - 25, 5), 2) * 1.05,
     out: false, // fouled out
     cool: 0, // stints benched after picking up the 5th foul
     line: {
       playerId: p.id, min: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0,
       fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0, pm: 0,
+      ...Object.fromEntries(ZONE_STAT_COLS.map((c) => [c, 0])),
     },
   };
 }
@@ -233,9 +267,17 @@ function applyFatigue(gp) {
   gp.ins = gp.insBase - f;
   gp.mid = gp.midBase - f;
   gp.three = gp.threeBase - f;
-  gp.def = Math.max(20, gp.defBase - f * 0.8);
-  gp.reb = Math.max(20, gp.rebBase - f * 0.8);
+  gp.ft = gp.ftBase - f;
+  gp.speed = Math.max(20, gp.speedBase - f);
+  gp.perimDef = Math.max(20, gp.perimDefBase - f * 0.8);
+  gp.interiorDef = Math.max(20, gp.interiorDefBase - f * 0.8);
+  gp.steal = Math.max(20, gp.stealBase - f * 0.8);
+  gp.block = Math.max(20, gp.blockBase - f * 0.8);
+  gp.oreb = Math.max(20, gp.orebBase - f * 0.8);
+  gp.dreb = Math.max(20, gp.drebBase - f * 0.8);
   gp.pass = Math.max(20, gp.passBase - f * 0.5);
+  gp.ballHandle = Math.max(20, gp.ballHandleBase - f * 0.5);
+  gp.strength = Math.max(20, gp.strengthBase - f * 0.3);
 }
 
 function weightedPick(arr, weightFn, rng) {
@@ -291,7 +333,7 @@ function addFoul(gp) {
 function chargeFoul(side, rng) {
   const eligible = side.five.filter((g) => !g.out);
   if (eligible.length === 0) return null;
-  const fouled = weightedPick(eligible, (g) => 1 + g.reb / 100, rng);
+  const fouled = weightedPick(eligible, (g) => 1 + (g.oreb + g.dreb) / 200, rng);
   addFoul(fouled);
   return fouled;
 }
@@ -314,9 +356,18 @@ function replaceFouledOut(ctx, players, rng) {
 // shared running team score, which the usage soft-cap reads.
 function floorContext(five, team) {
   const n = five.length || 1;
-  let def = 0, pass = 0, reb = 0;
-  for (const gp of five) { def += gp.def; pass += gp.pass; reb += gp.reb; }
-  return { five, team, def: def / n, pass: pass / n, reb: reb / n };
+  let perimDef = 0, interiorDef = 0, pass = 0, ballHandle = 0, oreb = 0, dreb = 0;
+  for (const gp of five) {
+    perimDef += gp.perimDef; interiorDef += gp.interiorDef;
+    pass += gp.pass; ballHandle += gp.ballHandle;
+    oreb += gp.oreb; dreb += gp.dreb;
+  }
+  return {
+    five, team,
+    perimDef: perimDef / n, interiorDef: interiorDef / n,
+    pass: pass / n, ballHandle: ballHandle / n,
+    oreb: oreb / n, dreb: dreb / n,
+  };
 }
 
 // Soft cap on any one player's share of team scoring: full usage up to ~28%
@@ -332,12 +383,17 @@ function shotWeight(gp, team) {
 
 // True if the offense keeps the ball (offensive board); credits the rebound.
 function offenseRebounds(off, def, rng, emit = () => {}) {
-  const orbP = clamp(0.2 + (off.reb - def.reb) * 0.004, 0.1, 0.35);
+  const orbP = clamp(0.2 + (off.oreb - def.dreb) * 0.004, 0.1, 0.35);
   const offensive = rng() < orbP;
   const side = offensive ? off.five : def.five;
   // ~7% of misses go out of bounds / become team rebounds — no credit
   if (rng() < 0.93) {
-    const gp = weightedPick(side, (g) => Math.pow(g.reb, 2.7), rng);
+    // Splitting rebounding into offensive/defensive means the league's best
+    // rebounder needs to roll well on both independently rather than on one
+    // shared rating, which slightly lowers the combined-total ceiling — a
+    // touch more concentration here keeps the best rebounder's volume
+    // where it was.
+    const gp = weightedPick(side, (g) => Math.pow(offensive ? g.oreb : g.dreb, 2.9), rng);
     gp.line.reb += 1;
     if (offensive) gp.line.oreb += 1;
     else gp.line.dreb += 1;
@@ -350,9 +406,10 @@ function offenseRebounds(off, def, rng, emit = () => {}) {
 // pts incremented per make so running totals are accurate inside the loop.
 function shootFreeThrows(shooter, n, rng, emit = () => {}) {
   let made = 0, lastMissed = false;
+  const ftPct = clamp(0.465 + shooter.ft * 0.005, 0.48, 0.95);
   for (let i = 0; i < n; i++) {
     shooter.line.fta += 1;
-    if (rng() < shooter.ftPct) {
+    if (rng() < ftPct) {
       shooter.line.ftm += 1; made += 1;
       shooter.line.pts += 1;
       emit(`${shooter.name} Free Throw ${i + 1} of ${n} (${shooter.line.pts} PTS)`, undefined, 1);
@@ -366,19 +423,27 @@ function shootFreeThrows(shooter, n, rng, emit = () => {}) {
 
 const ASSISTED_P = { ins: 0.76, mid: 0.68, three: 0.955 };
 
-// Deterministic shot descriptor — hashes player id + FGA count, never the game RNG.
-const INS_BIG   = ['Dunk', 'Driving Layup', 'Hook Shot', 'Tip Layup', 'Dunk', 'Layup'];
-const INS_GUARD = ['Layup', 'Driving Layup', 'Floater', 'Finger Roll', 'Driving Layup', 'Layup'];
-const MID_DESC  = ['Jump Shot', 'Pullup Jump Shot', 'Fadeaway', 'Turnaround Fadeaway', 'Step Back Jump Shot', 'Jump Shot'];
-const THREE_DESC = ['3PT Jump Shot', '3PT Pullup Jump Shot', '3PT Step Back Jump Shot', '3PT Corner', '3PT Jump Shot'];
-function shotDesc(gp, type) {
-  const h = (((gp.line.playerId * 48271) ^ (gp.line.fga * 16807)) >>> 0);
-  if (type === 'ins') {
-    const labels = gp.rebBase > 65 ? INS_BIG : INS_GUARD;
-    return `${2 + (h >> 4) % 5}' ${labels[h % labels.length]}`;
-  }
-  if (type === 'mid') return `${10 + (h >> 4) % 11}' ${MID_DESC[h % MID_DESC.length]}`;
-  return `${22 + (h >> 4) % 6}' ${THREE_DESC[h % THREE_DESC.length]}`;
+// Flavor-text pools per real court zone, plus the realistic distance range
+// each one is shown at — driven by the same zone the shot chart tallies,
+// so the play-by-play text and the shot chart can never disagree about
+// where a shot came from. `h` is the same deterministic shot hash that
+// picked the zone (see shotZones.js) — never the game RNG.
+const ZONE_DESC = {
+  rim:      { big: ['Dunk', 'Putback Dunk', 'Alley-Oop Dunk', 'Tip Dunk'], guard: ['Layup', 'Finger Roll', 'Reverse Layup', 'Driving Layup'], distMin: 0, distMax: 3 },
+  paint:    { big: ['Hook Shot', 'Post Fadeaway', 'Up-and-Under', 'Turnaround Hook'], guard: ['Floater', 'Pull-Up Floater', 'Runner', 'Driving Layup'], distMin: 4, distMax: 9 },
+  midBase:  { both: ['Baseline Jump Shot', 'Baseline Fadeaway', 'Turnaround Jumper'], distMin: 10, distMax: 16 },
+  midElbow: { both: ['Elbow Jump Shot', 'Pullup Jump Shot', 'Step Back Jumper'], distMin: 12, distMax: 18 },
+  midTop:   { both: ['Free-Throw Line Jumper', 'Pullup Jump Shot', 'Fadeaway'], distMin: 14, distMax: 20 },
+  corner3:  { both: ['Corner Three', 'Catch-and-Shoot Corner Three'], distMin: 22, distMax: 22 },
+  wing3:    { both: ['Wing Three', 'Pullup Wing Three'], distMin: 23, distMax: 25 },
+  top3:     { both: ['Top of the Key Three', 'Step Back Three', 'Pullup Three'], distMin: 25, distMax: 27 },
+};
+function shotDesc(gp, zone, h) {
+  const meta = ZONE_DESC[zone.id];
+  const labels = meta.both ?? (gp.strengthBase > 65 ? meta.big : meta.guard);
+  const range = meta.distMax - meta.distMin + 1;
+  const dist = meta.distMin + (h >> 4) % range;
+  return `${dist}' ${labels[h % labels.length]}`;
 }
 
 // Returns the assister (or null) after crediting the assist — no emit here.
@@ -399,7 +464,7 @@ function maybeAssist(off, shooter, type, rng) {
 // `bonusAt` is the team-foul threshold that triggers free throws (5 reg, 4 OT).
 function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump = () => 0, bonusAt = 5) {
   // turnover before a shot gets up?
-  const toP = clamp(0.125 + (def.def - off.pass) * 0.0012, 0.07, 0.2);
+  const toP = clamp(0.125 + (def.perimDef - off.ballHandle) * 0.0012, 0.07, 0.2);
   if (rng() < toP) {
     const loser = weightedPick(off.five, (g) => g.usage, rng);
     loser.line.tov += 1;
@@ -407,7 +472,7 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
       addFoul(loser); // offensive foul: a charge on the ball-handler, not a steal
       emit(`${loser.name} Offensive Foul (${loser.line.tov} TO)`);
     } else if (rng() < 0.58) {
-      const stealer = weightedPick(def.five, (g) => g.def * g.def, rng);
+      const stealer = weightedPick(def.five, (g) => Math.pow(g.steal, 2) * (1 + g.speed / 300), rng);
       stealer.line.stl += 1;
       emit(`${loser.name} Turnover (${loser.line.tov} TO)`);
       emit(`${stealer.name} STEAL (${stealer.line.stl} STL)`, stealer.team);
@@ -450,18 +515,30 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
 
 // Shot attempts until the possession ends (score, defensive board, FTs).
 function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () => 0) {
-  const defAdj = (def.def - 58) * 0.0035;
+  const defAdjInterior = (def.interiorDef - 58) * 0.0035;
+  const defAdjPerim = (def.perimDef - 58) * 0.0035;
   let pts = 0;
   for (let attempt = 0; attempt < 4; attempt++) {
     const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
 
     let roll = rng() * (shooter.wIns + shooter.wMid + shooter.wThree);
     const type = (roll -= shooter.wIns) < 0 ? 'ins' : (roll - shooter.wMid) < 0 ? 'mid' : 'three';
+    // Zone is resolved deterministically (never the game RNG) so adding
+    // shot-chart tracking can't perturb existing seeded-sim results.
+    const shotH = shotHash(shooter.line.playerId, shooter.line.fga);
+    const zone = pickZone(shotH, type);
 
     let makeP, shotPts, foulP;
-    if (type === 'ins') { makeP = 0.541 + (shooter.ins - 58) * 0.004 - defAdj * 1.15; shotPts = 2; foulP = 0.21; }
-    else if (type === 'mid') { makeP = 0.412 + (shooter.mid - 58) * 0.0035 - defAdj; shotPts = 2; foulP = 0.06; }
-    else { makeP = 0.338 + (shooter.three - 58) * 0.003 - defAdj; shotPts = 3; foulP = 0.013; }
+    if (type === 'ins') {
+      // a strength mismatch against the rim protector nudges post/finishing
+      // touch up or down, and stronger players draw more contact inside
+      makeP = 0.541 + (shooter.ins - 58) * 0.004 - defAdjInterior * 1.15
+        + clamp((shooter.strength - def.interiorDef) * 0.0006, -0.018, 0.018) + zone.fgAdj;
+      shotPts = 2;
+      foulP = clamp(0.21 + (shooter.strength - 60) * 0.0006, 0.1, 0.3);
+    }
+    else if (type === 'mid') { makeP = 0.412 + (shooter.mid - 58) * 0.0035 - defAdjPerim + zone.fgAdj; shotPts = 2; foulP = 0.06; }
+    else { makeP = 0.338 + (shooter.three - 58) * 0.003 - defAdjPerim + zone.fgAdj; shotPts = 3; foulP = 0.013; }
     if (home) makeP += 0.012;
     if (clutch) makeP += shooter.clutchMod;
 
@@ -470,13 +547,14 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
 
     if (made) {
       shooter.line.fga += 1; shooter.line.fgm += 1;
+      shooter.line[`${zone.id}Fga`] += 1; shooter.line[`${zone.id}Fgm`] += 1;
       if (type === 'three') { shooter.line.tpa += 1; shooter.line.tpm += 1; }
       shooter.line.pts += shotPts;
       pts += shotPts;
       off.team.last = { name: shooter.name, type };
       const assister = maybeAssist(off, shooter, type, rng);
       const astText = assister ? ` (${assister.name} ${assister.line.ast} AST)` : '';
-      emit(`${shooter.name} ${shotDesc(shooter, type)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts);
+      emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts);
       if (fouled) {
         const fouler = chargeFoul(def, rng);
         if (fouler) {
@@ -501,11 +579,12 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       return pts;
     }
     shooter.line.fga += 1;
+    shooter.line[`${zone.id}Fga`] += 1;
     if (type === 'three') shooter.line.tpa += 1;
     const blockP = type === 'ins' ? 0.28 : type === 'mid' ? 0.08 : 0.02;
-    emit(`${shooter.name} ${shotDesc(shooter, type)} MISS`);
+    emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`);
     if (rng() < blockP) {
-      const blocker = weightedPick(def.five, (g) => Math.pow(g.def * 0.6 + g.reb * 0.4, 2), rng);
+      const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.7 + g.interiorDef * 0.3, 2), rng);
       blocker.line.blk += 1;
       emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`, blocker.team);
     }
@@ -545,7 +624,8 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
 
   // Both teams contribute to shared game pace; the sum reflects "pace negotiations"
   // (a p&s coach vs. a grind coach produce a middling tempo).
-  const possMean = 99 + stylePaceBonus(homeTeam.coach, homeRot) + stylePaceBonus(awayTeam.coach, awayRot);
+  const possMean = 99 + stylePaceBonus(homeTeam.coach, homeRot) + stylePaceBonus(awayTeam.coach, awayRot)
+    + speedPaceBonus(homeRot) + speedPaceBonus(awayRot);
   const poss = Math.round(clamp(gauss(possMean, 2.5, rng), 88, 112));
   const homeScore = { pts: 0, last: null }; // .last: most recent scorer, for the log
   const awayScore = { pts: 0, last: null };
@@ -729,25 +809,25 @@ export function simGLeagueGame(p, rng = rand) {
   const min = Math.round(clamp(gauss(29, 5, rng), 10, 38));
   const m = min / 36;
   const INFLATE = 1.15;
-  const scoreSkill = (r.inside * 0.45 + r.mid * 0.25 + r.three * 0.35) / 100;
+  const scoreSkill = (r.closeShot * 0.45 + r.midRange * 0.25 + r.threePoint * 0.35) / 100;
   const fga = Math.max(0, Math.round(gauss(scoreSkill * 16, 3, rng) * m * INFLATE));
-  const threeShare = clamp(r.three / 130, 0.1, 0.55);
+  const threeShare = clamp(r.threePoint / 130, 0.1, 0.55);
   const tpa = Math.round(fga * threeShare);
   const twoA = fga - tpa;
-  const twoPct = clamp(0.46 + (r.inside - 55) * 0.004, 0.35, 0.62);
-  const tpPct = clamp(0.27 + (r.three - 55) * 0.0045, 0.2, 0.45);
+  const twoPct = clamp(0.46 + (r.closeShot - 55) * 0.004, 0.35, 0.62);
+  const tpPct = clamp(0.27 + (r.threePoint - 55) * 0.0045, 0.2, 0.45);
   const twoM = Math.min(twoA, Math.round(twoA * twoPct));
   const tpm = Math.min(tpa, Math.round(tpa * tpPct));
   const fgm = twoM + tpm;
-  const fta = Math.max(0, Math.round(gauss((r.inside / 100) * 5, 1.5, rng) * m * INFLATE));
+  const fta = Math.max(0, Math.round(gauss((r.closeShot / 100) * 5, 1.5, rng) * m * INFLATE));
   const ftm = Math.min(fta, Math.round(fta * 0.72));
-  const reb = Math.max(0, Math.round(gauss((r.rebounding / 100) * 11, 2.2, rng) * m * INFLATE));
-  const oreb = Math.round(reb * 0.27);
-  const dreb = reb - oreb;
+  const oreb = Math.max(0, Math.round(gauss((r.offensiveRebounding / 100) * 3, 1, rng) * m * INFLATE));
+  const dreb = Math.max(0, Math.round(gauss((r.defensiveRebounding / 100) * 8, 2, rng) * m * INFLATE));
+  const reb = oreb + dreb;
   const ast = Math.max(0, Math.round(gauss((r.passing / 100) * 8, 2, rng) * m * INFLATE));
-  const stl = Math.max(0, Math.round(gauss((r.defense / 100) * 2.2, 1, rng) * m));
-  const blk = Math.max(0, Math.round(gauss((r.defense / 100) * 1.6, 0.9, rng) * m));
-  const tov = Math.max(0, Math.round(gauss((r.passing / 100) * 3.2, 1.2, rng) * m));
+  const stl = Math.max(0, Math.round(gauss((r.steal / 100) * 2.2, 1, rng) * m));
+  const blk = Math.max(0, Math.round(gauss((r.block / 100) * 1.6, 0.9, rng) * m));
+  const tov = Math.max(0, Math.round(gauss((r.ballHandling / 100) * 3.2, 1.2, rng) * m));
   const pf = Math.round(clamp(gauss(2.5, 1, rng), 0, 6));
   return {
     playerId: p.id, min, pts: twoM * 2 + tpm * 3 + ftm, reb, oreb, dreb, ast, stl, blk,
@@ -759,7 +839,10 @@ export function simGLeagueGame(p, rng = rand) {
 // Saves keep every game's box score, so lines are stored as flat number
 // arrays in this column order instead of objects (roughly 4x smaller in
 // localStorage). Decode before display.
-export const BOX_COLS = ['playerId', 'min', 'pts', 'reb', 'ast', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'tov', 'pf', 'oreb', 'dreb', 'pm'];
+export const BOX_COLS = [
+  'playerId', 'min', 'pts', 'reb', 'ast', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'tov', 'pf', 'oreb', 'dreb', 'pm',
+  ...ZONE_STAT_COLS,
+];
 
 export function encodeBox(box) {
   return box.map((line) => BOX_COLS.map((k) => line[k]));
@@ -786,5 +869,7 @@ export function applyBoxToStats(roster, box, field = 'stats') {
     s.oreb = (s.oreb || 0) + (line.oreb || 0);
     s.dreb = (s.dreb || 0) + (line.dreb || 0);
     s.pm = (s.pm || 0) + (line.pm || 0);
+    // old saves' stats objects predate the shot-chart zone columns
+    for (const col of ZONE_STAT_COLS) s[col] = (s[col] || 0) + (line[col] || 0);
   }
 }

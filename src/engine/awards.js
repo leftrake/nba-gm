@@ -76,7 +76,7 @@ export function computeAwards(league) {
   const mvpScore = (c) => valueScore(c.p.stats) * (0.7 + 0.6 * c.winPct);
   const dpoyScore = (c) =>
     (3 * pg(c.p.stats, 'stl') + 3 * pg(c.p.stats, 'blk') + 0.4 * pg(c.p.stats, 'reb')
-      + 0.15 * c.p.ratings.defense) * (0.85 + 0.3 * c.winPct);
+      + 0.15 * (c.p.ratings.perimeterDefense + c.p.ratings.interiorDefense) / 2) * (0.85 + 0.3 * c.winPct);
 
   const mvp = top(eligible, mvpScore);
   const dpoy = top(eligible, dpoyScore);

@@ -31,8 +31,4 @@ just delete it — git history keeps the record).
 
 ## Historical Records
 
-## Ratings System
-
-- Expand the rating system beyond the current 7 attributes: consider splitting defense into perimeter defense and interior defense, adding a court vision sub-rating to passing, a handle/ball security rating affecting turnovers, and a motor/hustle rating affecting loose balls and charges. Large change touching `overall()`, the sim, and every display that shows ratings.
-
 ## Tech debt

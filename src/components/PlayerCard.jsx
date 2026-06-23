@@ -9,15 +9,24 @@ import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
 import { personalityNote, scoutBackstoryNote } from '../engine/backstory.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
 import { Ovr, OvrArc, Pot, Cond, money, perGame, fgPct, TeamLink, TeamBadge, PlayerLink, Origin } from './shared.jsx';
+import ShotChart from './ShotChart.jsx';
 
 const RATINGS = [
-  ['inside', 'Inside'],
-  ['mid', 'Mid-Range'],
-  ['three', 'Three-Point'],
-  ['passing', 'Passing'],
-  ['rebounding', 'Rebounding'],
-  ['defense', 'Defense'],
-  ['athleticism', 'Athleticism'],
+  { category: 'Shooting', items: [
+    ['closeShot', 'Close Shot'], ['midRange', 'Mid-Range'], ['threePoint', 'Three-Point'], ['freeThrow', 'Free Throw'],
+  ] },
+  { category: 'Playmaking', items: [
+    ['passing', 'Passing'], ['ballHandling', 'Ball Handling'],
+  ] },
+  { category: 'Defense', items: [
+    ['perimeterDefense', 'Perimeter D'], ['interiorDefense', 'Interior D'], ['steal', 'Steal'], ['block', 'Block'],
+  ] },
+  { category: 'Rebounding', items: [
+    ['offensiveRebounding', 'Off. Rebounding'], ['defensiveRebounding', 'Def. Rebounding'],
+  ] },
+  { category: 'Physical', items: [
+    ['speed', 'Speed'], ['strength', 'Strength'], ['stamina', 'Stamina'],
+  ] },
 ];
 
 function barColor(v) {
@@ -371,22 +380,29 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
               {fogged && <div className="ui-section-subtitle">Scouted ranges — tighten as you watch him play</div>}
             </div>
           </div>
-          {[...RATINGS, ['stamina', 'Stamina']].map(([key, label]) => {
-            const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
-            const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
-            const hidden = fogged && isHidden(p, league.userTeamId, proGames);
-            const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, league.userTeamId, proGames) : [v, v];
-            const mid = (lo + hi) / 2;
-            return (
-              <div className="rating-row" key={key}>
-                <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--text-muted)' : barColor(v) }} /></div>
-                <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--text-muted)' : undefined }}>
-                  {hidden ? '?' : fogged ? `${lo}–${hi}` : v}
-                </span>
+          {RATINGS.map((group) => (
+            <div key={group.category}>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontWeight: 600, margin: 'var(--sp-2) 0 4px' }}>
+                {group.category}
               </div>
-            );
-          })}
+              {group.items.map(([key, label]) => {
+                const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
+                const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
+                const hidden = fogged && isHidden(p, league.userTeamId, proGames);
+                const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, league.userTeamId, proGames) : [v, v];
+                const mid = (lo + hi) / 2;
+                return (
+                  <div className="rating-row" key={key}>
+                    <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                    <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--text-muted)' : barColor(v) }} /></div>
+                    <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--text-muted)' : undefined }}>
+                      {hidden ? '?' : fogged ? `${lo}–${hi}` : v}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         {/* Progression chart */}
@@ -431,6 +447,14 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           <div className="ui-section-header"><div className="ui-section-title">This Season ({league.season})</div></div>
           <SeasonStats stats={p.stats} />
         </div>
+
+        {/* Shot chart */}
+        {!fogged && p.stats.gp > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header"><div className="ui-section-title">Shot Chart ({league.season})</div></div>
+            <ShotChart stats={p.stats} />
+          </div>
+        )}
 
         {/* Positional percentiles */}
         {p.stats.gp > 0 && (

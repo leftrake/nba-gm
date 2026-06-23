@@ -3,6 +3,7 @@ import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { initMorale } from './morale.js';
 import { NATIONALITIES, NATIONALITY_W } from './names.js';
 import { assignBackstory, durabilityAdjust, adjustGrowthDelta, adjustRatingDelta } from './backstory.js';
+import { ZONE_STAT_COLS } from './shotZones.js';
 
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
@@ -25,10 +26,10 @@ function pos2Score(p, pos2) {
   const r = p.ratings;
   switch (pos2) {
     case 'PG': return r.passing;
-    case 'SG': return (r.three + r.passing) / 2;
-    case 'SF': return (r.three + r.defense) / 2;
-    case 'PF': return (r.rebounding + r.inside) / 2;
-    case 'C': return (r.rebounding + r.inside) / 2;
+    case 'SG': return (r.threePoint + r.passing) / 2;
+    case 'SF': return (r.threePoint + r.perimeterDefense) / 2;
+    case 'PF': return (r.defensiveRebounding + r.closeShot) / 2;
+    case 'C': return (r.defensiveRebounding + r.closeShot) / 2;
     default: return 50;
   }
 }
@@ -87,12 +88,43 @@ export function posLabel(p) {
   return p.pos2 ? `${p.pos}/${p.pos2}` : p.pos;
 }
 
+// Per-position generation bias across all 14 ratings — a one-time
+// generation-time nudge toward each position's typical skill profile (not a
+// persistent weighting; overall() has its own position-dependent table
+// below). Each row is a hand-tuned split of the old 6-key table this
+// replaced, plus new speed/strength/freeThrow biases that didn't exist
+// before.
+// Each row is shifted by a uniform constant so its weighted sum under that
+// position's own POSITION_OVR_WEIGHTS (below) is ~0 — otherwise a position
+// whose heavily-weighted attributes (e.g. a center's rebounding/interior
+// D) also carry the biggest positive archetype bias gets a systematically
+// inflated overall purely from the interaction of the two tables, which
+// then inflates salaries/payroll league-wide. The shift pushes a
+// position's already-lightly-weighted "weak" attributes further down
+// rather than the reverse, which is the right trade: those attributes
+// barely move overall() for that position anyway.
 const ARCHETYPES = {
-  PG: { ins: -5, mid: 3, three: 5, pass: 10, reb: -8, def: 0 },
-  SG: { ins: -2, mid: 4, three: 6, pass: 0, reb: -5, def: 0 },
-  SF: { ins: 0, mid: 2, three: 2, pass: -2, reb: 0, def: 2 },
-  PF: { ins: 4, mid: -2, three: -4, pass: -5, reb: 6, def: 2 },
-  C: { ins: 8, mid: -5, three: -10, pass: -7, reb: 10, def: 4 },
+  PG: { closeShot: -5, midRange: -1, threePoint: 0, freeThrow: -1, passing: 8, ballHandling: 3, perimeterDefense: -1, interiorDefense: -5, steal: 0, block: -5, offensiveRebounding: -5, defensiveRebounding: -7, speed: 2, strength: -6 },
+  SG: { closeShot: -2, midRange: 1, threePoint: 2, freeThrow: 1, passing: 2, ballHandling: 2, perimeterDefense: 0, interiorDefense: -3, steal: 1, block: -3, offensiveRebounding: -3, defensiveRebounding: -4, speed: 2, strength: -3 },
+  SF: { closeShot: 0, midRange: 1, threePoint: 1, freeThrow: 0, passing: -1, ballHandling: -1, perimeterDefense: 1, interiorDefense: 1, steal: 0, block: 0, offensiveRebounding: 0, defensiveRebounding: 0, speed: 0, strength: 0 },
+  PF: { closeShot: 1, midRange: -2, threePoint: -3, freeThrow: -2, passing: -3, ballHandling: -4, perimeterDefense: -1, interiorDefense: 1, steal: -1, block: 1, offensiveRebounding: 2, defensiveRebounding: 2, speed: -4, strength: 2 },
+  C: { closeShot: 1, midRange: -6, threePoint: -8, freeThrow: -6, passing: -6, ballHandling: -7, perimeterDefense: -4, interiorDefense: 1, steal: -4, block: 1, offensiveRebounding: 2, defensiveRebounding: 2, speed: -7, strength: 1 },
+};
+
+// overall() weights by position (each row sums to 1.0). Built from a
+// category-total table (how much Shooting/Playmaking/Defense/Rebounding/
+// Physical matter for that position) times an internal split (how a
+// category's total divides among its own attributes) — see the ratings
+// system plan for the derivation. Centers barely count shooting/passing;
+// point guards barely count interior defense/post strength. Read off
+// p.pos only, never pos2, matching how ARCHETYPES above also only biases
+// off primary position.
+const POSITION_OVR_WEIGHTS = {
+  PG: { closeShot: 0.136, midRange: 0.068, threePoint: 0.1156, freeThrow: 0.0204, passing: 0.1408, ballHandling: 0.0792, perimeterDefense: 0.072, interiorDefense: 0.024, steal: 0.048, block: 0.016, offensiveRebounding: 0.0228, defensiveRebounding: 0.0372, speed: 0.165, strength: 0.055 },
+  SG: { closeShot: 0.152, midRange: 0.076, threePoint: 0.1292, freeThrow: 0.0228, passing: 0.0896, ballHandling: 0.0504, perimeterDefense: 0.081, interiorDefense: 0.027, steal: 0.045, block: 0.027, offensiveRebounding: 0.0304, defensiveRebounding: 0.0496, speed: 0.143, strength: 0.077 },
+  SF: { closeShot: 0.12, midRange: 0.06, threePoint: 0.102, freeThrow: 0.018, passing: 0.0896, ballHandling: 0.0504, perimeterDefense: 0.07, interiorDefense: 0.06, steal: 0.04, block: 0.03, offensiveRebounding: 0.0532, defensiveRebounding: 0.0868, speed: 0.11, strength: 0.11 },
+  PF: { closeShot: 0.088, midRange: 0.044, threePoint: 0.0748, freeThrow: 0.0132, passing: 0.0512, ballHandling: 0.0288, perimeterDefense: 0.048, interiorDefense: 0.108, steal: 0.024, block: 0.06, offensiveRebounding: 0.0988, defensiveRebounding: 0.1612, speed: 0.06, strength: 0.14 },
+  C: { closeShot: 0.056, midRange: 0.028, threePoint: 0.0476, freeThrow: 0.0084, passing: 0.032, ballHandling: 0.018, perimeterDefense: 0.028, interiorDefense: 0.154, steal: 0.014, block: 0.084, offensiveRebounding: 0.133, defensiveRebounding: 0.217, speed: 0.027, strength: 0.153 },
 };
 
 // Stamina runs on its own track, outside p.ratings, so the potential
@@ -155,19 +187,12 @@ export function shouldRetire(p, rng = rand) {
   return rng() < clamp(base - quality, 0.05, 0.97);
 }
 
-// Free-throw shooting, derived from shooting touch rather than stored as a
-// rating, so it exists for every player including those in old saves.
-export function ftRating(p) {
-  const r = p.ratings;
-  return Math.round(clamp(r.mid * 0.5 + r.three * 0.3 + r.passing * 0.2, 25, 99));
-}
-
 export function overall(p) {
   const r = p.ratings;
-  return Math.round(
-    r.inside * 0.2 + r.mid * 0.13 + r.three * 0.17 +
-    r.passing * 0.14 + r.rebounding * 0.13 + r.defense * 0.13 + r.athleticism * 0.1
-  );
+  const w = POSITION_OVR_WEIGHTS[p.pos] ?? POSITION_OVR_WEIGHTS.SF;
+  let sum = 0;
+  for (const key in w) sum += r[key] * w[key];
+  return Math.round(sum);
 }
 
 export function generatePlayer(rng = rand, opts = {}) {
@@ -177,6 +202,10 @@ export function generatePlayer(rng = rand, opts = {}) {
   const arch = ARCHETYPES[pos];
 
   const mk = (mod) => Math.round(clamp(base + mod + gauss(0, 7, rng), 25, 99));
+  // Physical attributes (speed/strength) decline with age at generation
+  // time too, same as the old single "athleticism" field used to — a
+  // 35-year-old free agent shouldn't generate with a rookie's legs.
+  const mkPhys = (mod) => Math.round(clamp(base + mod + gauss(0, 8, rng) - (age > 30 ? (age - 30) * 2 : 0), 25, 99));
 
   const id = opts._forcedId !== undefined ? opts._forcedId : nextPlayerId++;
   const country = pickCountry(rng);
@@ -190,13 +219,20 @@ export function generatePlayer(rng = rand, opts = {}) {
     // NBA seasons completed; veterans entered the league at 19–22
     exp: opts.exp ?? Math.max(0, age - randInt(19, 22, rng)),
     ratings: {
-      inside: mk(arch.ins),
-      mid: mk(arch.mid),
-      three: mk(arch.three),
-      passing: mk(arch.pass),
-      rebounding: mk(arch.reb),
-      defense: mk(arch.def),
-      athleticism: Math.round(clamp(base + gauss(0, 8, rng) - (age > 30 ? (age - 30) * 2 : 0), 25, 99)),
+      closeShot: mk(arch.closeShot),
+      midRange: mk(arch.midRange),
+      threePoint: mk(arch.threePoint),
+      freeThrow: mk(arch.freeThrow),
+      passing: mk(arch.passing),
+      ballHandling: mk(arch.ballHandling),
+      perimeterDefense: mk(arch.perimeterDefense),
+      interiorDefense: mk(arch.interiorDefense),
+      steal: mk(arch.steal),
+      block: mk(arch.block),
+      offensiveRebounding: mk(arch.offensiveRebounding),
+      defensiveRebounding: mk(arch.defensiveRebounding),
+      speed: mkPhys(arch.speed),
+      strength: mkPhys(arch.strength),
     },
     stamina: generateStamina(pos, age, rng),
     condition: 100, // game-day freshness, managed by the league's day loop
@@ -248,7 +284,9 @@ export function generatePlayer(rng = rand, opts = {}) {
 }
 
 export function emptyStats() {
-  return { gp: 0, min: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0, pm: 0 };
+  const s = { gp: 0, min: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, tov: 0, pf: 0, pm: 0 };
+  for (const col of ZONE_STAT_COLS) s[col] = 0;
+  return s;
 }
 
 // Floor for generated fringe talent (open free agency, roster replenishment,
@@ -311,7 +349,11 @@ export function generateContract(p, rng = rand) {
 // Rows are capped at the last HISTORY_SEASONS so long careers don't bloat
 // the localStorage save. The array is created lazily, so players from old
 // saves need no migration — their history simply starts now.
-export const HISTORY_KEYS = ['inside', 'mid', 'three', 'passing', 'rebounding', 'defense', 'athleticism'];
+export const HISTORY_KEYS = [
+  'closeShot', 'midRange', 'threePoint', 'freeThrow', 'passing', 'ballHandling',
+  'perimeterDefense', 'interiorDefense', 'steal', 'block',
+  'offensiveRebounding', 'defensiveRebounding', 'speed', 'strength',
+];
 export const HISTORY_SEASONS = 12;
 
 // Current ratings in history-row order (without the leading season)
@@ -366,11 +408,11 @@ export function similarPlayers(league, target, count = 5) {
 // to weight that player's development roll toward a skill area, at the cost
 // of slight regression in a neglected attribute.
 export const TRAINING_FOCUS_OPTIONS = [
-  { id: 'scoring', label: 'Scoring', boost: ['inside', 'mid', 'three'], neglect: 'defense' },
-  { id: 'playmaking', label: 'Playmaking', boost: ['passing'], neglect: 'rebounding' },
-  { id: 'defense', label: 'Defense', boost: ['defense'], neglect: 'three' },
-  { id: 'rebounding', label: 'Rebounding', boost: ['rebounding'], neglect: 'three' },
-  { id: 'athleticism', label: 'Athleticism', boost: ['athleticism'], neglect: 'passing' },
+  { id: 'scoring', label: 'Scoring', boost: ['closeShot', 'midRange', 'threePoint', 'freeThrow'], neglect: 'perimeterDefense' },
+  { id: 'playmaking', label: 'Playmaking', boost: ['passing', 'ballHandling'], neglect: 'defensiveRebounding' },
+  { id: 'defense', label: 'Defense', boost: ['perimeterDefense', 'interiorDefense', 'steal', 'block'], neglect: 'threePoint' },
+  { id: 'rebounding', label: 'Rebounding', boost: ['offensiveRebounding', 'defensiveRebounding'], neglect: 'threePoint' },
+  { id: 'physical', label: 'Physical', boost: ['speed', 'strength'], neglect: 'passing' },
 ];
 
 // Yearly development. Growth is ceiling-driven: high-potential players under
@@ -397,7 +439,7 @@ export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
     // (current overall) — without it, the floor-clipped downside draws get
     // truncated while upward draws mostly pass through untouched, and the
     // league's average overall creeps up indefinitely.
-    const driftMean = p.backstory === 'bust' ? -3.2 : p.backstory === 'gem' ? 1.5 : -1.5;
+    const driftMean = p.backstory === 'bust' ? -4.0 : p.backstory === 'gem' ? 1.5 : -2.8;
     const drift = gauss(driftMean, 2.5, rng);
     p.potential = clamp(Math.round(p.potential + drift), Math.round(overall(p)), 99);
   }
@@ -427,7 +469,12 @@ export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
   for (const key of Object.keys(p.ratings)) {
     let d = delta + gauss(0, 1.2, rng);
     if (focus) {
-      if (focus.boost.includes(key)) d += 0.8;
+      // Total boost across the focus's attributes stays ~0.8 regardless of
+      // how many it covers — several of the new split categories have more
+      // boosted members than the old 7-rating system did, and applying the
+      // full 0.8 to each one (against a single -0.5 neglect) would give
+      // every focus a much bigger net-positive growth bias than intended.
+      if (focus.boost.includes(key)) d += 0.8 / focus.boost.length;
       else if (key === focus.neglect) d -= 0.5;
     }
     d = adjustRatingDelta(p, d, key, room, rng);

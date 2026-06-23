@@ -2,8 +2,8 @@ import React from 'react';
 import { PlayerLink } from './shared.jsx';
 
 // Report row arrays come from ratingRow() in engine/players.js:
-// [overall, inside, mid, three, passing, rebounding, defense, athleticism, stamina]
-const ATTR_LABELS = ['Ins', 'Mid', '3PT', 'Pass', 'Reb', 'Def', 'Ath', 'Sta'];
+// [overall, ...HISTORY_KEYS (14 ratings), stamina]
+const ATTR_LABELS = ['CS', 'Mid', '3PT', 'FT', 'Pass', 'BH', 'PerD', 'IntD', 'Stl', 'Blk', 'OReb', 'DReb', 'Spd', 'Str', 'Sta'];
 
 const BREAKOUT = 4; // overall gain that counts as a breakout leap
 const COLLAPSE = -5; // overall loss that counts as a steep decline

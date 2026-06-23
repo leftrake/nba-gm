@@ -1,6 +1,7 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
+import { ZONE_STAT_COLS } from './shotZones.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame } from './sim.js';
 import { initDraft } from './draft.js';
@@ -360,6 +361,34 @@ export function backfillPlayers(league) {
     if (p.stats && p.stats.pf == null) p.stats.pf = 0;
     // stats fields added with rebound splits and plus/minus
     if (p.stats && p.stats.oreb == null) { p.stats.oreb = 0; p.stats.dreb = 0; p.stats.pm = 0; }
+    // stats fields added with the shot-chart zone breakdown
+    for (const bucket of [p.stats, p.playoffStats, p.gLeagueStats]) {
+      if (!bucket) continue;
+      for (const col of ZONE_STAT_COLS) if (bucket[col] == null) bucket[col] = 0;
+    }
+    // saves predating the 14-attribute ratings split — derive the new
+    // fields from the old 7-rating shape (inside/mid/three/passing/
+    // rebounding/defense/athleticism) rather than a fresh roll, so an
+    // existing player's profile carries over instead of resetting.
+    if (p.ratings && p.ratings.closeShot == null) {
+      const r = p.ratings;
+      const oldMid = r.mid ?? 60, oldThree = r.three ?? 60, oldPassing = r.passing ?? 60;
+      const oldDefense = r.defense ?? 60, oldRebounding = r.rebounding ?? 60, oldAthleticism = r.athleticism ?? 60;
+      r.closeShot = r.inside ?? 60;
+      r.midRange = oldMid;
+      r.threePoint = oldThree;
+      r.freeThrow = Math.round(clamp(oldMid * 0.5 + oldThree * 0.3 + oldPassing * 0.2, 25, 99));
+      r.ballHandling = oldPassing;
+      r.perimeterDefense = oldDefense;
+      r.interiorDefense = oldDefense;
+      r.steal = oldDefense;
+      r.block = oldDefense;
+      r.offensiveRebounding = oldRebounding;
+      r.defensiveRebounding = oldRebounding;
+      r.speed = oldAthleticism;
+      r.strength = oldAthleticism;
+      delete r.inside; delete r.mid; delete r.three; delete r.rebounding; delete r.defense; delete r.athleticism;
+    }
     if (!p.awards) p.awards = []; // saves predating awards
     // saves predating the stamina/fatigue system
     if (p.stamina == null) p.stamina = generateStamina(p.pos, p.age, rng);
