@@ -807,6 +807,20 @@ function collectPlayoffPbpGames(po) {
   return out.sort((a, b) => a.round - b.round || a.idx - b.idx).map((x) => x.g);
 }
 
+// Injury truncation shaves points off a box line *after* simGame has already
+// banked its quarter-by-quarter line score live, so the quarters can sum to
+// more than the post-truncation final. Claw the difference back out of the
+// latest quarters (where a late injury would actually have cost the points)
+// so the displayed line score always adds up to the final score.
+function reconcileQuarters(qtrs, pts) {
+  let delta = qtrs.reduce((s, q) => s + q, 0) - pts;
+  for (let i = qtrs.length - 1; i >= 0 && delta > 0; i--) {
+    const take = Math.min(delta, qtrs[i]);
+    qtrs[i] -= take;
+    delta -= take;
+  }
+}
+
 // Simulate one day of games. Returns results.
 export function simDay(league) {
   if (league.phase !== 'regular' || league.dayIndex >= league.schedule.length) return [];
@@ -850,6 +864,8 @@ export function simDay(league) {
     const rawHomeWon = r.homePts > r.awayPts;
     r.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
     r.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
+    reconcileQuarters(r.homeQtrs, r.homePts);
+    reconcileQuarters(r.awayQtrs, r.awayPts);
     const homeWon = r.homePts !== r.awayPts ? r.homePts > r.awayPts : rawHomeWon;
     if (homeWon) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
@@ -1028,6 +1044,8 @@ export function simPlayoffGame(league) {
     const rawHomeWon = r.homePts > r.awayPts;
     game.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
     game.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
+    reconcileQuarters(game.homeQtrs, game.homePts);
+    reconcileQuarters(game.awayQtrs, game.awayPts);
     const homeWon = game.homePts !== game.awayPts ? game.homePts > game.awayPts : rawHomeWon;
     const highWon = homeWon === (homeId === m.high);
     if (highWon) m.highWins += 1; else m.lowWins += 1;
