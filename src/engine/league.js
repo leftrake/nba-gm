@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { ZONE_STAT_COLS } from './shotZones.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame } from './sim.js';
@@ -97,6 +97,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   if (fantasy) {
     initFantasyDraft(league, rng);
   } else {
+    for (const team of teams) ensureUniqueJerseys(team);
     league.freeAgents.sort((a, b) => overall(b) - overall(a));
     // Only the user's lineup persists; AI teams auto-set theirs every game
     getTeam(league, userTeamId).lineup = autoLineup(getTeam(league, userTeamId).roster);
@@ -395,6 +396,11 @@ export function backfillPlayers(league) {
     if (p.condition == null) p.condition = 100;
     // saves predating the injury system
     if (p.durability == null) p.durability = generateDurability(rng);
+    // saves predating height/weight/wingspan/jersey numbers
+    if (p.heightIn == null) p.heightIn = generateHeight(p.pos, rng);
+    if (p.weightLbs == null) p.weightLbs = generateWeight(p.pos, p.heightIn, rng);
+    if (p.wingspanIn == null) p.wingspanIn = generateWingspan(p.pos, p.heightIn, rng);
+    if (p.jerseyNumber == null) p.jerseyNumber = randInt(0, 99, rng);
     // saves predating the morale system
     if (p.morale == null) p.morale = initMorale(p.id);
     if (p.moraleLowStreak == null) p.moraleLowStreak = 0;
@@ -419,6 +425,7 @@ export function backfillPlayers(league) {
   };
   for (const team of league.teams) team.roster.forEach(fill);
   for (const team of league.teams) (team.twoWay || []).forEach(fill);
+  for (const team of league.teams) ensureUniqueJerseys(team);
   if (!league.settings) league.settings = {};
   if (league.settings.suppressInjuryAlerts == null) league.settings.suppressInjuryAlerts = false;
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
@@ -1603,6 +1610,7 @@ export function simFreeAgencyDay(league) {
           recordContract(target, league.season, formerTeam.id, target.contract);
           delete target.extOfferMade;
           formerTeam.roster.push(target);
+          ensureUniqueJerseys(formerTeam);
           const aiMatchText = `The ${formerTeam.city} ${formerTeam.name} match an offer sheet to keep ${target.name} (${fmtM(demand)}/yr x ${years}yr).`;
           pushNews(league, { day: 0, category: 'signing', teamIds: [formerTeam.id], text: aiMatchText });
           recordTransaction(target, { season: league.season, type: 'free-agency', team: formerTeam.id, text: aiMatchText });
@@ -1746,6 +1754,7 @@ export function signMidSeasonFA(league, teamId, playerId) {
   league.freeAgents.splice(idx, 1);
   if (team.id === league.userTeamId) p.everOnUserTeam = true;
   team.roster.push(p); // on the roster now — available for the next game
+  ensureUniqueJerseys(team);
   bumpTurmoil(team, 0.5);
   const text = buyout
     ? `The ${team.city} ${team.name} sign bought-out ${p.name} for the stretch run.`
@@ -2089,6 +2098,7 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   league.freeAgents.splice(idx, 1);
   if (teamId === league.userTeamId) p.everOnUserTeam = true;
   team.roster.push(p);
+  ensureUniqueJerseys(team);
   if (league.negotiations?.[playerId] && teamId !== league.userTeamId) {
     pushNews(league, { day: 0, category: 'signing', teamIds: [team.id, league.userTeamId], text: `${p.name} broke off negotiations with you to sign elsewhere.` });
   }
@@ -2128,6 +2138,7 @@ export function signToTwoWay(league, teamId, playerId) {
   league.freeAgents.splice(idx, 1);
   if (teamId === league.userTeamId) p.everOnUserTeam = true;
   team.twoWay.push(p);
+  ensureUniqueJerseys(team);
   const twTextSign = `The ${team.city} ${team.name} sign ${p.name} to a two-way contract.`;
   pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: twTextSign });
   recordTransaction(p, { season: league.season, day: league.dayIndex || 0, type: 'two-way', team: team.id, text: twTextSign });
@@ -2141,6 +2152,7 @@ export function callUpTwoWay(league, teamId, playerId) {
   if (idx === -1) return { ok: false, error: 'Not on this team\'s two-way roster.' };
   const p = team.twoWay.splice(idx, 1)[0];
   team.roster.push(p);
+  ensureUniqueJerseys(team);
   pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} call up two-way player ${p.name}.` });
   return { ok: true, player: p };
 }
@@ -2174,6 +2186,7 @@ export function convertTwoWayToStandard(league, teamId, playerId, salary, years)
   if (twoWayIdx !== -1) {
     team.twoWay.splice(twoWayIdx, 1);
     team.roster.push(p);
+    ensureUniqueJerseys(team);
   }
   pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} convert ${p.name} to a standard contract (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
   return { ok: true, player: p };
@@ -2216,6 +2229,7 @@ export function matchOfferSheet(league, playerId) {
   league.freeAgents = league.freeAgents.filter((x) => x.id !== playerId);
   p.everOnUserTeam = true;
   team.roster.push(p);
+  ensureUniqueJerseys(team);
   league.offerSheets.splice(idx, 1);
   const matchText = `The ${team.city} ${team.name} match the offer sheet and retain ${p.name} (${fmtM(sheet.salary)}/yr x ${sheet.years}yr).`;
   pushNews(league, { day: 0, category: 'signing', major: true, teamIds: [team.id], text: matchText });

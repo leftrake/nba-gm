@@ -613,7 +613,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               <table className="ui-table sticky-head">
                 <thead>
                   <tr>
-                    <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th>
+                    <th>Ovr</th><th>Pot</th><th className="num">#</th><th>Player</th><th>Pos</th><th className="num">Age</th>
                     <th className="num" title="Stamina">Sta</th>
                     <th className="num">Cond</th>
                     <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th>
@@ -626,6 +626,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     <tr key={p.id} className="clickable" onClick={() => openPlayer?.(p)}>
                       <td>{isUser ? <OvrArc value={overall(p)} /> : <Ovr p={p} league={league} fogged={!isUser} />}</td>
                       <td><Pot p={p} league={league} fogged={!isUser} /></td>
+                      <td className="num">{p.jerseyNumber}</td>
                       <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                       <td>{posLabel(p)}</td>
                       <td className="num">{p.age}</td>
@@ -727,7 +728,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               <table className="ui-table sticky-head">
                 <thead>
                   <tr>
-                    <th>Ovr</th><th>Player</th><th>Pos</th><th className="num">Age</th>
+                    <th>Ovr</th><th className="num">#</th><th>Player</th><th>Pos</th><th className="num">Age</th>
                     <th className="num">Salary</th><th className="num">Yrs</th>
                     <th>
                       {hasExtensionEligible ? (
@@ -745,13 +746,14 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                       <React.Fragment key={p.id}>
                         {isUser && i > 0 && starterIds.has(rosterRows[i - 1].id) && !isStarter && (
                           <tr>
-                            <td colSpan={isUser ? 8 : 7} style={{ padding: 0, borderBottom: '2px solid var(--team-color-safe)' }}>
+                            <td colSpan={isUser ? 9 : 8} style={{ padding: 0, borderBottom: '2px solid var(--team-color-safe)' }}>
                               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '4px 8px' }}>Bench</div>
                             </td>
                           </tr>
                         )}
                         <tr className="clickable" onClick={() => openPlayer?.(p)}>
                           <td>{isUser ? <OvrArc value={overall(p)} /> : <Ovr p={p} league={league} fogged={!isUser} />}</td>
+                          <td className="num">{p.jerseyNumber}</td>
                           <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                           <td>{posLabel(p)}</td>
                           <td className="num">{p.age}</td>
@@ -972,7 +974,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               <table className="ui-table sticky-head">
                 <thead>
                   <tr>
-                    <th>Player</th><th>Pos</th><th className="num">Age</th>
+                    <th className="num">#</th><th>Player</th><th>Pos</th><th className="num">Age</th>
                     <th className="num">Ovr</th>
                     <th className="num" title="Overall change from last season end">Δ</th>
                     <th>
@@ -997,6 +999,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     const delta = lastOvr != null ? overall(p) - lastOvr : null;
                     return (
                       <tr key={p.id} className="clickable" onClick={() => openPlayer?.(p)}>
+                        <td className="num">{p.jerseyNumber}</td>
                         <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                         <td>{posLabel(p)}</td>
                         <td className="num">{p.age}</td>

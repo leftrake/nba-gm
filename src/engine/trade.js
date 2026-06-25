@@ -1,4 +1,4 @@
-import { overall, recordTransaction } from './players.js';
+import { overall, recordTransaction, ensureUniqueJerseys } from './players.js';
 import { getTeam, payroll, recordSeasonStint, tradesLocked } from './league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews, recordTrade } from './save.js';
@@ -165,6 +165,8 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   for (const p of outB) recordSeasonStint(p, b.id);
   a.roster = a.roster.filter((p) => !playersAIds.includes(p.id)).concat(outB);
   b.roster = b.roster.filter((p) => !playersBIds.includes(p.id)).concat(outA);
+  ensureUniqueJerseys(a);
+  ensureUniqueJerseys(b);
   // failed extension talks don't follow a player to a new front office
   // (signed extensions do, like any contract)
   for (const p of [...outA, ...outB]) {
@@ -327,6 +329,7 @@ export function executeMultiTrade(league, teamIds, sends) {
     if (leg.team.id === league.userTeamId) {
       for (const p of leg.inPlayers) p.everOnUserTeam = true;
     }
+    ensureUniqueJerseys(leg.team);
   }
   const allMoved = legs.flatMap((l) => l.outPlayers);
   for (const p of allMoved) {

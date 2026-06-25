@@ -1,5 +1,5 @@
 import { randInt, pick, clamp } from './rng.js';
-import { overall, supportedMinutes } from './players.js';
+import { overall, supportedMinutes, expectedWeight } from './players.js';
 import { pushNews } from './save.js';
 
 // ---------- Injuries ----------
@@ -40,6 +40,11 @@ export function injuryChance(p, min) {
   prob *= min / 32; // exposure
   prob *= 1 + Math.max(0, min - supportedMinutes(p)) * 0.05; // overworked tonight
   prob *= 1 + (100 - (p.condition ?? 100)) * 0.015; // worn down coming in
+  // carrying weight beyond what your own height/position predicts adds
+  // wear and tear; being light for your frame doesn't (no penalty below 0)
+  const expW = expectedWeight(p.pos, p.heightIn ?? 78);
+  const bulkZ = clamp(((p.weightLbs ?? expW) - expW) / 15, -2, 2);
+  prob *= 1 + Math.max(0, bulkZ) * 0.05;
   return clamp(prob, 0, 0.25);
 }
 

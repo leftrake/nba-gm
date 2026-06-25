@@ -1,5 +1,5 @@
 import { rand, gauss, clamp } from './rng.js';
-import { overall, supportedMinutes } from './players.js';
+import { overall, supportedMinutes, WINGSPAN_POS_AVG } from './players.js';
 import { ZONE_STAT_COLS, shotHash, pickZone } from './shotZones.js';
 import { moraleRatingMod } from './morale.js';
 import { clutchMod } from './backstory.js';
@@ -194,6 +194,12 @@ function gamePlayer({ p, min, slot }, rng) {
   // playing out of position mostly bleeds defense and rebounding
   const defFit = 0.55 + 0.45 * fit;
   const score = r.closeShot * 0.4 + r.midRange * 0.25 + r.threePoint * 0.35;
+  // Size/length relative to the player's position, as a bounded z-score —
+  // a small nudge to rebounding/rim-protection/finishing on top of the raw
+  // ratings, not a replacement for them. Centered on 0 across the league
+  // (z-score around the position mean) so it shifts the tails, not the
+  // average.
+  const lengthZ = clamp(((p.wingspanIn ?? 78) - (WINGSPAN_POS_AVG[p.pos] ?? 81)) / 4, -2, 2);
   return {
     name: p.name, // for the game-flow log
     targetMin: min,
@@ -203,34 +209,34 @@ function gamePlayer({ p, min, slot }, rng) {
     // without it the league's top ~10 scorers bunch tightly around the
     // same ppg, and no one looks like a season-leading #1 option.
     usage: Math.pow(Math.max(score + sharp, 25) / 60, 2.36) * (1 + Math.max(0, score - 88) * 0.012),
-    ins: r.closeShot + sharp + moraleAdj,
+    ins: r.closeShot + lengthZ + sharp + moraleAdj,
     mid: r.midRange + sharp + moraleAdj,
     three: r.threePoint + sharp + moraleAdj,
     ft: r.freeThrow + sharp + moraleAdj,
     pass: r.passing + moraleAdj,
     ballHandle: r.ballHandling + moraleAdj,
     perimDef: r.perimeterDefense * defFit,
-    interiorDef: r.interiorDefense * defFit,
+    interiorDef: (r.interiorDefense + lengthZ) * defFit,
     steal: r.steal * defFit,
-    block: r.block * defFit,
-    oreb: r.offensiveRebounding * defFit,
-    dreb: r.defensiveRebounding * defFit,
+    block: (r.block + lengthZ * 2) * defFit,
+    oreb: (r.offensiveRebounding + lengthZ * 1.5) * defFit,
+    dreb: (r.defensiveRebounding + lengthZ * 1.5) * defFit,
     speed: r.speed,
     strength: r.strength,
     // Fatigue bases: the fresh values above, restored each stint before the
     // current fatigue penalty is subtracted (see applyFatigue).
-    insBase: r.closeShot + sharp + moraleAdj,
+    insBase: r.closeShot + lengthZ + sharp + moraleAdj,
     midBase: r.midRange + sharp + moraleAdj,
     threeBase: r.threePoint + sharp + moraleAdj,
     ftBase: r.freeThrow + sharp + moraleAdj,
     passBase: r.passing + moraleAdj,
     ballHandleBase: r.ballHandling + moraleAdj,
     perimDefBase: r.perimeterDefense * defFit,
-    interiorDefBase: r.interiorDefense * defFit,
+    interiorDefBase: (r.interiorDefense + lengthZ) * defFit,
     stealBase: r.steal * defFit,
-    blockBase: r.block * defFit,
-    orebBase: r.offensiveRebounding * defFit,
-    drebBase: r.defensiveRebounding * defFit,
+    blockBase: (r.block + lengthZ * 2) * defFit,
+    orebBase: (r.offensiveRebounding + lengthZ * 1.5) * defFit,
+    drebBase: (r.defensiveRebounding + lengthZ * 1.5) * defFit,
     speedBase: r.speed,
     strengthBase: r.strength,
     supported: supportedMinutes(p),

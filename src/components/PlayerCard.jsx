@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
-import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
+import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, formatHeight, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards, leaderMinGp } from '../engine/awards.js';
 import { positionalPercentiles } from '../engine/stats.js';
@@ -326,6 +326,12 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
               {p.nationality && (
                 <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>
                   <Origin p={p} full />
+                </div>
+              )}
+              {p.heightIn != null && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 2 }}>
+                  {p.jerseyNumber != null && <>#{p.jerseyNumber} · </>}
+                  {formatHeight(p.heightIn)} · {p.weightLbs} lbs · {formatHeight(p.wingspanIn)} wingspan
                 </div>
               )}
             </div>

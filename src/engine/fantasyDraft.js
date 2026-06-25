@@ -1,6 +1,6 @@
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, salaryFor, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, salaryFor, recordContract, recordTransaction, ensureUniqueJerseys, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { autoLineup } from './lineup.js';
 import { evaluateStrategies } from './strategy.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -122,6 +122,7 @@ export function makeFantasyPick(league, playerId) {
   const team = getTeam(league, teamId);
   const pick = d.pickIndex + 1;
   team.roster.push(p);
+  ensureUniqueJerseys(team);
   d.results.push({
     pick, round: Math.floor(d.pickIndex / PICKS_PER_ROUND) + 1,
     teamId, playerId: p.id, playerName: p.name, pos: p.pos, ovr: overall(p), age: p.age,

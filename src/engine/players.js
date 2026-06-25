@@ -164,6 +164,56 @@ export function generateDurability(rng = rand) {
   return Math.round(clamp(gauss(65, 18, rng), 25, 99));
 }
 
+// Physical size, generated like everything else above: position-biased
+// Gaussian rolls. Height drives weight/wingspan so a position's "build"
+// stays internally consistent rather than rolling independently.
+const HEIGHT_BASE = { PG: 75, SG: 77, SF: 79, PF: 81, C: 83 }; // inches
+const WEIGHT_POS_BULK = { PG: 0, SG: 12, SF: 28, PF: 33, C: 43 };
+const WINGSPAN_POS_OFFSET = { PG: 1.5, SG: 2, SF: 2.5, PF: 3.5, C: 4.5 };
+// Position-average wingspan, for sim.js to compare an individual player's
+// length against — captures both "tall for position" and "long arms for
+// height" in one number.
+export const WINGSPAN_POS_AVG = Object.fromEntries(
+  Object.keys(HEIGHT_BASE).map((pos) => [pos, HEIGHT_BASE[pos] + WINGSPAN_POS_OFFSET[pos]]),
+);
+
+export function generateHeight(pos, rng = rand) {
+  return Math.round(clamp(gauss(HEIGHT_BASE[pos] ?? 78, 2.5, rng), 68, 90));
+}
+
+export function expectedWeight(pos, heightIn) {
+  return heightIn * 2.5 + (WEIGHT_POS_BULK[pos] ?? 20);
+}
+
+export function generateWeight(pos, heightIn, rng = rand) {
+  return Math.round(clamp(expectedWeight(pos, heightIn) + gauss(0, 10, rng), 150, 290));
+}
+
+export function generateWingspan(pos, heightIn, rng = rand) {
+  return Math.round(clamp(heightIn + gauss(WINGSPAN_POS_OFFSET[pos] ?? 2.5, 2.5, rng), heightIn - 3, heightIn + 10));
+}
+
+// "6'7"" — for display only.
+export function formatHeight(heightIn) {
+  return `${Math.floor(heightIn / 12)}'${heightIn % 12}"`;
+}
+
+// Keeps jersey numbers unique across a team's active roster + two-way
+// slots. Deterministic (lowest free number) so call sites never need to
+// thread an rng through — call after any roster/twoWay mutation that adds
+// a player (signings, trades, draft picks, two-way moves).
+export function ensureUniqueJerseys(team) {
+  const pool = [...team.roster, ...(team.twoWay || [])];
+  const used = new Set();
+  for (const p of pool) {
+    if (p.jerseyNumber != null && !used.has(p.jerseyNumber)) { used.add(p.jerseyNumber); continue; }
+    let n = 0;
+    while (used.has(n) && n <= 99) n++;
+    p.jerseyNumber = n;
+    used.add(n);
+  }
+}
+
 export function durabilityNote(p) {
   const d = p.durability ?? 65;
   if (d < 45) return 'major durability concerns';
@@ -210,6 +260,7 @@ export function generatePlayer(rng = rand, opts = {}) {
   const id = opts._forcedId !== undefined ? opts._forcedId : nextPlayerId++;
   const country = pickCountry(rng);
   const backstory = assignBackstory(rng);
+  const heightIn = opts.heightIn ?? generateHeight(pos, rng);
   const p = {
     id,
     name: `${pick(country.firstNames, rng)} ${pick(country.lastNames, rng)}`,
@@ -237,6 +288,10 @@ export function generatePlayer(rng = rand, opts = {}) {
     stamina: generateStamina(pos, age, rng),
     condition: 100, // game-day freshness, managed by the league's day loop
     durability: Math.round(clamp(generateDurability(rng) + durabilityAdjust(backstory), 25, 99)),
+    heightIn,
+    weightLbs: opts.weightLbs ?? generateWeight(pos, heightIn, rng),
+    wingspanIn: opts.wingspanIn ?? generateWingspan(pos, heightIn, rng),
+    jerseyNumber: opts.jerseyNumber ?? randInt(0, 99, rng), // provisional; de-duped on roster join, see ensureUniqueJerseys
     injury: null, // { type, tier, daysLeft } while hurt — see engine/injuries.js
     // Hidden personality archetype — see engine/backstory.js. `scout` tracks
     // pre-draft/pre-roster scouting investment (engine/scoutingTrips.js).

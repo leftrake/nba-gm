@@ -68,6 +68,7 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
             return (
               <tr key={line.playerId}>
                 <td>
+                  {p?.jerseyNumber != null && <span style={{ color: 'var(--text-muted)' }}>#{p.jerseyNumber} </span>}
                   {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
                   {badge && (
                     <span className="tag" style={{ marginLeft: 6, color: 'var(--accent)' }} title={badge === 'TD' ? 'Triple-double' : 'Double-double'}>
@@ -177,7 +178,7 @@ export function TopPerformers({ league, game, openPlayer }) {
         const p = byId.get(l.playerId);
         return (
           <div key={l.playerId} className="result-row" style={{ justifyContent: 'flex-start', gap: 8 }}>
-            <span>★ {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
+            <span>★ {p?.jerseyNumber != null && <span style={{ color: 'var(--text-muted)' }}>#{p.jerseyNumber} </span>}{p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
               <span style={{ color: 'var(--muted)' }}> (<TeamBadge team={getTeam(league, teamId)} size="small" /> {getTeam(league, teamId).name})</span>
             </span>
             <span style={{ marginLeft: 'auto' }}>
