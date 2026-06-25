@@ -122,4 +122,10 @@ async function main() {
   }
 }
 
-main();
+// Only auto-run when invoked directly (`node driver.mjs`), not when another
+// script imports these helpers (per the "import the helpers" usage in
+// SKILL.md) — otherwise importing this module silently launches a second,
+// unwanted browser session.
+if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+  main();
+}
