@@ -2241,7 +2241,15 @@ export function releasePlayer(league, teamId, playerId) {
   if (p.contract) {
     team.deadMoney.push({ playerName: p.name, salary: p.contract.salary, years: p.contract.years });
   }
+  if (p.extension) {
+    // a signed extension is an addendum to the deal being bought out, not a
+    // separate obligation — it dies with the contract instead of surviving
+    // as a phantom liability on whichever team signs him next
+    team.deadMoney.push({ playerName: p.name, salary: p.extension.salary, years: p.extension.years });
+  }
   p.contract = null;
+  p.extension = null;
+  delete p.extOfferMade;
   // a fresh start: whatever grudge he held against this front office is
   // moot once he's no longer on its roster (mirrors executeTrade's reset)
   p.tradeDemand = false;
