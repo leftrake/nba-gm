@@ -383,6 +383,17 @@ export function recordContract(p, season, teamId, contract) {
   }
 }
 
+// Logs a team-change event (draft, trade, free-agent signing, waiver) to the
+// player's career transaction log for the Player Profile screen. Unlike
+// contractHistory/ratingHistory this is never trimmed — it's a handful of
+// entries over a whole career, not one per season, so it's cheap to keep in
+// full. `team` is the team the player lands on (or, for a waiver, the team
+// that released him); `fromTeam` is set only for trades.
+export function recordTransaction(p, { season, day = 0, type, team, fromTeam, text }) {
+  if (!p.transactions) p.transactions = [];
+  p.transactions.push({ season, day, type, team, fromTeam, text });
+}
+
 // "Similar to" — the closest matches across the league for a player's
 // rating profile, by Euclidean distance over the seven core ratings plus a
 // small age component (so a young high-upside player doesn't match a

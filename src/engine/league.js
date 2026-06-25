@@ -1,6 +1,6 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { ZONE_STAT_COLS } from './shotZones.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame } from './sim.js';
@@ -1603,7 +1603,9 @@ export function simFreeAgencyDay(league) {
           recordContract(target, league.season, formerTeam.id, target.contract);
           delete target.extOfferMade;
           formerTeam.roster.push(target);
-          pushNews(league, { day: 0, category: 'signing', teamIds: [formerTeam.id], text: `The ${formerTeam.city} ${formerTeam.name} match an offer sheet to keep ${target.name} (${fmtM(demand)}/yr x ${years}yr).` });
+          const aiMatchText = `The ${formerTeam.city} ${formerTeam.name} match an offer sheet to keep ${target.name} (${fmtM(demand)}/yr x ${years}yr).`;
+          pushNews(league, { day: 0, category: 'signing', teamIds: [formerTeam.id], text: aiMatchText });
+          recordTransaction(target, { season: league.season, type: 'free-agency', team: formerTeam.id, text: aiMatchText });
           continue;
         }
         target.restrictedFA = false;
@@ -1749,6 +1751,7 @@ export function signMidSeasonFA(league, teamId, playerId) {
     ? `The ${team.city} ${team.name} sign bought-out ${p.name} for the stretch run.`
     : `The ${team.city} ${team.name} sign ${p.name} to a rest-of-season minimum contract.`;
   pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text });
+  recordTransaction(p, { season: league.season, day: league.dayIndex, type: 'free-agency', team: team.id, text });
   return { ok: true, player: p };
 }
 
@@ -2091,7 +2094,9 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   }
   if (league.negotiations) delete league.negotiations[playerId];
   // a star changing teams in free agency is a headline
-  pushNews(league, { day: 0, category: 'signing', major: overall(p) >= 80, teamIds: [team.id], text: `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).` });
+  const signText = `${p.name} signs with the ${team.city} ${team.name} (${fmtM(p.contract.salary)} x ${p.contract.years}yr).`;
+  pushNews(league, { day: 0, category: 'signing', major: overall(p) >= 80, teamIds: [team.id], text: signText });
+  recordTransaction(p, { season: league.season, type: 'free-agency', team: team.id, text: signText });
   return true;
 }
 
@@ -2123,7 +2128,9 @@ export function signToTwoWay(league, teamId, playerId) {
   league.freeAgents.splice(idx, 1);
   if (teamId === league.userTeamId) p.everOnUserTeam = true;
   team.twoWay.push(p);
-  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} sign ${p.name} to a two-way contract.` });
+  const twTextSign = `The ${team.city} ${team.name} sign ${p.name} to a two-way contract.`;
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: twTextSign });
+  recordTransaction(p, { season: league.season, day: league.dayIndex || 0, type: 'two-way', team: team.id, text: twTextSign });
   return { ok: true, player: p };
 }
 
@@ -2183,7 +2190,9 @@ export function releaseTwoWay(league, teamId, playerId) {
   p.contract = null;
   league.freeAgents.push(p);
   league.freeAgents.sort((a, b) => overall(b) - overall(a));
-  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: `The ${team.city} ${team.name} release two-way player ${p.name}.` });
+  const twTextRelease = `The ${team.city} ${team.name} release two-way player ${p.name}.`;
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text: twTextRelease });
+  recordTransaction(p, { season: league.season, type: 'waived', team: team.id, text: twTextRelease });
   return true;
 }
 
@@ -2208,7 +2217,9 @@ export function matchOfferSheet(league, playerId) {
   p.everOnUserTeam = true;
   team.roster.push(p);
   league.offerSheets.splice(idx, 1);
-  pushNews(league, { day: 0, category: 'signing', major: true, teamIds: [team.id], text: `The ${team.city} ${team.name} match the offer sheet and retain ${p.name} (${fmtM(sheet.salary)}/yr x ${sheet.years}yr).` });
+  const matchText = `The ${team.city} ${team.name} match the offer sheet and retain ${p.name} (${fmtM(sheet.salary)}/yr x ${sheet.years}yr).`;
+  pushNews(league, { day: 0, category: 'signing', major: true, teamIds: [team.id], text: matchText });
+  recordTransaction(p, { season: league.season, type: 'free-agency', team: team.id, text: matchText });
   return { ok: true };
 }
 
@@ -2244,6 +2255,7 @@ export function releasePlayer(league, teamId, playerId) {
     ? `The ${team.city} ${team.name} and ${p.name} agree to a buyout, making him a free agent.`
     : `The ${team.name} waive ${p.name}.`;
   pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text });
+  recordTransaction(p, { season: league.season, type: 'waived', team: team.id, text });
   return true;
 }
 

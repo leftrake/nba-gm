@@ -1,6 +1,6 @@
 import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract, recordTransaction } from './players.js';
 import { pushNews } from './save.js';
 import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
 import { getDraftPoints } from './scouting.js';
@@ -188,10 +188,12 @@ export function makeDraftPick(league, prospectId) {
     p.contract = { salary: rookieSalary(pick), years: rookieContractYears(pick) };
     recordContract(p, league.season, team.id, p.contract);
     team.roster.push(p);
+    recordTransaction(p, { season: d.season, type: 'draft', team: team.id, text: `Drafted by the ${team.city} ${team.name} with pick #${pick}.` });
   } else {
     // no roster spot — the pick goes unsigned and hits free agency
     league.freeAgents.push(p);
     pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `The ${team.name} draft ${p.name} but have no roster spot; he heads to free agency.` });
+    recordTransaction(p, { season: d.season, type: 'draft', team: team.id, text: `Drafted by the ${team.city} ${team.name} with pick #${pick}; no roster spot, entered free agency.` });
   }
   d.results.push({ pick, round: pick <= 30 ? 1 : 2, teamId, playerId: p.id, playerName: p.name, pos: p.pos });
   d.pickIndex += 1;

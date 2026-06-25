@@ -81,6 +81,38 @@ function SeasonStats({ stats }) {
   );
 }
 
+const TRANSACTION_LABELS = {
+  draft: 'Draft',
+  trade: 'Trade',
+  'free-agency': 'Free Agency',
+  'two-way': 'Two-Way',
+  waived: 'Waived',
+};
+
+// Career transaction log — drafts, trades, free-agency signings, waivers —
+// most recent first.
+function TransactionHistory({ league, rows, openTeam }) {
+  return (
+    <div className="ui-table-wrap">
+      <table className="ui-table">
+        <thead>
+          <tr><th>Season</th><th>Type</th><th>Team</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          {[...rows].reverse().map((t, i) => (
+            <tr key={i}>
+              <td>{t.season}</td>
+              <td>{TRANSACTION_LABELS[t.type] || t.type}</td>
+              <td><TeamLink team={getTeam(league, t.team)} openTeam={openTeam} /></td>
+              <td style={{ color: 'var(--text-muted)' }}>{t.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Season-by-season stat table — shared by regular-season and playoff career history.
 function CareerStatsTable({ league, rows, openTeam }) {
   return (
@@ -548,6 +580,14 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* Transaction history */}
+        {p.transactions?.length > 0 && (
+          <div className="ui-section">
+            <div className="ui-section-header"><div className="ui-section-title">Transactions</div></div>
+            <TransactionHistory league={league} rows={p.transactions} openTeam={openTeam} />
           </div>
         )}
 

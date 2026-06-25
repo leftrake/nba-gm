@@ -1,4 +1,4 @@
-import { overall } from './players.js';
+import { overall, recordTransaction } from './players.js';
 import { getTeam, payroll, recordSeasonStint, tradesLocked } from './league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews, recordTrade } from './save.js';
@@ -188,6 +188,8 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   b.tradesThisSeason = (b.tradesThisSeason || 0) + 1;
   const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
   const tradeText = `${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`;
+  for (const p of outA) recordTransaction(p, { season: league.season, day: league.dayIndex, type: 'trade', team: b.id, fromTeam: a.id, text: tradeText });
+  for (const p of outB) recordTransaction(p, { season: league.season, day: league.dayIndex, type: 'trade', team: a.id, fromTeam: b.id, text: tradeText });
   if (a.owner) {
     const give = outA.reduce((s, p) => s + tradeValue(p, undefined, b), 0) + picksA.reduce((s, p) => s + pickValue(league, p, b.strategy), 0);
     const get = outB.reduce((s, p) => s + tradeValue(p, undefined, a), 0) + picksB.reduce((s, p) => s + pickValue(league, p, a.strategy), 0);
@@ -367,6 +369,12 @@ export function executeMultiTrade(league, teamIds, sends) {
     .filter((l) => l.outPlayers.length || l.outPicks.length)
     .map((l) => `${l.team.name} send ${names(l.outPlayers, l.outPicks)}`)
     .join('; ');
+  for (const leg of legs) {
+    for (const p of leg.outPlayers) {
+      const dest = legs.find((l) => l.inPlayers.includes(p))?.team;
+      if (dest) recordTransaction(p, { season: league.season, day: league.dayIndex, type: 'trade', team: dest.id, fromTeam: leg.team.id, text: `${summary}.` });
+    }
+  }
   if (userDiff != null) recordBestTrade(league, league.userTeamId, userDiff, `${summary}.`);
   pushNews(league, {
     day: league.dayIndex,
