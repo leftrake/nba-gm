@@ -105,16 +105,22 @@ export function pickValue(league, pick, strategy) {
   return Math.round(v);
 }
 
-// Stepien rule: a team can never trade away its 1st-round picks in two
-// consecutive draft years. Checks whether trading away the given pick ids
-// would leave any of the team's outgoing 1sts with no adjacent-year 1st
-// still in hand.
+// Stepien rule: a team can never trade away its OWN 1st-round picks in two
+// consecutive draft years. It only restricts a team's own original picks —
+// a 1st acquired from another team via trade can be re-traded freely, since
+// the team never owned its draft equity to begin with. Checks whether
+// trading away the given pick ids would leave any of the team's outgoing
+// own-1sts with no adjacent-year 1st still in hand.
 export function violatesStepien(league, teamId, outgoingPickIds) {
   if (!outgoingPickIds.length) return false;
   const picks = getTeamPicks(league, teamId);
   const remainingFirstSeasons = new Set(
     picks.filter((p) => p.round === 1 && !outgoingPickIds.includes(p.id)).map((p) => p.season),
   );
-  const tradedFirsts = picks.filter((p) => p.round === 1 && outgoingPickIds.includes(p.id));
-  return tradedFirsts.some((p) => !remainingFirstSeasons.has(p.season - 1) && !remainingFirstSeasons.has(p.season + 1));
+  const tradedOwnFirsts = picks.filter(
+    (p) => p.round === 1 && p.originalTeamId === teamId && outgoingPickIds.includes(p.id),
+  );
+  return tradedOwnFirsts.some(
+    (p) => !remainingFirstSeasons.has(p.season - 1) && !remainingFirstSeasons.has(p.season + 1),
+  );
 }
