@@ -1,5 +1,5 @@
 import { overall, recordTransaction, ensureUniqueJerseys } from './players.js';
-import { getTeam, payroll, recordSeasonStint, tradesLocked } from './league.js';
+import { getTeam, payroll, recordSeasonStint, tradesLocked, TRADE_DEADLINE_DAY } from './league.js';
 import { SALARY_CAP, ROSTER_MAX } from '../data/teams.js';
 import { pushNews, recordTrade } from './save.js';
 import { clamp } from './rng.js';
@@ -132,7 +132,14 @@ export function aiEvaluateTrade(league, teamBId, incoming, outgoing, incomingPic
   const tightness = league.settings?.difficulty?.tradeTightness;
   const tightMult = tightness === 'loose' ? 0.85 : tightness === 'tight' ? 1.15 : 1.0;
   // AI wants at least ~92–95% value back, with slight team-specific noise
-  const greed = (0.92 + ((team.id.charCodeAt(0) + team.id.charCodeAt(2)) % 10) * 0.015) * tightMult;
+  let greed = (0.92 + ((team.id.charCodeAt(0) + team.id.charCodeAt(2)) % 10) * 0.015) * tightMult;
+  // Contenders loosen up as the trade deadline approaches — a title window
+  // doesn't last forever, and they'll accept a slightly worse return to land
+  // a piece that helps right now.
+  const daysToDeadline = TRADE_DEADLINE_DAY - (league.dayIndex ?? 0);
+  if (strategy === 'contending' && daysToDeadline >= 0 && daysToDeadline <= 12) {
+    greed *= 0.91;
+  }
   return { accept: ratio >= greed, ratio, greed };
 }
 
@@ -148,8 +155,9 @@ function strategyVeto(team, strategy, incoming, outgoing, incomingPicks = []) {
     // ...unless they're giving up little or nothing for him — a salary dump
     // with cap room costs a rebuilder nothing, and often comes with a pick.
     const outgoingValue = outgoing.reduce((s, p) => s + tradeValue(p, strategy), 0);
-    if (vet && outgoingValue > 0 && !incomingPicks.length) {
-      return `The ${team.name} are rebuilding and won't take on ${vet.name}'s veteran contract.`;
+    const hasFirst = incomingPicks.some((p) => p.round === 1);
+    if (vet && outgoingValue > 0 && !hasFirst) {
+      return `The ${team.name} are rebuilding and won't take on ${vet.name}'s veteran contract without a first-round pick.`;
     }
     const bestYoungIn = Math.max(0, ...incoming.filter((p) => p.age <= 25).map((p) => p.potential));
     const keeper = outgoing.find((p) => p.age <= 23 && p.potential >= 76 && p.potential > bestYoungIn + 2);

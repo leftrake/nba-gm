@@ -9,7 +9,7 @@ import { initDraft } from './draft.js';
 import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
 import { computeAwards, honorsSummary } from './awards.js';
-import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump, maybeAiBuyoutRelease } from './strategy.js';
+import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump, maybeAiBuyoutRelease, maybeAiContenderTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
 import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
 import {
@@ -912,6 +912,7 @@ export function simDay(league) {
   updateTradeDemands(league);
   maybeShopDisgruntled(league, rng);
   maybeAiTrade(league, rng);
+  maybeAiContenderTrade(league, rng);
   maybeAiSalaryDump(league, rng);
   maybeAiBuyoutRelease(league, rng);
   aiExtensions(league, rng);

@@ -67,7 +67,11 @@ export function evaluateStrategies(league) {
 // front offices like it under their own strategy lens and it passes the
 // usual cap rules, so most days nothing comes of it.
 export function maybeAiTrade(league, rng) {
-  if (rng() >= 0.025) return;
+  // Activity spikes in the final two weeks before the trade deadline —
+  // teams that have been scouting all season make their move.
+  const daysToDeadline = TRADE_DEADLINE_DAY - league.dayIndex;
+  const baseChance = (daysToDeadline >= 0 && daysToDeadline <= 14) ? 0.065 : 0.025;
+  if (rng() >= baseChance) return;
   const ai = league.teams.filter((t) => t.id !== league.userTeamId);
   const buyers = ai.filter((t) => t.strategy === 'contending');
   // rebuilders are the natural sellers, but they're also the weakest teams
@@ -158,6 +162,48 @@ export function maybeAiSalaryDump(league, rng) {
     if (!aiEvaluateTrade(league, taker.id, [vet], [], sweetener, []).accept) continue;
     executeTrade(league, dumper.id, [vet.id], taker.id, [], sweetenerIds, []);
     return;
+  }
+}
+
+// Two contenders with complementary positional needs swap a star — each
+// team fills its thinnest spot with a proven piece from the other side.
+// This fires at its own low daily rate, separate from the vet-for-youth
+// trade, since it's a different kind of deal entirely.
+export function maybeAiContenderTrade(league, rng) {
+  if (rng() >= 0.015) return;
+  const contenders = league.teams
+    .filter((t) => t.id !== league.userTeamId && t.strategy === 'contending')
+    .sort(() => rng() - 0.5);
+  if (contenders.length < 2) return;
+  for (let i = 0; i < contenders.length; i++) {
+    const teamA = contenders[i];
+    const { thin: thinA } = teamNeeds(teamA);
+    // Stars that could be on the move — not the team's single best player
+    const topOvr = Math.max(0, ...teamA.roster.map(overall));
+    const starsA = teamA.roster.filter(
+      (p) => p.contract && overall(p) >= 76 && overall(p) < topOvr && p.age <= 33,
+    );
+    if (!starsA.length) continue;
+    for (let j = i + 1; j < contenders.length; j++) {
+      const teamB = contenders[j];
+      const { thin: thinB } = teamNeeds(teamB);
+      // Each team must want something the other has at a thin spot
+      const starsAforB = starsA.filter((p) => thinB.some((x) => x.pos === p.pos));
+      const topOvrB = Math.max(0, ...teamB.roster.map(overall));
+      const starsBforA = teamB.roster.filter(
+        (p) => p.contract && overall(p) >= 76 && overall(p) < topOvrB && p.age <= 33
+          && thinA.some((x) => x.pos === p.pos),
+      );
+      if (!starsAforB.length || !starsBforA.length) continue;
+      const starA = starsAforB[Math.floor(rng() * starsAforB.length)];
+      const starB = starsBforA[Math.floor(rng() * starsBforA.length)];
+      if (starA.id === starB.id) continue;
+      if (!validateTrade(league, teamA.id, [starA.id], teamB.id, [starB.id]).ok) continue;
+      if (!aiEvaluateTrade(league, teamA.id, [starB], [starA]).accept) continue;
+      if (!aiEvaluateTrade(league, teamB.id, [starA], [starB]).accept) continue;
+      executeTrade(league, teamA.id, [starA.id], teamB.id, [starB.id]);
+      return;
+    }
   }
 }
 
