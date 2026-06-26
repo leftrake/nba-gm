@@ -1700,7 +1700,12 @@ function finalizeFreeAgency(league) {
 // becomes affordable to teams that passed on him at full price.
 export function askingPrice(p, settings) {
   const base = salaryFor(overall(p), p.age);
-  const discount = Math.pow(0.875, p.faRoundsUnsigned || 0);
+  const rawDiscount = Math.pow(0.875, p.faRoundsUnsigned || 0);
+  // Stars don't become desperate — floor keeps quality players from bottoming
+  // out to bargain prices just because AI teams passed on them for role/fit reasons
+  const ovr = overall(p);
+  const discountFloor = ovr >= 80 ? 0.80 : ovr >= 70 ? 0.70 : ovr >= 60 ? 0.55 : 0;
+  const discount = Math.max(rawDiscount, discountFloor);
   const fw = settings?.difficulty?.faWillingness;
   const diffMult = fw === 'friendly' ? 0.85 : fw === 'stingy' ? 1.2 : 1.0;
   // "Undrafted gem" types are systematically underpriced until their
