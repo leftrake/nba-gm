@@ -1711,22 +1711,33 @@ export function advanceOffseason(league) {
 }
 
 // How likely a team is to re-sign its own expiring player before he hits
-// the market. Better players are kept harder, winners keep their guys,
-// and homegrown draftees (p.draftTeam) get a loyalty bump.
+// the market. Base rates are lower than they used to be so that meaningful
+// player movement happens through free agency, not just the draft. A web of
+// conditions then separates the loyal cornerstones from the restless stars.
 function resignChance(team, p) {
   if (p.tradeDemand) return 0; // a player who demanded out won't stay
   const ovr = overall(p);
-  let chance = ovr >= 80 ? 0.88 : ovr >= 70 ? 0.8 : ovr >= 60 ? 0.6 : 0.35;
+  let chance = ovr >= 80 ? 0.72 : ovr >= 70 ? 0.63 : ovr >= 60 ? 0.50 : 0.30;
   // mid-season (extensions) this is the live record; in the offseason the
   // games are zeroed out and it falls back to last season's
   const winPct = currentWinPct(team);
   chance += (winPct - 0.5) * 0.4; // stars stay with winners, drift from losers
-  if (p.draftTeam === team.id) chance += 0.1;
+  if (p.draftTeam === team.id) chance += 0.10; // homegrown loyalty
   if (p.age >= 34) chance -= 0.15; // aging vets get let go
   // rebuilders actively shed salary: expensive vets who aren't core pieces
   // hit the market instead of getting Bird-rights renewals
   if (team.strategy === 'rebuilding' && (p.contract?.salary || 0) > 8_000_000 && ovr < 80) chance -= 0.35;
-  return clamp(chance, 0.05, 0.95);
+  // backstory-driven loyalty and volatility
+  if (p.backstory === 'legend') chance += 0.15;       // franchise cornerstones dig in
+  else if (p.backstory === 'provider') chance += 0.07; // team-first, low drama
+  else if (p.backstory === 'bust') chance -= 0.12;     // volatile, always looking for an out
+  // prime-age stars (25-29) on losing teams don't wait around — they want to win now
+  if (ovr >= 76 && p.age >= 25 && p.age <= 29 && winPct < 0.42) chance -= 0.20;
+  // a quality player role-blocked by two better teammates wants a featured role elsewhere
+  if (ovr >= 70 && betterAtPosition(team, p) >= 2) chance -= 0.18;
+  // unhappy players look for fresh starts
+  if ((p.morale ?? 50) < 35) chance -= 0.15;
+  return clamp(chance, 0.05, 0.85);
 }
 
 // AI teams attack free agency: every round, every team with room works down
