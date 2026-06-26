@@ -1915,7 +1915,12 @@ function finalizeFreeAgency(league) {
     const ask = askingPrice(p);
     let salary, years;
     const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
-    if (capRoom <= 0 && !team.usedMLE && ask <= teamMLE) {
+    if (capRoom >= ask) {
+      salary = ask; years = preferredYears(p);
+    } else if (capRoom >= MIN_SALARY) {
+      // partial cap room — settle for whatever space is left, 1 year
+      salary = capRoom; years = 1;
+    } else if (!team.usedMLE && ask <= teamMLE) {
       salary = Math.min(ask, teamMLE); years = preferredYears(p); team.usedMLE = true;
     } else { salary = MIN_SALARY; years = 1; } // minimum exception: short, cheap deal
     signFreeAgent(league, team.id, p.id, salary, years);
