@@ -37,10 +37,10 @@ export function isInjured(p) {
 const STARTER_WEIGHTS = [40, 35, 33, 31, 29];
 const BENCH_WEIGHTS = [25, 21, 17, 13, 9];
 
-// Minutes ceiling a sensible rotation respects: a couple past what stamina
-// supports is tolerable; beyond that the sim punishes it badly.
+// Minutes ceiling a sensible rotation respects. Capped at supportedMinutes + 2
+// so autoLineup never assigns minutes that would trigger a lineupWarning.
 export function minutesCap(p) {
-  return Math.round(clamp(supportedMinutes(p) + 3, 12, 48));
+  return Math.round(clamp(supportedMinutes(p) + 2, 12, 48));
 }
 
 // Optimal assignment of pool players to the 5 starter slots, maximizing
