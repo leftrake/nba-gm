@@ -3,13 +3,12 @@
 // counts from the current season (0 = this season, matching the same
 // numbers payroll()/deadMoneyTotal() report on the Roster/Cap screen).
 
-import { SALARY_CAP, LUXURY_TAX, ROSTER_MIN, MIN_SALARY } from '../data/teams.js';
+import { SALARY_CAP, LUXURY_TAX, FIRST_APRON, APRON, ROSTER_MIN, MIN_SALARY } from '../data/teams.js';
 
 export const PROJECTION_YEARS = 4;
 
-// No "apron" constant exists in teams.js yet — derive one in line with the
-// real NBA's second-apron gap above the luxury tax line.
-export const APRON = LUXURY_TAX + 17_500_000;
+// Re-export apron thresholds for components that import from here.
+export { FIRST_APRON, APRON };
 
 // A player's salary `seasonsOut` seasons from now, or null once his current
 // contract (and any signed extension) has run out.
@@ -69,10 +68,11 @@ export function projectedCapSpace(team, seasonsOut, includeExtensions = true) {
   return SALARY_CAP - (total + shortfall);
 }
 
-// Color-coded payroll status for a projected total, relative to cap/tax/apron.
+// Color-coded payroll status for a projected total, relative to cap/tax/aprons.
 export function payrollStatus(total) {
   if (total < SALARY_CAP) return 'under';
   if (total < LUXURY_TAX) return 'over';
-  if (total < APRON) return 'tax';
+  if (total < FIRST_APRON) return 'tax';
+  if (total < APRON) return 'first-apron';
   return 'apron';
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { getTeam } from '../engine/league.js';
 import { extensionTypeAt, extensionWindowLabel } from '../engine/extensions.js';
 import {
-  PROJECTION_YEARS, APRON, projectedSalary, isExpiringIn, projectedDeadMoney,
+  PROJECTION_YEARS, FIRST_APRON, APRON, projectedSalary, isExpiringIn, projectedDeadMoney,
   isRfaCandidate, projectedPayroll, projectedCapSpace, payrollStatus,
 } from '../engine/capProjection.js';
 import { getTeamPicks, pickLabel, projectedSlot } from '../engine/draftPicks.js';
@@ -12,7 +12,7 @@ import { SPECIALTY_INFO, STYLE_INFO, coachSalary } from '../engine/coach.js';
 import { money, PlayerLink, GuideTooltip, ApprovalMeter, approvalColor } from './shared.jsx';
 import { Section, Card } from './ui/index.js';
 
-const STATUS_COLOR = { under: 'var(--green)', over: 'var(--yellow)', tax: 'var(--red)', apron: '#ff6666' };
+const STATUS_COLOR = { under: 'var(--green)', over: 'var(--yellow)', tax: 'var(--red)', 'first-apron': '#e05000', apron: '#c00' };
 const EXT_LABEL = { rookie: 'RFX', veteran: 'EXT', final: 'FINAL' };
 
 const SUBTABS = [
@@ -271,7 +271,7 @@ export default function FuturePayroll({ league, commit, openPlayer, onTradeFor, 
           </div>
 
           <p style={{ marginTop: 10, color: 'var(--muted)', fontSize: 'var(--text-sm)' }}>
-            Cap {money(SALARY_CAP)} (<span style={{ color: STATUS_COLOR.under }}>green</span>) · Tax {money(LUXURY_TAX)} (<span style={{ color: STATUS_COLOR.over }}>yellow</span>/<span style={{ color: STATUS_COLOR.tax }}>red</span>) · Apron {money(APRON)} (<span style={{ color: STATUS_COLOR.apron }}>dark red</span>).{' '}
+            Cap {money(SALARY_CAP)} (<span style={{ color: STATUS_COLOR.under }}>green</span>) · Tax {money(LUXURY_TAX)} (<span style={{ color: STATUS_COLOR.over }}>yellow</span>/<span style={{ color: STATUS_COLOR.tax }}>red</span>) · 1st Apron {money(FIRST_APRON)} (<span style={{ color: STATUS_COLOR['first-apron'] }}>orange</span>, taxpayer MLE only) · 2nd Apron {money(APRON)} (<span style={{ color: STATUS_COLOR.apron }}>dark red</span>).{' '}
             Highlighted cells are a player's last guaranteed season — <span style={{ color: 'var(--yellow)' }}>RFX</span>/<span style={{ color: 'var(--yellow)' }}>EXT</span>/<span style={{ color: 'var(--yellow)' }}>FINAL</span> = extension window, <span style={{ color: 'var(--accent)' }}>RFA</span> = restricted FA candidate.
           </p>
         </>

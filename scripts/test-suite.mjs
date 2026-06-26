@@ -22,8 +22,9 @@
 // stats/fatigue check, including the forced-44-minutes experiment.
 
 import {
-  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, startNewSeason, payroll, projectedPayroll,
+  createLeague, simDay, simPlayoffGame, simPlayInGame, advanceOffseason, simFreeAgencyDay, startNewSeason, payroll, projectedPayroll,
 } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall, salaryFor } from '../src/engine/players.js';
 import { askingPriceMult } from '../src/engine/backstory.js';
@@ -85,7 +86,7 @@ for (let s = 0; s < SEASONS; s++) {
   let seasonEnders = 0;
   let maxInjuredShare = 0;
   let prevInjured = new Set();
-  while (league.phase === 'regular') {
+  const simRegularDay = () => {
     for (const r of simDay(league)) {
       totalPts += r.homePts + r.awayPts;
       teamGames += 2;
@@ -105,8 +106,22 @@ for (let s = 0; s < SEASONS; s++) {
       maxInjuredShare = Math.max(maxInjuredShare, out / t.roster.length);
     }
     prevInjured = nowInjured;
+  };
+  while (league.phase === 'regular') simRegularDay();
+  // Mid-season NBA Cup interrupts the regular season — sim it and resume
+  if (league.phase === 'cup') {
+    let guard = 0;
+    while (!cupComplete(league) && guard++ < 10) simCupGame(league);
+    league.phase = 'regular';
+    while (league.phase === 'regular') simRegularDay();
   }
-  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
+  if (league.phase === 'awards') league.phase = 'play-in'; // skip award ceremony gate
+  // Sim the play-in tournament
+  if (league.phase === 'play-in') {
+    let guard = 0;
+    while (league.playIn && !league.playIn.complete && guard++ < 10) simPlayInGame(league);
+    league.phase = 'playoffs';
+  }
   const injuryRate = injuryEvents / league.teams.length;
   if (firstSeasonInjuryRate === null) firstSeasonInjuryRate = injuryRate;
 
@@ -352,7 +367,16 @@ console.log('\nOwnership system (6 seasons, small-market low-patience vs large-m
 
   function runSeason() {
     while (lg.phase === 'regular') simDay(lg);
-    if (lg.phase === 'awards') lg.phase = 'playoffs'; // skip the award ceremony gate
+    if (lg.phase === 'cup') {
+      let g = 0; while (!cupComplete(lg) && g++ < 10) simCupGame(lg);
+      lg.phase = 'regular';
+      while (lg.phase === 'regular') simDay(lg);
+    }
+    if (lg.phase === 'awards') lg.phase = 'play-in';
+    if (lg.phase === 'play-in') {
+      let g = 0; while (lg.playIn && !lg.playIn.complete && g++ < 10) simPlayInGame(lg);
+      lg.phase = 'playoffs';
+    }
     let guard = 0;
     while (lg.phase === 'playoffs' && guard++ < 500) simPlayoffGame(lg);
 

@@ -1,4 +1,5 @@
-import { TEAMS, SALARY_CAP, LUXURY_TAX, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, LUXURY_TAX, FIRST_APRON, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, TAXPAYER_MLE, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
+import { initCup, updateCupGroupGame, determineCupBracket, simCupGame, cupComplete, CUP_GROUP_DAYS } from './cup.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { ZONE_STAT_COLS } from './shotZones.js';
@@ -63,9 +64,11 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     dayIndex: 0,
     resultsByDay: [],
     phase: fantasy ? 'fantasydraft' : 'regular',
-    // regular | awards | playoffs | fantasydraft | offseason/finals-mvp | offseason/development
+    // regular | cup | play-in | awards | playoffs | fantasydraft | offseason/finals-mvp | offseason/development
     // | offseason/coaching | offseason/lottery | offseason/draft | offseason/freeagency | offseason/preview
     playoffs: null,
+    playIn: null,
+    cup: initCup(2026),
     freeAgents: fantasy ? [] : Array.from({ length: 60 }, () => {
       // unsigned for a reason: the open market skews toward fringe talent
       const p = generatePlayer(rng, { base: clamp(gauss(FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, rng), FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL) });
@@ -551,6 +554,17 @@ export function backfillPlayers(league) {
     ];
     league.nextPlayerId = (allIds.length ? Math.max(...allIds) : 0) + 1;
   }
+  // Saves predating the NBA Cup system
+  if (!league.cup || league.cup.season !== league.season) {
+    league.cup = initCup(league.season);
+  }
+  if (!league.cup.log) league.cup.log = [];
+  for (const team of league.teams) {
+    if (team.cupWins == null) team.cupWins = 0;
+    if (team.cupLosses == null) team.cupLosses = 0;
+  }
+  // Saves predating the play-in tournament (play-in is re-init'd each post-season)
+  if (league.playIn === undefined) league.playIn = null;
   // One-time repair for saves created before league.nextPlayerId existed as a
   // persisted, never-resetting counter: two active players (on the same or
   // different teams) can end up sharing an id, which makes id-keyed lookups
@@ -885,6 +899,10 @@ export function simDay(league) {
     else { away.wins++; home.losses++; }
     updateStreak(league, home, homeWon);
     updateStreak(league, away, !homeWon);
+    // Track cup group-stage results for division games in the cup window
+    if (league.dayIndex < CUP_GROUP_DAYS && league.cup?.season === league.season) {
+      updateCupGroupGame(league, home, away, homeWon);
+    }
     pushGameNews(league, r, home, away, hurt);
     results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay, injuryReport });
   }
@@ -931,6 +949,17 @@ export function simDay(league) {
   }
   tickProScouting(league); // pro-scouting film accumulates each simmed game-day
   league.dayIndex += 1;
+  // Cup bracket seeds at the end of the group stage window
+  if (league.dayIndex === CUP_GROUP_DAYS && league.cup?.season === league.season && !league.cup.bracket) {
+    determineCupBracket(league);
+    league.phase = 'cup';
+    const topE = league.cup.bracket.eastSeeds[0];
+    const topW = league.cup.bracket.westSeeds[0];
+    pushNews(league, {
+      day: league.dayIndex, category: 'league', major: true,
+      text: `The NBA Cup group stage is over — the knockout bracket is set. ${getTeam(league, topE).city} ${getTeam(league, topE).name} lead the East, ${getTeam(league, topW).city} ${getTeam(league, topW).name} lead the West.`,
+    });
+  }
   if (league.dayIndex === TRADE_DEADLINE_DAY + 1) {
     pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: '🔒 The trade deadline has passed. All trades are locked until the offseason.' });
   }
@@ -940,14 +969,15 @@ export function simDay(league) {
   }
   if (league.dayIndex >= league.schedule.length) {
     league.phase = 'awards';
-    league.playoffs = initPlayoffs(league);
+    league.playIn = initPlayIn(league); // play-in replaces the direct top-8 seeding
+    // league.playoffs is initialized after the play-in completes (from simPlayInGame)
     computeAwards(league);
-    // the week off before the playoffs gets everyone most of the way fresh
+    // the week off before the play-in/playoffs gets everyone most of the way fresh
     for (const team of league.teams) {
       for (const p of team.roster) setCond(p, (p.condition ?? 100) + 20 + (100 - (p.condition ?? 100)) * 0.5);
     }
     league.dayIndex += 7;
-    pushNews(league, { day: league.dayIndex, category: 'league', text: 'The regular season is over. Playoffs begin!' });
+    pushNews(league, { day: league.dayIndex, category: 'league', text: 'The regular season is over. The Play-In Tournament begins!' });
   }
   return results;
 }
@@ -960,7 +990,13 @@ export function standings(league, conf) {
 
 // ---------- Playoffs ----------
 export function initPlayoffs(league) {
-  const seedConf = (conf) => standings(league, conf).slice(0, 8).map((t) => t.id);
+  const seedConf = (conf) => {
+    const pi = league.playIn?.[conf];
+    if (pi?.seventh && pi?.eighth) {
+      return [...standings(league, conf).slice(0, 6).map((t) => t.id), pi.seventh, pi.eighth];
+    }
+    return standings(league, conf).slice(0, 8).map((t) => t.id);
+  };
   return {
     round: 0, // 0=first round, 1=conf semis, 2=conf finals, 3=finals
     East: makeRoundMatchups(seedConf('East')),
@@ -1182,6 +1218,101 @@ export function simPlayoffRound(league) {
   let guard = 0;
   const played = [];
   while (!po.champion && po.round === startRound && guard++ < 100) played.push(...simPlayoffGame(league));
+  return played;
+}
+
+// ---------- Play-In Tournament ----------
+// Seeds 7-10 per conference play for the final two playoff spots.
+// Game A (7v8): winner → 7 seed. Game B (9v10): loser eliminated.
+// Game C (loser A vs winner B): winner → 8 seed; loser eliminated.
+
+export function initPlayIn(league) {
+  const confSeeds = (conf) => standings(league, conf).slice(0, 10).map((t) => t.id);
+  const mk = (home, away) => ({ home, away, winner: null, homePts: null, awayPts: null });
+  const build = (conf) => {
+    const s = confSeeds(conf);
+    return { seeds: s, gameA: mk(s[6], s[7]), gameB: mk(s[8], s[9]), gameC: null, seventh: null, eighth: null };
+  };
+  return { East: build('East'), West: build('West'), stage: 0, complete: false };
+}
+
+function playInSimGame(league, home, away, rng) {
+  const homeTeam = getTeam(league, home);
+  const awayTeam = getTeam(league, away);
+  const r = simGame(homeTeam, awayTeam, rng);
+  const rawHomeWon = r.homePts > r.awayPts;
+  const homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
+  const awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
+  const homeWon = homePts !== awayPts ? homePts > awayPts : rawHomeWon;
+  if (homeWon) { homeTeam.wins++; awayTeam.losses++; }
+  else { awayTeam.wins++; homeTeam.losses++; }
+  // Tick injuries and condition just like a regular game
+  for (const team of [homeTeam, awayTeam]) tickInjuries(league, team);
+  return { home, away, homePts, awayPts, homeWon, homeBox: r.homeBox, awayBox: r.awayBox };
+}
+
+export function simPlayInGame(league) {
+  const pi = league.playIn;
+  if (!pi || pi.complete) return [];
+
+  const totalPlayed =
+    (pi.East.gameA.winner ? 1 : 0) + (pi.East.gameB?.winner ? 1 : 0) + (pi.East.gameC?.winner ? 1 : 0) +
+    (pi.West.gameA.winner ? 1 : 0) + (pi.West.gameB?.winner ? 1 : 0) + (pi.West.gameC?.winner ? 1 : 0);
+  const rng = makeRng(league.seed + 777_001 + totalPlayed * 37);
+  const played = [];
+
+  if (pi.stage === 0) {
+    // Game A: 7 vs 8 — winner locked in as 7 seed
+    for (const conf of ['East', 'West']) {
+      const c = pi[conf];
+      const r = playInSimGame(league, c.gameA.home, c.gameA.away, rng);
+      c.gameA = { ...c.gameA, ...r, winner: r.homeWon ? r.home : r.away };
+      c.seventh = c.gameA.winner;
+      played.push({ conf, game: 'A', ...r });
+    }
+    pi.stage = 1;
+  } else if (pi.stage === 1) {
+    // Game B: 9 vs 10 — loser eliminated
+    for (const conf of ['East', 'West']) {
+      const c = pi[conf];
+      const r = playInSimGame(league, c.gameB.home, c.gameB.away, rng);
+      c.gameB = { ...c.gameB, ...r, winner: r.homeWon ? r.home : r.away };
+      // Set up Game C: loser of A (higher seed, home) vs winner of B
+      const loserA = c.gameA.winner === c.gameA.home ? c.gameA.away : c.gameA.home;
+      c.gameC = { home: loserA, away: c.gameB.winner, winner: null, homePts: null, awayPts: null };
+      played.push({ conf, game: 'B', ...r });
+    }
+    pi.stage = 2;
+  } else if (pi.stage === 2) {
+    // Game C: loser of A vs winner of B — winner gets 8 seed
+    for (const conf of ['East', 'West']) {
+      const c = pi[conf];
+      const r = playInSimGame(league, c.gameC.home, c.gameC.away, rng);
+      c.gameC = { ...c.gameC, ...r, winner: r.homeWon ? r.home : r.away };
+      c.eighth = c.gameC.winner;
+      played.push({ conf, game: 'C', ...r });
+    }
+    pi.stage = 3;
+    pi.complete = true;
+    league.playoffs = initPlayoffs(league);
+    pushNews(league, { day: league.dayIndex, category: 'league', major: true, text: 'The Play-In Tournament is over — the NBA Playoffs bracket is set!' });
+  }
+
+  // News per game
+  const gameLabels = { A: '7 vs. 8 seed', B: '9 vs. 10 seed', C: 'Last Chance' };
+  for (const g of played) {
+    const homeT = getTeam(league, g.home);
+    const awayT = getTeam(league, g.away);
+    const win = g.homeWon ? homeT : awayT;
+    const lose = g.homeWon ? awayT : homeT;
+    const ws = g.homeWon ? g.homePts : g.awayPts;
+    const ls = g.homeWon ? g.awayPts : g.homePts;
+    pushNews(league, {
+      day: league.dayIndex, category: 'game', teamIds: [g.home, g.away],
+      text: `Play-In (${g.conf} ${gameLabels[g.game]}): ${win.city} ${win.name} ${ws}-${ls} over ${lose.city} ${lose.name}.`,
+    });
+  }
+
   return played;
 }
 
@@ -1578,16 +1709,18 @@ export function simFreeAgencyDay(league) {
       if (target.offerSheetPending) continue; // already under an offer sheet this round
       const ask = askingPrice(target);
       let exception = null;
+      // Teams above the first apron can only use the reduced taxpayer MLE
+      const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
       if (ask > room) {
         if (ask <= MIN_SALARY * 1.05) exception = 'minimum';
-        else if (capRoom <= 0 && !team.usedMLE && ask <= MLE_AMOUNT * 1.1) exception = 'mle';
+        else if (capRoom <= 0 && !team.usedMLE && ask <= teamMLE * 1.1) exception = 'mle';
         else continue; // out of their price range
       }
       tried++;
       const years = preferredYears(target);
       let demand = offerDemand(league, team.id, target, years);
       if (demand === null) continue; // wants a bigger role than this roster offers
-      if (exception === 'mle') demand = Math.min(demand, MLE_AMOUNT);
+      if (exception === 'mle') demand = Math.min(demand, teamMLE);
       if (!exception && demand > ask * stretch) continue; // demanding more than this office will pay
       if (!exception && demand > room) continue;
       if (exception === 'minimum' && demand > MIN_SALARY * 1.05) continue;
@@ -1687,8 +1820,9 @@ function finalizeFreeAgency(league) {
     const capRoom = SALARY_CAP - payroll(team);
     const ask = askingPrice(p);
     let salary, years;
-    if (capRoom <= 0 && !team.usedMLE && ask <= MLE_AMOUNT) {
-      salary = Math.min(ask, MLE_AMOUNT); years = preferredYears(p); team.usedMLE = true;
+    const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
+    if (capRoom <= 0 && !team.usedMLE && ask <= teamMLE) {
+      salary = Math.min(ask, teamMLE); years = preferredYears(p); team.usedMLE = true;
     } else { salary = MIN_SALARY; years = 1; } // minimum exception: short, cheap deal
     signFreeAgent(league, team.id, p.id, salary, years);
   }
@@ -2037,14 +2171,15 @@ export function evaluateOffer(league, teamId, p, salary, years) {
 
 // Which cap mechanism would cover a contract of this salary for this team,
 // or null if none does. 'cap-room' covers it outright; 'mle' is the
-// once-per-offseason mid-level exception (over-cap teams only, up to
-// MLE_AMOUNT, ~$12M); 'minimum' is the always-available roster-fill exception.
+// once-per-offseason mid-level exception (up to MLE_AMOUNT for teams below
+// the first apron, or TAXPAYER_MLE above it); 'minimum' is always available.
 export function signingException(league, teamId, salary) {
   const team = getTeam(league, teamId);
   const capRoom = SALARY_CAP - payroll(team);
   if (salary <= capRoom) return 'cap-room';
   if (salary <= MIN_SALARY * 1.05) return 'minimum';
-  if (capRoom <= 0 && !team.usedMLE && salary <= MLE_AMOUNT) return 'mle';
+  const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
+  if (capRoom <= 0 && !team.usedMLE && salary <= teamMLE) return 'mle';
   return null;
 }
 
@@ -2066,9 +2201,13 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   const exception = signingException(league, teamId, salary);
   if (!exception) {
     const room = SALARY_CAP - payroll(team);
+    const aboveApron = payroll(team) >= FIRST_APRON;
+    const teamMLE = aboveApron ? TAXPAYER_MLE : MLE_AMOUNT;
     const mleNote = team.usedMLE
       ? "you've already used this offseason's mid-level exception"
-      : `the mid-level exception only covers up to ${fmtM(MLE_AMOUNT)}`;
+      : aboveApron
+        ? `you're above the first apron — only the taxpayer MLE (${fmtM(teamMLE)}) is available`
+        : `the mid-level exception only covers up to ${fmtM(teamMLE)}`;
     return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}. Minimum contracts can always be offered.` };
   }
   const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
@@ -2319,6 +2458,9 @@ export function startNewSeason(league) {
   league.resultsByDay = [];
   league.phase = 'regular';
   league.playoffs = null;
+  league.playIn = null;
+  league.cup = initCup(league.season);
+  for (const team of league.teams) { team.cupWins = 0; team.cupLosses = 0; }
   initSeasonScouting(league, rng);
   pushNews(league, { day: 0, category: 'league', text: `The ${league.season} season begins!` });
 }

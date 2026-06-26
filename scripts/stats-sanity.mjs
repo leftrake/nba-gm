@@ -21,8 +21,9 @@
 // efficiency (in-game fatigue), so big minutes are never free.
 
 import {
-  createLeague, simDay, simPlayoffGame, advanceOffseason, simFreeAgencyDay, startNewSeason,
+  createLeague, simDay, simPlayoffGame, simPlayInGame, advanceOffseason, simFreeAgencyDay, startNewSeason,
 } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
 import { simGame } from '../src/engine/sim.js';
@@ -90,13 +91,25 @@ for (let s = 0; s < SEASONS; s++) {
   let totalPts = 0;
   let teamGames = 0;
 
-  while (league.phase === 'regular') {
+  const simRegDay = () => {
     for (const r of simDay(league)) {
       totalPts += r.homePts + r.awayPts;
       teamGames += 2;
     }
+  };
+  while (league.phase === 'regular') simRegDay();
+  if (league.phase === 'cup') {
+    let g = 0;
+    while (!cupComplete(league) && g++ < 10) simCupGame(league);
+    league.phase = 'regular';
+    while (league.phase === 'regular') simRegDay();
   }
-  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
+  if (league.phase === 'awards') league.phase = 'play-in';
+  if (league.phase === 'play-in') {
+    let g = 0;
+    while (league.playIn && !league.playIn.complete && g++ < 10) simPlayInGame(league);
+    league.phase = 'playoffs';
+  }
   const r = seasonReport(league, totalPts, teamGames);
 
   console.log(`Season ${league.season} (mean ovr at tip-off ${startOvr.toFixed(2)})`);

@@ -205,12 +205,34 @@ export default function Playoffs({ league, openTeam, openPlayer, openGame }) {
   const seeds = useMemo(() => {
     const map = new Map();
     for (const conf of ['East', 'West']) {
-      standings(league, conf).slice(0, 8).forEach((t, i) => map.set(t.id, i + 1));
+      standings(league, conf).slice(0, 6).forEach((t, i) => map.set(t.id, i + 1));
+      const pi = league.playIn?.[conf];
+      if (pi?.seventh) map.set(pi.seventh, 7);
+      if (pi?.eighth) map.set(pi.eighth, 8);
+      // Fallback for saves without play-in: fill from standings
+      if (!pi?.seventh) {
+        const s = standings(league, conf);
+        if (s[6]) map.set(s[6].id, 7);
+        if (s[7]) map.set(s[7].id, 8);
+      }
     }
     return map;
   }, [league, po]);
 
   if (!po) {
+    // If play-in is in progress, defer to the play-in screen instead of projecting
+    if (league.phase === 'play-in' && league.playIn && !league.playIn.complete) {
+      return (
+        <div>
+          <Card>
+            <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>Play-In Tournament in Progress</span>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', margin: 0 }}>
+              The playoff bracket will be set once the Play-In Tournament is complete. Check the Play-In tab to see the bracket and sim games.
+            </p>
+          </Card>
+        </div>
+      );
+    }
     const projected = {
       round: 0,
       East: makeRoundMatchups(standings(league, 'East').slice(0, 8).map((t) => t.id)),

@@ -5,9 +5,10 @@
 //           per offseason without first clearing salary?
 // Run with: node scripts/verify-economy.mjs [seed]
 import {
-  createLeague, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason,
+  createLeague, simDay, simPlayoffRound, simPlayInGame, advanceOffseason, simFreeAgencyDay, startNewSeason,
   payroll, getTeam, signFreeAgent, makeOffer, offerDemand, preferredYears,
 } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { onTheClock, makeDraftPick, simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall, salaryFor } from '../src/engine/players.js';
 import { autoLineup } from '../src/engine/lineup.js';
@@ -46,7 +47,16 @@ function runDraft(league) {
 
 function simRegularAndPlayoffs(league) {
   while (league.phase === 'regular') simDay(league);
-  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
+  if (league.phase === 'cup') {
+    let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+    league.phase = 'regular';
+    while (league.phase === 'regular') simDay(league);
+  }
+  if (league.phase === 'awards') league.phase = 'play-in';
+  if (league.phase === 'play-in') {
+    let g = 0; while (league.playIn && !league.playIn.complete && g++ < 10) simPlayInGame(league);
+    league.phase = 'playoffs';
+  }
   while (league.phase === 'playoffs') simPlayoffRound(league);
 }
 

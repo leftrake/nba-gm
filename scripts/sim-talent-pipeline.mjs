@@ -6,7 +6,8 @@
 // Run: node scripts/sim-talent-pipeline.mjs [seed]
 
 import { TEAMS } from '../src/data/teams.js';
-import { createLeague, simDay, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason, getTeam } from '../src/engine/league.js';
+import { createLeague, simDay, simPlayoffRound, simPlayInGame, advanceOffseason, simFreeAgencyDay, startNewSeason, getTeam } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { simDraftToUser, finishDraft } from '../src/engine/draft.js';
 import { overall } from '../src/engine/players.js';
 
@@ -43,7 +44,17 @@ function measure() {
 for (let s = 0; s < SEASONS; s++) {
   let guard = 0;
   while (league.phase === 'regular' && guard++ < 400) simDay(league);
-  if (league.phase === 'awards') league.phase = 'playoffs'; // skip the award ceremony gate
+  if (league.phase === 'cup') {
+    let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+    league.phase = 'regular';
+    guard = 0;
+    while (league.phase === 'regular' && guard++ < 400) simDay(league);
+  }
+  if (league.phase === 'awards') league.phase = 'play-in';
+  if (league.phase === 'play-in') {
+    let g = 0; while (league.playIn && !league.playIn.complete && g++ < 10) simPlayInGame(league);
+    league.phase = 'playoffs';
+  }
 
   const season = league.season;
   const m = measure(); // end of regular season, before offseason aging

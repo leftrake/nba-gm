@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { TEAMS } from './data/teams.js';
-import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, advanceOffseason, simFreeAgencyDay, startNewSeason, backfillPlayers, callUpTwoWay } from './engine/league.js';
+import { createLeague, getTeam, simPlayoffGame, simPlayoffRound, simPlayInGame, advanceOffseason, simFreeAgencyDay, startNewSeason, backfillPlayers, callUpTwoWay } from './engine/league.js';
+import { simCupGame, cupComplete } from './engine/cup.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
@@ -19,6 +20,8 @@ import Scouting from './components/Scouting.jsx';
 import FantasyDraft from './components/FantasyDraft.jsx';
 import Legacy from './components/Legacy.jsx';
 import Playoffs from './components/Playoffs.jsx';
+import PlayIn from './components/PlayIn.jsx';
+import NbaCup from './components/NbaCup.jsx';
 import PlayoffPostGame from './components/PlayoffPostGame.jsx';
 import DevelopmentReport from './components/DevelopmentReport.jsx';
 import CoachingDecisions from './components/CoachingDecisions.jsx';
@@ -417,6 +420,21 @@ export default function App() {
     setScreen('playoffs');
   };
 
+  const handleSimPlayIn = () => {
+    simPlayInGame(league);
+    commit();
+    if (league.playIn?.complete) setScreen('playoffs');
+    else setScreen('playin');
+  };
+
+  const handleSimCupGame = () => {
+    simCupGame(league);
+    if (cupComplete(league)) {
+      league.phase = 'regular';
+    }
+    commit();
+  };
+
   // The Dev Report tab only shows while this offseason's report is fresh
   // (between development and the next season tipping off)
   const hasDevReport = !!league.devReport?.entries?.length
@@ -424,7 +442,9 @@ export default function App() {
 
   const phaseLabel =
     league.phase === 'regular'                 ? `Day ${league.dayIndex + 1} / ${league.schedule.length}`
+    : league.phase === 'cup'                   ? 'NBA Cup'
     : league.phase === 'awards'                ? 'Award Ceremony'
+    : league.phase === 'play-in'               ? 'Play-In Tournament'
     : league.phase === 'playoffs'              ? 'Playoffs'
     : league.phase === 'offseason/finals-mvp'  ? 'Finals MVP'
     : league.phase === 'offseason/development' ? 'Development'
@@ -457,6 +477,8 @@ export default function App() {
       ['draft', 'Draft'],
       ...(league.phase === 'fantasydraft' ? [['fantasydraft', 'Fantasy Draft']] : []),
       ['freeagency', 'Free Agency'],
+      ...(league.cup?.season === league.season ? [['cup', 'NBA Cup']] : []),
+      ...(league.playIn ? [['playin', 'Play-In']] : []),
       ['playoffs', 'Playoffs'],
       ...(hasDevReport ? [['devreport', 'Dev Report']] : []),
     ],
@@ -526,6 +548,25 @@ export default function App() {
         </div>
       )}
       <main>
+        {league.phase === 'cup' && (
+          <div className="controls">
+            <button className="btn" onClick={() => { handleSimCupGame(); setScreen('cup'); }}>
+              {league.cup?.bracket?.round === 0 ? 'Sim Cup Quarterfinals' :
+               league.cup?.bracket?.round === 1 ? 'Sim Cup Semifinals' :
+               league.cup?.bracket?.round === 2 ? 'Sim Cup Final' : 'Cup Complete'}
+            </button>
+          </div>
+        )}
+        {league.phase === 'play-in' && (
+          <div className="controls">
+            <button className="btn" onClick={handleSimPlayIn}>
+              {league.playIn?.complete ? 'View Playoff Bracket' :
+               league.playIn?.stage === 0 ? 'Sim Play-In: 7 vs. 8' :
+               league.playIn?.stage === 1 ? 'Sim Play-In: 9 vs. 10' :
+               'Sim Play-In: Last Chance Game'}
+            </button>
+          </div>
+        )}
         {league.phase === 'playoffs' && (
           <div className="controls">
             <button className="btn" onClick={handleSimPlayoffGame}>Sim Next Playoff Game</button>
@@ -634,6 +675,8 @@ export default function App() {
         {screen === 'draft' && <Draft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'fantasydraft' && <FantasyDraft league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} />}
         {screen === 'freeagency' && <FreeAgency league={league} commit={commit} openPlayer={openPlayer} />}
+        {screen === 'cup' && <NbaCup league={league} openTeam={openTeam} />}
+        {screen === 'playin' && <PlayIn league={league} openTeam={openTeam} />}
         {screen === 'playoffs' && <Playoffs league={league} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />}
         {screen === 'postgame' && (playoffDay?.length
           ? <PlayoffPostGame league={league} played={playoffDay} onBack={() => setScreen('playoffs')} openTeam={openTeam} openPlayer={openPlayer} openGame={openGame} />
@@ -672,7 +715,7 @@ export default function App() {
             league={league}
             openPlayer={openPlayer}
             openTeam={openTeam}
-            onContinue={() => { league.phase = 'playoffs'; commit(); }}
+            onContinue={() => { league.phase = 'play-in'; commit(); setScreen('playin'); }}
           />
         )}
         {league.phase === 'offseason/finals-mvp' && (

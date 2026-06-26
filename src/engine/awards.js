@@ -65,24 +65,45 @@ export function computeAwards(league) {
   for (const team of league.teams) {
     const games = team.wins + team.losses;
     const winPct = games ? team.wins / games : 0.5;
-    // "starters" for Sixth Man purposes: the five biggest minute totals
+    // "starters" for Sixth Man purposes: the five highest per-game minute averages
+    // (using per-game rather than totals so an injured starter isn't mis-classified as bench)
     const topMin = new Set(
-      [...team.roster].sort((a, b) => b.stats.min - a.stats.min).slice(0, 5).map((p) => p.id)
+      [...team.roster]
+        .filter((p) => p.stats.gp > 0)
+        .sort((a, b) => b.stats.min / b.stats.gp - a.stats.min / a.stats.gp)
+        .slice(0, 5)
+        .map((p) => p.id)
     );
     for (const p of team.roster) cands.push({ p, team, winPct, bench: !topMin.has(p.id) });
   }
   const eligible = cands.filter((c) => c.p.stats.gp >= AWARD_MIN_GP);
 
-  const mvpScore = (c) => valueScore(c.p.stats) * (0.7 + 0.6 * c.winPct);
+  // MVP requires a winning team — players on sub-.450 teams are heavily penalized.
+  // The multiplier range (0.55 at .450 → 1.25 at .730) makes team success decisive.
+  const mvpScore = (c) => {
+    const base = valueScore(c.p.stats);
+    if (c.winPct < 0.35) return base * 0.3; // essentially ineligible
+    if (c.winPct < 0.45) return base * (0.3 + c.winPct); // sharp penalty below .450
+    return base * (0.5 + 1.0 * c.winPct);
+  };
   const dpoyScore = (c) =>
     (3 * pg(c.p.stats, 'stl') + 3 * pg(c.p.stats, 'blk') + 0.4 * pg(c.p.stats, 'reb')
-      + 0.15 * (c.p.ratings.perimeterDefense + c.p.ratings.interiorDefense) / 2) * (0.85 + 0.3 * c.winPct);
+      + 0.15 * (c.p.ratings.perimeterDefense + c.p.ratings.interiorDefense) / 2) * (0.8 + 0.4 * c.winPct);
 
   const mvp = top(eligible, mvpScore);
   const dpoy = top(eligible, dpoyScore);
   const roy = top(cands.filter((c) => c.p.exp === 0 && c.p.stats.gp >= ROOKIE_MIN_GP),
     (c) => valueScore(c.p.stats));
   const sixth = top(eligible.filter((c) => c.bench), (c) => valueScore(c.p.stats));
+
+  // MIP: most improved player vs their previous season value.
+  // Must have played at least one prior season with real minutes.
+  const mipScore = (c) => {
+    const prev = c.p.careerStats?.[c.p.careerStats.length - 1];
+    if (!prev || prev.gp < 20 || c.p.exp < 1) return -Infinity;
+    return valueScore(c.p.stats) - valueScore(prev);
+  };
+  const mip = top(eligible, mipScore);
 
   // All-NBA: three teams of two guards, two forwards, one center,
   // filled best-first by MVP score.
@@ -120,6 +141,7 @@ export function computeAwards(league) {
     dpoy: dpoy && give(dpoy, 'Defensive Player of the Year', defenseLine(dpoy.p.stats)),
     roy: roy && give(roy, 'Rookie of the Year', scoringLine(roy.p.stats)),
     sixth: sixth && give(sixth, 'Sixth Man of the Year', scoringLine(sixth.p.stats)),
+    mip: mip && give(mip, 'Most Improved Player', scoringLine(mip.p.stats)),
     allNba: allNba.map((teamArr, i) =>
       teamArr.map((c) => give(c, `All-NBA ${TEAM_NAMES[i]} Team`, scoringLine(c.p.stats)))),
     allDef: allDef.map((teamArr, i) =>
@@ -136,6 +158,7 @@ export function computeAwards(league) {
     if (allNba[i].length) news(`All-NBA ${TEAM_NAMES[i]} Team: ${allNba[i].map((c) => c.p.name).join(', ')}.`,
       { teamIds: [...new Set(allNba[i].map((c) => c.team.id))] });
   }
+  if (mip) news(`${mip.p.name} (${mip.team.name}) wins Most Improved Player: ${scoringLine(mip.p.stats)}.`, { teamIds: [mip.team.id] });
   if (sixth) news(`${sixth.p.name} (${sixth.team.name}) wins Sixth Man of the Year: ${scoringLine(sixth.p.stats)}.`, { teamIds: [sixth.team.id] });
   if (dpoy) news(`${dpoy.p.name} (${dpoy.team.name}) wins Defensive Player of the Year: ${defenseLine(dpoy.p.stats)}.`, { teamIds: [dpoy.team.id] });
   if (roy) news(`${roy.p.name} (${roy.team.name}) is the Rookie of the Year: ${scoringLine(roy.p.stats)}.`, { teamIds: [roy.team.id] });
@@ -151,6 +174,8 @@ const AWARD_ORDER = [
   'Defensive Player of the Year',
   'Rookie of the Year',
   'Sixth Man of the Year',
+  'Most Improved Player',
+  'NBA Cup',
   'All-NBA First Team',
   'All-NBA Second Team',
   'All-NBA Third Team',

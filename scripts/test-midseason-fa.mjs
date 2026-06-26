@@ -4,6 +4,7 @@
 import {
   createLeague, simDay, getTeam, signMidSeasonFA, midSeasonSignable, proratedMinSalary,
 } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { overall, generatePlayer } from '../src/engine/players.js';
 import { MIN_SALARY, ROSTER_MAX } from '../src/data/teams.js';
 
@@ -61,6 +62,11 @@ check('signing refused at 15 players', user.roster.length === ROSTER_MAX && full
 
 // wrong phase rejection + AI activity across a full season
 while (league.phase === 'regular') simDay(league);
+if (league.phase === 'cup') {
+  let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+  league.phase = 'regular';
+  while (league.phase === 'regular') simDay(league);
+}
 const offRes = signMidSeasonFA(league, 'BOS', league.freeAgents[0]?.id);
 check('signing refused outside the regular season', offRes.ok === false, offRes.error);
 

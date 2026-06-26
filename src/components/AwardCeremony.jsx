@@ -76,6 +76,7 @@ export default function AwardCeremony({ league, openPlayer, openTeam, onContinue
     if (awards.dpoy) list.push({ key: 'dpoy', icon: '🛡️', title: 'Defensive Player of the Year', entry: awards.dpoy });
     if (awards.roy) list.push({ key: 'roy', icon: '🌱', title: 'Rookie of the Year', entry: awards.roy });
     if (awards.sixth) list.push({ key: 'sixth', icon: '🔥', title: 'Sixth Man of the Year', entry: awards.sixth });
+    if (awards.mip) list.push({ key: 'mip', icon: '📈', title: 'Most Improved Player', entry: awards.mip });
     const NBA_NAMES = ['First', 'Second', 'Third'];
     (awards.allNba || []).forEach((teamArr, i) => {
       if (teamArr.length) list.push({ key: `allnba${i}`, icon: '⭐', title: `All-NBA ${NBA_NAMES[i]} Team`, entries: teamArr });

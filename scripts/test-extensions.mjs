@@ -3,9 +3,10 @@
 // offseason rollover (extended players never reach free agency).
 // Run with: node scripts/test-extensions.mjs [seed]
 import {
-  createLeague, simDay, simPlayoffRound, advanceOffseason, getTeam, payroll,
+  createLeague, simDay, simPlayoffRound, simPlayInGame, advanceOffseason, getTeam, payroll,
   offerExtension, extensionDemand, extensionEligible, askingPrice,
 } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { overall } from '../src/engine/players.js';
 
 const seed = Number(process.argv[2]) || 42;
@@ -66,6 +67,16 @@ const snapshot = league.teams.flatMap((t) => t.roster)
   .filter((p) => p.extension && p.contract.years === 1)
   .map((p) => ({ id: p.id, salary: p.extension.salary, years: p.extension.years }));
 while (league.phase === 'regular') simDay(league);
+if (league.phase === 'cup') {
+  let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+  league.phase = 'regular';
+  while (league.phase === 'regular') simDay(league);
+}
+if (league.phase === 'awards') league.phase = 'play-in';
+if (league.phase === 'play-in') {
+  let g = 0; while (league.playIn && !league.playIn.complete && g++ < 10) simPlayInGame(league);
+  league.phase = 'playoffs';
+}
 while (league.phase === 'playoffs') simPlayoffRound(league);
 advanceOffseason(league);
 

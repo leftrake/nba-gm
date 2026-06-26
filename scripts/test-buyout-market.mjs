@@ -6,6 +6,7 @@ import {
   createLeague, simDay, getTeam, releasePlayer, signMidSeasonFA, buyoutEligible,
   proratedMinSalary, TRADE_DEADLINE_DAY,
 } from '../src/engine/league.js';
+import { simCupGame, cupComplete } from '../src/engine/cup.js';
 import { maybeAiBuyoutRelease } from '../src/engine/strategy.js';
 import { overall, generatePlayer } from '../src/engine/players.js';
 import { ROSTER_MIN, ROSTER_MAX } from '../src/data/teams.js';
@@ -71,6 +72,14 @@ if (rebuilder) {
 while (league.phase === 'regular') {
   simDay(league);
   check('AI rosters stay within roster bounds', league.teams.every((t) => t.roster.length >= ROSTER_MIN - 1 && t.roster.length <= ROSTER_MAX));
+}
+if (league.phase === 'cup') {
+  let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+  league.phase = 'regular';
+  while (league.phase === 'regular') {
+    simDay(league);
+    check('AI rosters stay within roster bounds', league.teams.every((t) => t.roster.length >= ROSTER_MIN - 1 && t.roster.length <= ROSTER_MAX));
+  }
 }
 
 const buyoutNews = league.news.filter((n) => n.text.includes('agree to a buyout') || n.text.includes('bought-out')).length;

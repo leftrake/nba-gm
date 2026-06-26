@@ -35,16 +35,18 @@ export const TEAMS = [
 
 export const SALARY_CAP = 141_000_000;
 export const LUXURY_TAX = 172_000_000;
-// Second-apron-style hard cap: even a contender pushing into the tax via
-// extensions/exceptions shouldn't realistically land above this.
+// First apron: teams above can only use the taxpayer MLE (not the full MLE).
+export const FIRST_APRON = LUXURY_TAX + 6_000_000;
+// Second apron (hard cap): AI teams won't exceed this; used for cap-screen color-coding.
 export const APRON = LUXURY_TAX + 20_000_000;
 export const MIN_SALARY = 1_200_000;
 export const MAX_SALARY = 49_000_000;
 export const ROSTER_MIN = 13;
 export const ROSTER_MAX = 15;
-// Mid-level exception: once per offseason, a team already over the cap can
-// still sign one free agent using this much room (real-NBA non-taxpayer MLE).
+// Non-taxpayer MLE: available below the first apron.
 export const MLE_AMOUNT = 12_000_000;
+// Taxpayer MLE: available to teams between the luxury tax and the first apron.
+export const TAXPAYER_MLE = 5_200_000;
 // Two-way contracts: a development slot alongside the standard roster.
 // Fixed low salary, doesn't count against the cap, and is only open to
 // players early in their career (real-NBA two-way eligibility).
