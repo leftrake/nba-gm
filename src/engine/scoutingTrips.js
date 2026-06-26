@@ -28,7 +28,7 @@ export const SCOUT_TYPES = {
 };
 export const MAX_SCOUTS = 4;
 export const PRO_WATCH_SLOTS = 6;
-export const PRO_SCOUT_PERSONALITY_THRESHOLD = 30;
+export const PRO_SCOUT_PERSONALITY_THRESHOLD = 20;
 
 // ---- Mission costs ----
 
@@ -274,9 +274,9 @@ export function initSeasonScouting(league, rng) {
     discovered:   prev.discovered   ?? {},
     domesticSweepUsed: prev.domesticSweepUsed ?? {},
     draftBoard:   prev.draftBoard   ?? [],
-    proWatching:  {},
-    proWatchList: prev.proWatchList ?? [],
-    proReports:   [],
+    proWatching:  prev.proWatching   ?? {},
+    proWatchList: prev.proWatchList  ?? [],
+    proReports:   prev.proReports    ?? [],
     sleeperPicks: prev.sleeperPicks ?? {},
     bigBoardRanks: prev.bigBoardRanks ?? {},
     poachCount:   0,

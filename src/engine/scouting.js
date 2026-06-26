@@ -116,7 +116,7 @@ export function scoutUncertainty(p, teamId, proGames = 0, settings) {
   const effectiveBase = base === Infinity ? 10 : base;
   const priorPts = p.scout?.priorDraftPoints ?? 0;
   const totalFilm = proGames + priorPts / 5;
-  const filmReduction = Math.min(totalFilm / 20, 1) * 0.5;
+  const filmReduction = Math.min(totalFilm / 20, 1) * 0.8;
   return Math.round(clamp(effectiveBase * (1 - filmReduction) * fogMult, 0, 15));
 }
 

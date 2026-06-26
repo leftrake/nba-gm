@@ -364,11 +364,15 @@ function ProScoutingTab({ league, commit, openPlayer }) {
     { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
     { key: 'team', label: 'Team' },
     { key: 'film', label: 'Film', render: (row) => {
+      const full = row._games >= PRO_SCOUT_GAMES_FULL;
       const pct = Math.min(100, Math.round((row._games / PRO_SCOUT_GAMES_FULL) * 100));
+      if (full) {
+        return <span style={{ color: 'var(--color-success)', fontSize: 'var(--text-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}>Full read ✓</span>;
+      }
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 90 }}>
           <div style={{ width: 52, flexShrink: 0 }}>
-            <ProgressBar value={pct} variant={pct >= 100 ? 'success' : 'primary'} size="sm" />
+            <ProgressBar value={pct} variant="primary" size="sm" />
           </div>
           <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>
             {row._games}/{PRO_SCOUT_GAMES_FULL}
@@ -437,7 +441,7 @@ function ProScoutingTab({ league, commit, openPlayer }) {
     <>
       <GuideTooltip
         tipKey="scouting_pro"
-        text="Mark players as watched from here or from their player card. Each simmed game-day accumulates film — after 20 game-days your read reaches maximum tightness. Fog resets each offseason as players develop, but your watch list carries over. Rookies who were scouted pre-draft start with a head start based on their draft scouting points."
+        text="Mark players as watched from here or from their player card. Each simmed game-day accumulates film — after 20 game-days your read reaches maximum tightness. Film carries over across seasons, so a player you've been tracking for years is a known quantity. Rookies who were scouted pre-draft start with a head start based on their draft scouting points."
         block
       >
         <SectionHeader
