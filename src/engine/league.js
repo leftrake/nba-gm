@@ -1116,12 +1116,20 @@ export function simPlayoffGame(league) {
     for (const conf of ['East', 'West']) po[conf].forEach(playGame);
     // a night of playoff games stands in for the ~2 rest days between a
     // series' games — matches playoffCondition's recovery formula above, and
-    // keeps news/dates from bunching every round onto the same calendar day
-    if (played.length) league.dayIndex += 2;
+    // keeps news/dates from bunching every round onto the same calendar day.
+    // Tick a second time so injuries heal at the same 1-day-per-calendar-day
+    // rate as the regular season (the first tick runs before the game above).
+    if (played.length) {
+      league.dayIndex += 2;
+      for (const team of league.teams) tickInjuries(league, team);
+    }
     if (['East', 'West'].every((c) => po[c].every((m) => m.winner))) advanceRound(po, league);
   } else if (po.finals && !po.finals.winner) {
     playGame(po.finals);
-    if (played.length) league.dayIndex += 2;
+    if (played.length) {
+      league.dayIndex += 2;
+      for (const team of league.teams) tickInjuries(league, team);
+    }
     if (po.finals.winner) {
       po.champion = po.finals.winner;
       const champ = getTeam(league, po.champion);
@@ -1165,8 +1173,10 @@ function advanceRound(po, league) {
     }
   }
   // a few extra days off between rounds, on top of the per-game gap already
-  // added in simPlayoffGame, mirroring the real layoff before the next round
+  // added in simPlayoffGame, mirroring the real layoff before the next round.
+  // Tick injuries for each of those days so they heal on the same clock.
   league.dayIndex += 3;
+  for (let d = 0; d < 3; d++) for (const team of league.teams) tickInjuries(league, team);
   if (po.East.length === 1 && po.West.length === 1) {
     // Finals home court goes to the conference champ with the better record
     const e = getTeam(league, po.East[0].winner);
@@ -1248,8 +1258,6 @@ function playInSimGame(league, home, away, rng) {
   const homeWon = homePts !== awayPts ? homePts > awayPts : rawHomeWon;
   if (homeWon) { homeTeam.wins++; awayTeam.losses++; }
   else { awayTeam.wins++; homeTeam.losses++; }
-  // Tick injuries and condition just like a regular game
-  for (const team of [homeTeam, awayTeam]) tickInjuries(league, team);
   return { home, away, homePts, awayPts, homeWon, homeBox: r.homeBox, awayBox: r.awayBox };
 }
 
@@ -1262,6 +1270,12 @@ export function simPlayInGame(league) {
     (pi.West.gameA.winner ? 1 : 0) + (pi.West.gameB?.winner ? 1 : 0) + (pi.West.gameC?.winner ? 1 : 0);
   const rng = makeRng(league.seed + 777_001 + totalPlayed * 37);
   const played = [];
+
+  // Tick all teams before each play-in stage (one game day) and advance the
+  // calendar by 2 days — the same per-game rhythm as the playoffs.  All 30
+  // teams heal, not just the ones playing; seeds 1-6 are resting but their
+  // injured players recover too.
+  for (const team of league.teams) tickInjuries(league, team);
 
   if (pi.stage === 0) {
     // Game A: 7 vs 8 — winner locked in as 7 seed
@@ -1313,6 +1327,13 @@ export function simPlayInGame(league) {
       day: league.dayIndex, category: 'game', teamIds: [g.home, g.away],
       text: `Play-In (${g.conf} ${gameLabels[g.game]}): ${win.city} ${win.name} ${ws}-${ls} over ${lose.city} ${lose.name}.`,
     });
+  }
+
+  // Advance the calendar by 2 days (matching playoff game rhythm) and tick
+  // the rest day so injuries heal 2 days per stage, not zero.
+  if (played.length) {
+    league.dayIndex += 2;
+    for (const team of league.teams) tickInjuries(league, team);
   }
 
   return played;
