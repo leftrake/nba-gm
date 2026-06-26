@@ -225,9 +225,11 @@ function applyScoutEffects(league, teamId, rng) {
   }
 
   // Big board analyst: top-20 ranking weighted by scouted quality + positional need
+  // Only rank current-year prospects (league.scouting.prospects), not future draft classes.
   if (scouts.some((sc) => sc.type === 'bigBoard')) {
     const team = league.teams.find((t) => t.id === teamId);
-    const disc = allProspects.filter((p) => isDiscovered(p, teamId, league));
+    const currentProspects = league.scouting?.prospects ?? [];
+    const disc = currentProspects.filter((p) => isDiscovered(p, teamId, league));
     const posCounts = {};
     for (const rp of team?.roster ?? []) posCounts[rp.pos] = (posCounts[rp.pos] ?? 0) + 1;
     const scored = disc.map((p) => {
