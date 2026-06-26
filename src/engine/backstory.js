@@ -192,6 +192,43 @@ export function scoutBackstoryNote(p) {
   return (SCOUT_NOTES[p.backstory] ?? SCOUT_NOTES.grinder)(p);
 }
 
+// ---------- Draft flavor ----------
+
+// One-liner appended to draft news when the user selects a player — reads
+// like an analyst's on-air comment right after the pick card is read.
+const DRAFT_NEWS_FLAVOR = {
+  bust: () => `Every scout in the building had him as a blue-chip talent — the raw ability has never been in question. Getting the best out of him consistently will be the front office's challenge.`,
+  provider: () => `Multiple teams that worked him out called him one of the most professional pre-draft interviews in this class. Low-maintenance, high floor.`,
+  gem: () => `He slid further in most boards than the film probably warranted — a few evaluators privately considered him the steal of the class.`,
+  legend: () => `He's already talking about building something long-term — a franchise-player mentality before he's played a single professional minute.`,
+  international: () => `He arrives with polished overseas fundamentals, though the NBA adjustment period is a known variable for everyone who makes this leap.`,
+  comeback: () => `His recovery from a significant injury was the dominant story of his pre-draft process, and he answered every question about it with unusual composure.`,
+  generational: () => `The combine numbers drew a crowd — scouts are calling him one of the most physically gifted prospects in recent memory.`,
+  grinder: () => `He tested clean on every character evaluation and the pre-draft workouts were exactly what teams wanted: consistent, coachable, no surprises.`,
+};
+
+export function draftNewsFlavor(p) {
+  return (DRAFT_NEWS_FLAVOR[p.backstory ?? 'grinder'] ?? DRAFT_NEWS_FLAVOR.grinder)(p);
+}
+
+// Two-sentence player-card blurb shown during a player's rookie year — sits
+// between the dry personality note and the full backstory reveal (which fires
+// after two seasons). Reads like a beat reporter's training-camp preview.
+const ROOKIE_BLURBS = {
+  bust: () => `The raw talent tops most evaluation boards — scouts love the ceiling and the way he takes over games when he's locked in. Whether the professional environment brings out his best consistently is the storyline to watch this year.`,
+  provider: () => `He carries himself like a veteran already — coaches and teammates at every previous stop describe a player who's the first one to the gym and the last to complain. Low-maintenance, high floor.`,
+  gem: () => `He didn't generate the same buzz as some higher-ranked classmates, but the film made believers out of the teams that took a close look. His best basketball is almost certainly still ahead of him.`,
+  legend: () => `Even before training camp opened, he was already talking about building something long-term here. The kind of player who grows into the face of a city.`,
+  international: () => `He comes with an overseas pedigree and a game built on the fundamentals the NBA rewards. The adjustment takes time for everyone who makes this jump — but the talent has been there all along.`,
+  comeback: () => `He's already beaten long odds once — the injury that could have ended things seemed to focus him instead. Mental makeup evaluations from the pre-draft process came back about as strong as scouts ever see.`,
+  generational: () => `The physical testing numbers drew a crowd at the combine, and scouts are calling him one of the most gifted athletes in this class. The question is how fast the game catches up with the body — when it does, the ceiling is historic.`,
+  grinder: () => `A clean evaluation from top to bottom — no character flags, no red flags, and coaches at every level describe the same thing. What you see on tape is what you get, and what you get is reliable.`,
+};
+
+export function rookieBlurb(p) {
+  return (ROOKIE_BLURBS[p.backstory ?? 'grinder'] ?? ROOKIE_BLURBS.grinder)(p);
+}
+
 // ---------- Scouting regions ----------
 
 const REGION_MAP = {

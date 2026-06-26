@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
 import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, formatHeight, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { injuryTimeline } from '../engine/injuries.js';
@@ -6,7 +6,8 @@ import { groupAwards, leaderMinGp } from '../engine/awards.js';
 import { positionalPercentiles } from '../engine/stats.js';
 import { scoutRange, isHidden } from '../engine/scouting.js';
 import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
-import { personalityNote, scoutBackstoryNote } from '../engine/backstory.js';
+import { personalityNote, scoutBackstoryNote, rookieBlurb } from '../engine/backstory.js';
+import { getMilestones, milestoneIcon } from '../engine/milestones.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
 import { Ovr, OvrArc, Pot, Cond, money, perGame, fgPct, TeamLink, TeamBadge, PlayerLink, Origin } from './shared.jsx';
 import ShotChart from './ShotChart.jsx';
@@ -37,7 +38,6 @@ function barColor(v) {
   return 'var(--text-muted)';
 }
 
-// Overall progression chart — SVG inline line chart.
 function OverallChart({ points }) {
   const w = 520, h = 130, padX = 26, padY = 22;
   const ovrs = points.map(([, o]) => o);
@@ -59,7 +59,6 @@ function OverallChart({ points }) {
   );
 }
 
-// Stat block row for this-season stats.
 function SeasonStats({ stats }) {
   if (!stats.gp) return <p style={{ color: 'var(--text-muted)' }}>No games played this season.</p>;
   const tp = stats.tpa ? ((stats.tpm / stats.tpa) * 100).toFixed(1) : '–';
@@ -89,8 +88,6 @@ const TRANSACTION_LABELS = {
   waived: 'Waived',
 };
 
-// Career transaction log — drafts, trades, free-agency signings, waivers —
-// most recent first.
 function TransactionHistory({ league, rows, openTeam }) {
   return (
     <div className="ui-table-wrap">
@@ -113,7 +110,6 @@ function TransactionHistory({ league, rows, openTeam }) {
   );
 }
 
-// Season-by-season stat table — shared by regular-season and playoff career history.
 function CareerStatsTable({ league, rows, openTeam }) {
   return (
     <div className="ui-table-wrap">
@@ -149,7 +145,39 @@ function CareerStatsTable({ league, rows, openTeam }) {
   );
 }
 
-// Memorial layout for a retired player.
+function MilestonesTab({ p, league }) {
+  const milestones = getMilestones(p, league);
+  if (milestones.length === 0) {
+    return (
+      <div className="ui-section">
+        <p style={{ color: 'var(--text-muted)' }}>No milestones recorded yet — check back after a few seasons.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="ui-section">
+      {milestones.map((m, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start',
+            paddingBottom: 'var(--sp-3)',
+            marginBottom: i < milestones.length - 1 ? 'var(--sp-3)' : 0,
+            borderBottom: i < milestones.length - 1 ? '1px solid var(--border)' : undefined,
+          }}
+        >
+          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', minWidth: 36, fontVariantNumeric: 'tabular-nums', textAlign: 'right', flexShrink: 0 }}>
+            {m.season}
+          </span>
+          <span style={{ fontSize: 'var(--text-sm)' }}>
+            {milestoneIcon(m.type)} {m.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RetiredMemorial({ league, p, onClose, openTeam }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -182,7 +210,6 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
           <button className="ui-modal-close" onClick={onClose}>✕</button>
         </div>
 
-        {/* Career highlights strip */}
         <div style={{ display: 'flex', gap: 'var(--sp-5)', flexWrap: 'wrap', marginBottom: 'var(--sp-5)', paddingBottom: 'var(--sp-4)', borderBottom: '1px solid var(--border)' }}>
           {p.peakOverall != null && (
             <div className="ui-stat ui-stat--md">
@@ -285,12 +312,16 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
   );
 }
 
+const TABS = [['stats', 'Stats'], ['milestones', 'Milestones'], ['history', 'History']];
+
 export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor, commit }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  const [tab, setTab] = useState('stats');
 
   if (p.retiredSeason != null) {
     return <RetiredMemorial league={league} p={p} onClose={onClose} openTeam={openTeam} />;
@@ -393,7 +424,7 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           )}
         </div>
 
-        {/* Alerts */}
+        {/* Always-visible alerts */}
         {p.injury && (
           <div style={{ marginBottom: 'var(--sp-3)', color: 'var(--color-danger)' }}>
             🩹 <b>{p.injury.type}</b> — {injuryTimeline(p.injury)}.
@@ -407,224 +438,241 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
         <div style={{ marginBottom: 'var(--sp-4)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
           {p.backstoryRevealed
             ? <>📰 {scoutBackstoryNote(p)}</>
+            : (p.exp === 0 && p.draftYear)
+            ? rookieBlurb(p)
             : <>Personality: comes across as {personalityNote(p)}.</>}
         </div>
 
-        {/* Ratings */}
-        <div className="ui-section">
-          <div className="ui-section-header">
-            <div className="ui-section-header__left">
-              <div className="ui-section-title">Ratings</div>
-              {fogged && <div className="ui-section-subtitle">Scouted ranges — tighten as you watch him play</div>}
-            </div>
-          </div>
-          {RATINGS.map((group) => (
-            <div key={group.category}>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontWeight: 600, margin: 'var(--sp-2) 0 4px' }}>
-                {group.category}
-              </div>
-              {group.items.map(([key, label]) => {
-                const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
-                const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
-                const hidden = fogged && isHidden(p, league.userTeamId, proGames);
-                const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, league.userTeamId, proGames) : [v, v];
-                const mid = (lo + hi) / 2;
-                return (
-                  <div className="rating-row" key={key}>
-                    <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                    <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--text-muted)' : barColor(v) }} /></div>
-                    <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--text-muted)' : undefined }}>
-                      {hidden ? '?' : fogged ? `${lo}–${hi}` : v}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+        {/* Tab bar */}
+        <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: 'var(--sp-4)', gap: 0 }}>
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              style={{
+                background: 'none', border: 'none', padding: 'var(--sp-2) var(--sp-4)',
+                cursor: 'pointer', fontSize: 'var(--text-sm)',
+                fontWeight: tab === id ? 'var(--weight-bold)' : undefined,
+                color: tab === id ? 'var(--color-primary)' : 'var(--text-muted)',
+                borderBottom: tab === id ? '2px solid var(--color-primary)' : '2px solid transparent',
+                marginBottom: -2,
+              }}
+            >
+              {label}
+            </button>
           ))}
         </div>
 
-        {/* Progression chart */}
-        {!fogged && (() => {
-          const history = p.ratingHistory ?? [];
-          if (!history.length) return null;
-          const rows = [...history, [league.season, ...ratingRow(p)]];
-          return (
+        {/* ── Stats tab ── */}
+        {tab === 'stats' && (
+          <>
             <div className="ui-section">
-              <div className="ui-section-header"><div className="ui-section-title">Progression</div></div>
-              <OverallChart points={rows.map((r) => [r[0], r[1]])} />
-            </div>
-          );
-        })()}
-
-        {/* Training focus */}
-        {!fogged && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Training Focus</div></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
-              <select
-                value={p.trainingFocus || ''}
-                onChange={(e) => { p.trainingFocus = e.target.value || null; commit?.(); }}
-              >
-                <option value="">Balanced</option>
-                {TRAINING_FOCUS_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-              </select>
-              {p.trainingFocus && (() => {
-                const f = TRAINING_FOCUS_OPTIONS.find((f) => f.id === p.trainingFocus);
-                return f && (
-                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                    Boosts {f.boost.join(', ')} · slight regression in {f.neglect}
-                  </span>
-                );
-              })()}
-            </div>
-          </div>
-        )}
-
-        {/* This season */}
-        <div className="ui-section">
-          <div className="ui-section-header"><div className="ui-section-title">This Season ({league.season})</div></div>
-          <SeasonStats stats={p.stats} />
-        </div>
-
-        {/* Shot chart */}
-        {!fogged && p.stats.gp > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Shot Chart ({league.season})</div></div>
-            <ShotChart stats={p.stats} />
-          </div>
-        )}
-
-        {/* Positional percentiles */}
-        {p.stats.gp > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header">
-              <div className="ui-section-header__left">
-                <div className="ui-section-title">Vs. League at {p.pos}</div>
-                <div className="ui-section-subtitle">Percentile this season among same-position players</div>
+              <div className="ui-section-header">
+                <div className="ui-section-header__left">
+                  <div className="ui-section-title">Ratings</div>
+                  {fogged && <div className="ui-section-subtitle">Scouted ranges — tighten as you watch him play</div>}
+                </div>
               </div>
+              {RATINGS.map((group) => (
+                <div key={group.category}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontWeight: 600, margin: 'var(--sp-2) 0 4px' }}>
+                    {group.category}
+                  </div>
+                  {group.items.map(([key, label]) => {
+                    const v = key === 'stamina' ? (p.stamina ?? 60) : p.ratings[key];
+                    const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
+                    const hidden = fogged && isHidden(p, league.userTeamId, proGames);
+                    const [lo, hi] = (fogged && !hidden) ? scoutRange(p, v, league.season, key, league.userTeamId, proGames) : [v, v];
+                    const mid = (lo + hi) / 2;
+                    return (
+                      <div className="rating-row" key={key}>
+                        <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                        <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--text-muted)' : barColor(v) }} /></div>
+                        <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--text-muted)' : undefined }}>
+                          {hidden ? '?' : fogged ? `${lo}–${hi}` : v}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-            {positionalPercentiles(league, p, leaderMinGp(league)).map((row) => (
-              <div className="rating-row" key={row.key}>
-                <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
-                <div className="rating-bar"><div style={{ width: `${row.percentile}%`, background: barColor(row.percentile) }} /></div>
-                <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.percentile}</span>
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* This postseason */}
-        {p.playoffStats.gp > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">This Postseason ({league.season})</div></div>
-            <SeasonStats stats={p.playoffStats} />
-          </div>
-        )}
-
-        {/* G-League assignment */}
-        {p.gLeagueStats?.gp > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">This Season — G League ({league.season})</div></div>
-            <SeasonStats stats={p.gLeagueStats} />
-          </div>
-        )}
-
-        {/* Awards */}
-        {p.awards?.length > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Awards</div></div>
-            {groupAwards(p.awards).map((g) => (
-              <div key={g.award} style={{ marginBottom: 'var(--sp-1)' }}>
-                {g.seasons.length > 1 && <b>{g.seasons.length}× </b>}{g.award}{' '}
-                <span style={{ color: 'var(--text-muted)' }}>({g.seasons.join(', ')})</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Career stats */}
-        <div className="ui-section">
-          <div className="ui-section-header"><div className="ui-section-title">Career</div></div>
-          {p.careerStats.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No previous seasons.</p>}
-          {p.careerStats.length > 0 && <CareerStatsTable league={league} rows={p.careerStats} openTeam={openTeam} />}
-        </div>
-
-        {/* Career playoff stats */}
-        {p.playoffCareerStats.length > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Career — Playoffs</div></div>
-            <CareerStatsTable league={league} rows={p.playoffCareerStats} openTeam={openTeam} />
-          </div>
-        )}
-
-        {/* Career G-League stats */}
-        {p.gLeagueCareerStats?.length > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Career — G League</div></div>
-            <CareerStatsTable league={league} rows={p.gLeagueCareerStats} openTeam={openTeam} />
-          </div>
-        )}
-
-        {/* Contract history */}
-        {p.contractHistory?.length > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Contract History</div></div>
-            <div className="ui-table-wrap">
-              <table className="ui-table">
-                <thead>
-                  <tr><th>Season</th><th>Team</th><th className="num">Salary</th><th className="num">Years</th></tr>
-                </thead>
-                <tbody>
-                  {[...p.contractHistory].reverse().map((c, i) => (
-                    <tr key={i}>
-                      <td>{c.season}</td>
-                      <td><TeamLink team={getTeam(league, c.team)} openTeam={openTeam} /></td>
-                      <td className="num">{money(c.salary)}</td>
-                      <td className="num">{c.years}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Transaction history */}
-        {p.transactions?.length > 0 && (
-          <div className="ui-section">
-            <div className="ui-section-header"><div className="ui-section-title">Transactions</div></div>
-            <TransactionHistory league={league} rows={p.transactions} openTeam={openTeam} />
-          </div>
-        )}
-
-        {/* Draft info */}
-        {!p.draftYear && (
-          <div className="ui-section">
-            <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Draft: Undrafted</div>
-          </div>
-        )}
-        {p.draftYear && (
-          <div className="ui-section">
-            <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-              Drafted {p.draftYear}, Round {p.draftRound} (Pick {p.draftPick}) by <TeamLink team={getTeam(league, p.draftTeam)} openTeam={openTeam} />
-            </div>
-          </div>
-        )}
-
-        {/* Similar players */}
-        <div className="ui-section">
-          <div className="ui-section-header"><div className="ui-section-title">Similar Players</div></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
-            {similarPlayers(league, p).map(({ p: sp, team: st }) => {
-              const spFogged = st.id !== league.userTeamId;
+            {!fogged && (() => {
+              const history = p.ratingHistory ?? [];
+              if (!history.length) return null;
+              const rows = [...history, [league.season, ...ratingRow(p)]];
               return (
-                <div key={sp.id} style={{ fontSize: 'var(--text-sm)' }}>
-                  <Ovr p={sp} league={league} fogged={spFogged} /> <PlayerLink p={sp} openPlayer={openPlayer} /> ({posLabel(sp)}) — <TeamLink team={st} openTeam={openTeam} />
+                <div className="ui-section">
+                  <div className="ui-section-header"><div className="ui-section-title">Progression</div></div>
+                  <OverallChart points={rows.map((r) => [r[0], r[1]])} />
                 </div>
               );
-            })}
-          </div>
-        </div>
+            })()}
+
+            {!fogged && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Training Focus</div></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
+                  <select
+                    value={p.trainingFocus || ''}
+                    onChange={(e) => { p.trainingFocus = e.target.value || null; commit?.(); }}
+                  >
+                    <option value="">Balanced</option>
+                    {TRAINING_FOCUS_OPTIONS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                  {p.trainingFocus && (() => {
+                    const f = TRAINING_FOCUS_OPTIONS.find((f) => f.id === p.trainingFocus);
+                    return f && (
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                        Boosts {f.boost.join(', ')} · slight regression in {f.neglect}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            <div className="ui-section">
+              <div className="ui-section-header"><div className="ui-section-title">This Season ({league.season})</div></div>
+              <SeasonStats stats={p.stats} />
+            </div>
+
+            {!fogged && p.stats.gp > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Shot Chart ({league.season})</div></div>
+                <ShotChart stats={p.stats} />
+              </div>
+            )}
+
+            {p.stats.gp > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header">
+                  <div className="ui-section-header__left">
+                    <div className="ui-section-title">Vs. League at {p.pos}</div>
+                    <div className="ui-section-subtitle">Percentile this season among same-position players</div>
+                  </div>
+                </div>
+                {positionalPercentiles(league, p, leaderMinGp(league)).map((row) => (
+                  <div className="rating-row" key={row.key}>
+                    <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
+                    <div className="rating-bar"><div style={{ width: `${row.percentile}%`, background: barColor(row.percentile) }} /></div>
+                    <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.percentile}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {p.playoffStats.gp > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">This Postseason ({league.season})</div></div>
+                <SeasonStats stats={p.playoffStats} />
+              </div>
+            )}
+
+            {p.gLeagueStats?.gp > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">This Season — G League ({league.season})</div></div>
+                <SeasonStats stats={p.gLeagueStats} />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Milestones tab ── */}
+        {tab === 'milestones' && <MilestonesTab p={p} league={league} />}
+
+        {/* ── History tab ── */}
+        {tab === 'history' && (
+          <>
+            {p.awards?.length > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Awards</div></div>
+                {groupAwards(p.awards).map((g) => (
+                  <div key={g.award} style={{ marginBottom: 'var(--sp-1)' }}>
+                    {g.seasons.length > 1 && <b>{g.seasons.length}× </b>}{g.award}{' '}
+                    <span style={{ color: 'var(--text-muted)' }}>({g.seasons.join(', ')})</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="ui-section">
+              <div className="ui-section-header"><div className="ui-section-title">Career</div></div>
+              {p.careerStats.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No previous seasons.</p>}
+              {p.careerStats.length > 0 && <CareerStatsTable league={league} rows={p.careerStats} openTeam={openTeam} />}
+            </div>
+
+            {p.playoffCareerStats.length > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Career — Playoffs</div></div>
+                <CareerStatsTable league={league} rows={p.playoffCareerStats} openTeam={openTeam} />
+              </div>
+            )}
+
+            {p.gLeagueCareerStats?.length > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Career — G League</div></div>
+                <CareerStatsTable league={league} rows={p.gLeagueCareerStats} openTeam={openTeam} />
+              </div>
+            )}
+
+            {p.contractHistory?.length > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Contract History</div></div>
+                <div className="ui-table-wrap">
+                  <table className="ui-table">
+                    <thead>
+                      <tr><th>Season</th><th>Team</th><th className="num">Salary</th><th className="num">Years</th></tr>
+                    </thead>
+                    <tbody>
+                      {[...p.contractHistory].reverse().map((c, i) => (
+                        <tr key={i}>
+                          <td>{c.season}</td>
+                          <td><TeamLink team={getTeam(league, c.team)} openTeam={openTeam} /></td>
+                          <td className="num">{money(c.salary)}</td>
+                          <td className="num">{c.years}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {p.transactions?.length > 0 && (
+              <div className="ui-section">
+                <div className="ui-section-header"><div className="ui-section-title">Transactions</div></div>
+                <TransactionHistory league={league} rows={p.transactions} openTeam={openTeam} />
+              </div>
+            )}
+
+            <div className="ui-section">
+              {!p.draftYear && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Draft: Undrafted</div>
+              )}
+              {p.draftYear && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                  Drafted {p.draftYear}, Round {p.draftRound} (Pick {p.draftPick}) by <TeamLink team={getTeam(league, p.draftTeam)} openTeam={openTeam} />
+                </div>
+              )}
+            </div>
+
+            <div className="ui-section">
+              <div className="ui-section-header"><div className="ui-section-title">Similar Players</div></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
+                {similarPlayers(league, p).map(({ p: sp, team: st }) => {
+                  const spFogged = st.id !== league.userTeamId;
+                  return (
+                    <div key={sp.id} style={{ fontSize: 'var(--text-sm)' }}>
+                      <Ovr p={sp} league={league} fogged={spFogged} /> <PlayerLink p={sp} openPlayer={openPlayer} /> ({posLabel(sp)}) — <TeamLink team={st} openTeam={openTeam} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
     </div>

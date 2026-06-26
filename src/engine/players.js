@@ -314,6 +314,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     awards: [], // { season, award } — filled by engine/awards.js
     seasonStints: [], // { team, stats } — filled by engine/league.js on trades
     championships: 0, // count of titles won while on the roster — engine/legacy.js
+    milestones: [],   // career milestone events — see engine/milestones.js
   };
   assignOrigin(p, rng, country);
   p.pos2 = assignPos2(p, rng);

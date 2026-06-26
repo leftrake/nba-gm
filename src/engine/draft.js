@@ -2,6 +2,7 @@ import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract, recordTransaction, ensureUniqueJerseys } from './players.js';
 import { pushNews } from './save.js';
+import { draftNewsFlavor } from './backstory.js';
 import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
 import { getDraftPoints } from './scouting.js';
 
@@ -199,7 +200,7 @@ export function makeDraftPick(league, prospectId) {
   d.results.push({ pick, round: pick <= 30 ? 1 : 2, teamId, playerId: p.id, playerName: p.name, pos: p.pos });
   d.pickIndex += 1;
   if (teamId === league.userTeamId) {
-    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `With pick #${pick}, the ${team.name} select ${p.name} (${p.pos}, ${p.age}).` });
+    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `With pick #${pick}, the ${team.name} select ${p.name} (${p.pos}, ${p.age}). ${draftNewsFlavor(p)}` });
   }
   return p;
 }

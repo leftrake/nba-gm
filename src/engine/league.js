@@ -31,6 +31,7 @@ import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './ba
 import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting } from './scoutingTrips.js';
 import { computeQualitySeasons, TRAIT_NEWS_REVEAL_TIERS, traitFromPotential } from './devTraits.js';
 import { generateCoach, devBonus, coachSalary } from './coach.js';
+import { checkPlayerCareerHighs, checkPtsThresholds, recordFirstChampionship } from './milestones.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -859,6 +860,7 @@ export function simDay(league) {
     applyBoxToStats(home.roster, r.homeBox);
     applyBoxToStats(away.roster, r.awayBox);
     checkGameHighs(league, r, home, away);
+    checkPlayerCareerHighs(league, r, home, away);
     const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft }));
     for (const p of hurt) {
       r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
@@ -1021,6 +1023,8 @@ export function simPlayoffGame(league) {
         r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
       }
     }
+    const playoffGameNum = (m.games?.length ?? 0) + 1;
+    checkPlayerCareerHighs(league, r, getTeam(league, homeId), getTeam(league, awayId), true, playoffGameNum);
     if (!m.games) m.games = [];
     // playoff games persist for the whole offseason (league.playoffs only
     // resets when the next season starts), so unlike a single regular-season
@@ -1256,7 +1260,11 @@ export function advanceOffseason(league) {
   // before retirements/trades reshuffle that roster.
   if (league.playoffs?.champion) {
     const champTeam = getTeam(league, league.playoffs.champion);
-    for (const p of champTeam.roster) p.championships = (p.championships || 0) + 1;
+    for (const p of champTeam.roster) {
+      const isFirst = !(p.championships > 0);
+      p.championships = (p.championships || 0) + 1;
+      if (isFirst) recordFirstChampionship(p, `${champTeam.city} ${champTeam.name}`, league.season);
+    }
   }
 
   // Captured before per-team wins/losses reset below, for the ownership system
@@ -1284,6 +1292,7 @@ export function advanceOffseason(league) {
       if (finalStats.gp > 0) p.careerStats.push({ season: league.season, team: team.id, ...finalStats });
       p.seasonStints = [];
       p.stats = emptyStats();
+      checkPtsThresholds(p, league.season);
       // rosters are frozen during the playoffs (no trades/signings), so
       // unlike regular-season stats this never needs to split into stints
       if (p.playoffStats.gp > 0) p.playoffCareerStats.push({ season: league.season, team: team.id, ...p.playoffStats });
