@@ -160,6 +160,7 @@ export function hireScout(league, teamId, type, qualifier = null) {
   if (type === 'regional') scout.region = qualifier;
   if (type === 'rangeSpecialist') scout.range = qualifier;
   scouts.push(scout);
+  if (type === 'bigBoard') refreshBigBoard(league, teamId);
   return { ok: true };
 }
 
@@ -224,26 +225,33 @@ function applyScoutEffects(league, teamId, rng) {
     s.sleeperPicks[teamId] = [];
   }
 
-  // Big board analyst: top-20 ranking weighted by scouted quality + positional need
-  // Only rank current-year prospects (league.scouting.prospects), not future draft classes.
-  if (scouts.some((sc) => sc.type === 'bigBoard')) {
-    const team = league.teams.find((t) => t.id === teamId);
-    const currentProspects = league.scouting?.prospects ?? [];
-    const disc = currentProspects.filter((p) => isDiscovered(p, teamId, league));
-    const posCounts = {};
-    for (const rp of team?.roster ?? []) posCounts[rp.pos] = (posCounts[rp.pos] ?? 0) + 1;
-    const scored = disc.map((p) => {
-      let score = scoutedOverall(p, league.season, teamId);
-      const cnt = posCounts[p.pos] ?? 0;
-      if (cnt <= 1) score += 5;
-      else if (cnt <= 2) score += 2;
-      return { p, score };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    s.bigBoardRanks[teamId] = scored.slice(0, 20).map(({ p }) => p.id);
-  } else {
+  refreshBigBoard(league, teamId);
+}
+
+// Recompute the big board ranks for a single team. Called after hiring the
+// analyst and after each scouting action so the board stays current.
+function refreshBigBoard(league, teamId) {
+  const s = league.scouting;
+  if (!s.bigBoardRanks) s.bigBoardRanks = {};
+  const scouts = s.scouts?.[teamId] ?? [];
+  if (!scouts.some((sc) => sc.type === 'bigBoard')) {
     s.bigBoardRanks[teamId] = [];
+    return;
   }
+  const team = league.teams.find((t) => t.id === teamId);
+  const currentProspects = s.prospects ?? [];
+  const disc = currentProspects.filter((p) => isDiscovered(p, teamId, league));
+  const posCounts = {};
+  for (const rp of team?.roster ?? []) posCounts[rp.pos] = (posCounts[rp.pos] ?? 0) + 1;
+  const scored = disc.map((p) => {
+    let score = scoutedOverall(p, league.season, teamId);
+    const cnt = posCounts[p.pos] ?? 0;
+    if (cnt <= 1) score += 5;
+    else if (cnt <= 2) score += 2;
+    return { p, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  s.bigBoardRanks[teamId] = scored.slice(0, 20).map(({ p }) => p.id);
 }
 
 // ---- Season initialization ----
@@ -472,6 +480,7 @@ function runDraftMission(league, teamId, playerId, points, cost) {
   const rng = makeRng(league.seed + league.season * 80_001 + playerId * 13 + Math.floor((pts + points) / 10));
   const text = generateScoutReport(p, league.season, rng, teamId);
   addReport(league, teamId, text, playerId);
+  refreshBigBoard(league, teamId);
   return { ok: true, text };
 }
 
@@ -507,6 +516,7 @@ export function sweepRegion(league, teamId, region) {
   s.budgets[teamId] -= cost;
   const text = `Scouting sweep of ${region}: ${newCount} new prospect${newCount === 1 ? '' : 's'} discovered, all evaluated (${DRAFT_POINTS_SWEEP} scouting pts each).`;
   addReport(league, teamId, text);
+  refreshBigBoard(league, teamId);
   return { ok: true, text, discovered: newCount };
 }
 
@@ -536,6 +546,7 @@ export function domesticSweep(league, teamId) {
   s.domesticSweepUsed[teamId] = league.season;
   const text = `Domestic sweep: ${targets.length} domestic prospect${targets.length === 1 ? '' : 's'} evaluated (${DRAFT_POINTS_DOMESTIC_SWEEP} scouting pts each).`;
   addReport(league, teamId, text);
+  refreshBigBoard(league, teamId);
   return { ok: true, text };
 }
 
