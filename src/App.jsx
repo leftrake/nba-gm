@@ -422,9 +422,14 @@ export default function App() {
 
   const handleSimPlayIn = () => {
     simPlayInGame(league);
-    commit();
-    if (league.playIn?.complete) setScreen('playoffs');
-    else setScreen('playin');
+    if (league.playIn?.complete) {
+      league.phase = 'playoffs';
+      commit();
+      setScreen('playoffs');
+    } else {
+      commit();
+      setScreen('playin');
+    }
   };
 
   const handleSimCupGame = () => {

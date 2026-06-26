@@ -88,6 +88,7 @@ export function traitBand(p, season, teamId, proGames = 0, fogged = true) {
   const hiVal = Math.min(99, loVal + width);
   // All trait tiers whose range overlaps [loVal, hiVal]; TRAIT_TIERS is sorted high→low.
   const overlapping = TRAIT_TIERS.filter((t) => t.min <= hiVal && t.max >= loVal);
+  if (!overlapping.length) return null;
   return {
     lo: overlapping[overlapping.length - 1].name,  // lowest tier in window
     hi: overlapping[0].name,                        // highest tier in window

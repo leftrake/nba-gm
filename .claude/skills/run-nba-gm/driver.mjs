@@ -39,7 +39,7 @@ export async function startNewGame(page, teamNameRegex = /Lakers/) {
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: teamNameRegex }).click();
   await page.waitForTimeout(300);
-  await page.getByRole('button', { name: 'Start' }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.waitForTimeout(1000);
   const skip = page.getByText('Skip tutorial');
   if (await skip.count()) await skip.click();

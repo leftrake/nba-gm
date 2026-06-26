@@ -426,6 +426,8 @@ export function backfillPlayers(league) {
     if (p.championships == null) p.championships = 0;
     // saves predating dev-trait fog collapse counter
     if (p.qualitySeasons == null) p.qualitySeasons = computeQualitySeasons(p);
+    // saves predating the potential field (traitBand crashes if undefined)
+    if (p.potential == null) p.potential = overall(p);
     // saves predating the "was on user team" no-fog flag
     if (!p.everOnUserTeam && league.userTeamId) {
       if (p.careerStats?.some((s) => s.team === league.userTeamId)) p.everOnUserTeam = true;
