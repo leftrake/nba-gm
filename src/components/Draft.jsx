@@ -2,6 +2,7 @@ import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { makeDraftPick, onTheClock, rookieSalary, rookieContractYears } from '../engine/draft.js';
 import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
+import { getScouts } from '../engine/scoutingTrips.js';
 import { Ovr, Pot, money, PlayerLink, TeamLink, TeamBadge, Origin } from './shared.jsx';
 import { Section, SectionHeader } from './ui/index.js';
 
@@ -35,8 +36,13 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
     !getTeam(league, r.teamId).roster.some((p) => p.id === r.playerId)
     && league.freeAgents.some((p) => p.id === r.playerId);
 
+  const userId = league.userTeamId;
+  const scouts = getScouts(league, userId);
+  const hasAnalyst = scouts.some((s) => s.type === 'bigBoard');
+  const analystRanks = hasAnalyst ? (league.scouting?.bigBoardRanks?.[userId] ?? []) : [];
+
   const board = [...d.prospects].sort(
-    (a, b) => boardValue(b, league.season, league.userTeamId, league.settings) - boardValue(a, league.season, league.userTeamId, league.settings)
+    (a, b) => boardValue(b, league.season, userId, league.settings) - boardValue(a, league.season, userId, league.settings)
   );
 
   const draft = (p) => {
@@ -68,29 +74,44 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
 
         {d.prospects.length > 0 && (
           <>
-            <SectionHeader title="Big Board" />
+            <SectionHeader
+              title="Big Board"
+              subtitle={hasAnalyst ? <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Analyst column weighted by positional need</span> : null}
+            />
             <div className="ui-table-wrap">
               <table className="ui-table zebra">
                 <thead>
-                  <tr><th className="num">#</th><th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th>From</th><th></th></tr>
+                  <tr>
+                    <th className="num">#</th>
+                    {hasAnalyst && <th className="num" title="Big Board Analyst rank — weighted by positional need">Analyst</th>}
+                    <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th>From</th><th></th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {board.map((p, i) => (
-                    <tr key={p.id}>
-                      <td className="num">{i + 1}</td>
-                      <td><Ovr p={p} league={league} fogged /></td>
-                      <td><Pot p={p} league={league} fogged /></td>
-                      <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-                      <td>{p.pos}</td>
-                      <td className="num">{p.age}</td>
-                      <td><Origin p={p} /></td>
-                      <td>
-                        {myTurn && (
-                          <button className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => draft(p)}>Draft</button>
+                  {board.map((p, i) => {
+                    const analystRank = analystRanks.indexOf(p.id);
+                    return (
+                      <tr key={p.id}>
+                        <td className="num">{i + 1}</td>
+                        {hasAnalyst && (
+                          <td className="num" style={{ color: analystRank >= 0 ? 'var(--color-warning)' : 'var(--text-muted)' }}>
+                            {analystRank >= 0 ? `#${analystRank + 1}` : '–'}
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                        <td><Ovr p={p} league={league} fogged /></td>
+                        <td><Pot p={p} league={league} fogged /></td>
+                        <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                        <td>{p.pos}</td>
+                        <td className="num">{p.age}</td>
+                        <td><Origin p={p} /></td>
+                        <td>
+                          {myTurn && (
+                            <button className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => draft(p)}>Draft</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
