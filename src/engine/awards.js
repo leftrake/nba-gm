@@ -6,6 +6,7 @@
 // honor follows the player through trades, free agency, and retirement.
 
 import { pushNews } from './save.js';
+import { overall } from './players.js';
 
 export const LEADER_MIN_GP = 20;
 const AWARD_MIN_GP = 50;
@@ -96,6 +97,21 @@ export function computeAwards(league) {
     (c) => valueScore(c.p.stats));
   const sixth = top(eligible.filter((c) => c.bench), (c) => valueScore(c.p.stats));
 
+  // COY: coach whose team most overperformed their roster talent.
+  // Expected win% is derived from the average OVR of each team's top 8 players.
+  // The coach with the biggest actual − expected gap wins.
+  const coyCands = league.teams.map((team) => {
+    const sorted = [...team.roster].sort((a, b) => overall(b) - overall(a)).slice(0, 8);
+    const avgOvr = sorted.length ? sorted.reduce((s, p) => s + overall(p), 0) / sorted.length : 65;
+    const expWinPct = Math.min(Math.max(0.30 + (avgOvr - 60) * 0.02, 0.15), 0.85);
+    const games = team.wins + team.losses;
+    const actualWinPct = games ? team.wins / games : 0.5;
+    const expectedWins = Math.round(games * expWinPct);
+    return { team, score: actualWinPct - expWinPct, expectedWins };
+  }).filter(({ team }) => (team.wins + team.losses) >= 50 && team.coach);
+  coyCands.sort((a, b) => b.score - a.score);
+  const coyCand = coyCands[0] ?? null;
+
   // MIP: most improved player vs their previous season value.
   // Must have played at least one prior season with real minutes.
   const mipScore = (c) => {
@@ -135,6 +151,22 @@ export function computeAwards(league) {
     return { playerId: c.p.id, name: c.p.name, teamId: c.team.id, line };
   };
 
+  // COY snapshot: stored separately since it tracks a coach, not a player
+  let coy = null;
+  if (coyCand) {
+    const { team, expectedWins } = coyCand;
+    if (!team.coach.awards) team.coach.awards = [];
+    team.coach.awards.push({ season, award: 'Coach of the Year' });
+    const winsAbove = team.wins - expectedWins;
+    coy = {
+      coachName: team.coach.name,
+      teamId: team.id,
+      teamName: `${team.city} ${team.name}`,
+      record: `${team.wins}-${team.losses}`,
+      line: `${team.wins}-${team.losses} record (${winsAbove >= 0 ? '+' : ''}${winsAbove} vs. expected)`,
+    };
+  }
+
   league.seasonAwards = {
     season,
     mvp: mvp && give(mvp, 'MVP', scoringLine(mvp.p.stats)),
@@ -142,6 +174,7 @@ export function computeAwards(league) {
     roy: roy && give(roy, 'Rookie of the Year', scoringLine(roy.p.stats)),
     sixth: sixth && give(sixth, 'Sixth Man of the Year', scoringLine(sixth.p.stats)),
     mip: mip && give(mip, 'Most Improved Player', scoringLine(mip.p.stats)),
+    coy,
     allNba: allNba.map((teamArr, i) =>
       teamArr.map((c) => give(c, `All-NBA ${TEAM_NAMES[i]} Team`, scoringLine(c.p.stats)))),
     allDef: allDef.map((teamArr, i) =>
@@ -158,6 +191,7 @@ export function computeAwards(league) {
     if (allNba[i].length) news(`All-NBA ${TEAM_NAMES[i]} Team: ${allNba[i].map((c) => c.p.name).join(', ')}.`,
       { teamIds: [...new Set(allNba[i].map((c) => c.team.id))] });
   }
+  if (coy) news(`${coy.coachName} (${coyCand.team.name}) wins Coach of the Year: ${coy.line}.`, { teamIds: [coyCand.team.id] });
   if (mip) news(`${mip.p.name} (${mip.team.name}) wins Most Improved Player: ${scoringLine(mip.p.stats)}.`, { teamIds: [mip.team.id] });
   if (sixth) news(`${sixth.p.name} (${sixth.team.name}) wins Sixth Man of the Year: ${scoringLine(sixth.p.stats)}.`, { teamIds: [sixth.team.id] });
   if (dpoy) news(`${dpoy.p.name} (${dpoy.team.name}) wins Defensive Player of the Year: ${defenseLine(dpoy.p.stats)}.`, { teamIds: [dpoy.team.id] });
@@ -175,6 +209,7 @@ const AWARD_ORDER = [
   'Rookie of the Year',
   'Sixth Man of the Year',
   'Most Improved Player',
+  'Coach of the Year',
   'NBA Cup',
   'All-NBA First Team',
   'All-NBA Second Team',

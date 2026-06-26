@@ -46,7 +46,8 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     ...t,
     roster: fantasy ? [] : makeRoster(rng),
     twoWay: [], // up to TWO_WAY_MAX players on cap-exempt two-way deals — see signToTwoWay
-    deadMoney: [], // { playerName, salary, years } — cap hits from waived contracts
+    deadMoney: [], // { playerName, salary, years, stretched? } — cap hits from waived contracts
+    tpe: null, // { amount } — Transition Player Exception from a departed FA; null when unused/expired
     wins: 0,
     losses: 0,
     tradesThisSeason: 0,
@@ -446,6 +447,7 @@ export function backfillPlayers(league) {
     if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
     // saves predating dead-money tracking from waived contracts
     if (!team.deadMoney) team.deadMoney = [];
+    if (team.tpe === undefined) team.tpe = null;
     // saves predating two-way contracts
     if (!team.twoWay) team.twoWay = [];
     // saves predating the coaching staff system
@@ -1407,6 +1409,10 @@ export function advanceOffseason(league) {
   // the rng draws player development/free agency depend on.
   const coachRng = makeRng(league.seed + league.season * 104729 + 555_555);
   const userTeam = getTeam(league, league.userTeamId); // absent in headless all-AI sims
+
+  // Transition Player Exceptions expire each offseason — clear before generating new ones.
+  for (const team of league.teams) team.tpe = null;
+
   league.history.push({
     season: league.season,
     champion: league.playoffs?.champion || null,
@@ -1520,12 +1526,38 @@ export function advanceOffseason(league) {
               // he notices the front office never even tried to extend him
               adjustMorale(p, -8);
             }
+            // Capture salary before clearing (needed for TPE and option checks)
+            const expiringContractSalary = p.contract.salary;
+            const hasPlayerOption = !!p.contract.playerOption;
+            const hasTeamOption = !!p.contract.teamOption;
             p.contract = null;
+
+            // Resolve options: determine if player opts out or team declines
+            let playerOptedOut = false;
+            let teamOptionDeclined = false;
+            if (hasPlayerOption && !wasRookieScale) {
+              // Player opts out if open market would pay >10% more than the option
+              if (askingPrice(p) > expiringContractSalary * 1.10) {
+                playerOptedOut = true;
+                const optText = `${p.name} opts out of the final year of his deal with the ${team.city} ${team.name}.`;
+                pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: optText });
+              }
+              // else: exercises option — treated as normal expiry below
+            } else if (hasTeamOption && !wasRookieScale) {
+              // Team declines if the player's market value is well below the option price
+              if (askingPrice(p) < expiringContractSalary * 0.85) {
+                teamOptionDeclined = true;
+                const optText = `The ${team.city} ${team.name} decline the team option on ${p.name}.`;
+                pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: optText });
+              }
+              // else: team exercises — treated as normal expiry below
+            }
+
             if (wasRookieScale) {
               p.restrictedFA = true;
               p.formerTeamId = team.id;
             }
-            expiring.push({ team, p, wasRookieScale });
+            expiring.push({ team, p, wasRookieScale, expiringContractSalary, playerOptedOut, teamOptionDeclined });
           }
         } else {
           // extension talks are a once-a-season affair; give him a fresh
@@ -1597,7 +1629,8 @@ export function advanceOffseason(league) {
   // quality starters reach the open market each summer. The user's
   // expiring players always hit free agency — re-signing them is the
   // user's job.
-  for (const { team, p, wasRookieScale } of expiring) {
+  const tpeCandidates = {}; // { [teamId]: amount } — largest departing salary per team
+  for (const { team, p, wasRookieScale, expiringContractSalary = 0, playerOptedOut = false, teamOptionDeclined = false } of expiring) {
     // If the front office already passed on extending him mid-season, that
     // was the retention decision — he tests the market (no second roll).
     const triedMidSeason = p.extTalksFailed;
@@ -1608,6 +1641,20 @@ export function advanceOffseason(league) {
       team.twoWay = team.twoWay.filter((x) => x.id !== p.id);
       league.freeAgents.push(p);
       pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text: `${p.name}'s rookie-scale contract expires without an extension — he enters restricted free agency.` });
+      continue;
+    }
+    // Opted-out (player option) and team-option declined players skip the
+    // Bird-rights re-sign window and go directly to the open market.
+    if (playerOptedOut || teamOptionDeclined) {
+      team.roster = team.roster.filter((x) => x.id !== p.id);
+      team.twoWay = team.twoWay.filter((x) => x.id !== p.id);
+      league.freeAgents.push(p);
+      // Team option declines are the team's own choice — no TPE.
+      // Player opt-outs do trigger a TPE for the team that lost them.
+      if (playerOptedOut && expiringContractSalary >= MIN_SALARY * 2) {
+        const tpeAmt = Math.min(expiringContractSalary, MLE_AMOUNT);
+        if (!tpeCandidates[team.id] || tpeCandidates[team.id] < tpeAmt) tpeCandidates[team.id] = tpeAmt;
+      }
       continue;
     }
     if (team.id !== league.userTeamId && !triedMidSeason && rng() < resignChance(team, p)) {
@@ -1632,6 +1679,21 @@ export function advanceOffseason(league) {
     team.roster = team.roster.filter((x) => x.id !== p.id);
     team.twoWay = team.twoWay.filter((x) => x.id !== p.id);
     league.freeAgents.push(p);
+    // Meaningful departed free agents generate a TPE for their former team
+    if (expiringContractSalary >= MIN_SALARY * 2) {
+      const tpeAmt = Math.min(expiringContractSalary, MLE_AMOUNT);
+      if (!tpeCandidates[team.id] || tpeCandidates[team.id] < tpeAmt) tpeCandidates[team.id] = tpeAmt;
+    }
+  }
+
+  // Issue one Transition Player Exception per team — worth the departed
+  // player's salary (capped at the MLE). Usable this offseason in FA.
+  for (const [teamId, amount] of Object.entries(tpeCandidates)) {
+    const team = getTeam(league, teamId);
+    team.tpe = { amount };
+    if (teamId === league.userTeamId) {
+      pushNews(league, { day: 0, category: 'league', teamIds: [teamId], text: `You receive a Transition Player Exception worth ${fmtM(amount)} after losing a free agent.` });
+    }
   }
 
   // Age free agents, drop retirees, top up the pool. Players who just hit
@@ -1737,6 +1799,7 @@ export function simFreeAgencyDay(league) {
       if (ask > room) {
         if (ask <= MIN_SALARY * 1.05) exception = 'minimum';
         else if (capRoom <= 0 && !team.usedMLE && ask <= teamMLE * 1.1) exception = 'mle';
+        else if (capRoom <= 0 && team.tpe && ask <= team.tpe.amount * 1.1) exception = 'tpe';
         else continue; // out of their price range
       }
       tried++;
@@ -1789,8 +1852,16 @@ export function simFreeAgencyDay(league) {
         target.restrictedFA = false;
         delete target.formerTeamId;
       }
-      signFreeAgent(league, team.id, target.id, demand, years);
+      // Stars sometimes demand player options; teams often want team options on role players
+      const optOpts = {};
+      if (years >= 3) {
+        const optHash = ((target.id * 2654435761 + league.season * 8191) >>> 0) % 100;
+        if (overall(target) >= 80 && optHash < 45) optOpts.playerOption = true;
+        else if (overall(target) < 70 && optHash >= 70) optOpts.teamOption = true;
+      }
+      signFreeAgent(league, team.id, target.id, demand, years, optOpts);
       if (exception === 'mle') team.usedMLE = true;
+      if (exception === 'tpe') team.tpe = null;
       break;
     }
   }
@@ -2203,6 +2274,8 @@ export function signingException(league, teamId, salary) {
   if (salary <= MIN_SALARY * 1.05) return 'minimum';
   const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
   if (capRoom <= 0 && !team.usedMLE && salary <= teamMLE) return 'mle';
+  // Transition Player Exception: one-time use, generated when a FA departed last offseason
+  if (team.tpe && salary <= team.tpe.amount) return 'tpe';
   return null;
 }
 
@@ -2211,7 +2284,8 @@ export function signingException(league, teamId, salary) {
 // and signs the player on acceptance. Counter-offers persist on
 // league.negotiations so they survive reloads — but the player stays on
 // the open market and can sign elsewhere between rounds.
-export function makeOffer(league, teamId, playerId, salary, years) {
+// opts: { playerOption, teamOption } — optional contract clause on the final year
+export function makeOffer(league, teamId, playerId, salary, years, opts = {}) {
   if (league.phase !== 'offseason/freeagency') return { ok: false, error: 'Free agency is not open.' };
   const team = getTeam(league, teamId);
   const p = league.freeAgents.find((x) => x.id === playerId);
@@ -2231,7 +2305,8 @@ export function makeOffer(league, teamId, playerId, salary, years) {
       : aboveApron
         ? `you're above the first apron — only the taxpayer MLE (${fmtM(teamMLE)}) is available`
         : `the mid-level exception only covers up to ${fmtM(teamMLE)}`;
-    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}. Minimum contracts can always be offered.` };
+    const tpeNote = team.tpe ? ` Your TPE (${fmtM(team.tpe.amount)}) doesn't cover this salary.` : '';
+    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}.${tpeNote} Minimum contracts can always be offered.` };
   }
   const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
   if (nego.round !== league.faDaysLeft) { nego.offers = 0; nego.round = league.faDaysLeft; }
@@ -2246,9 +2321,10 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   if (res.decision === 'accept') {
     delete league.negotiations[playerId];
     const overBudget = exceedsOwnerBudget(team, salary);
-    signFreeAgent(league, teamId, playerId, salary, years);
+    signFreeAgent(league, teamId, playerId, salary, years, opts);
     if (exception === 'mle') team.usedMLE = true;
-    let reason = `${p.name} accepts: ${fmtM(salary)} x ${years}yr!`;
+    if (exception === 'tpe') team.tpe = null; // consumed
+    let reason = `${p.name} accepts: ${fmtM(salary)} x ${years}yr${opts.playerOption ? ' (player option yr ' + years + ')' : opts.teamOption ? ' (team option yr ' + years + ')' : ''}!`;
     if (overBudget) {
       applyBudgetOverageEffect(team);
       reason += ` This signing exceeds your owner's budget — approval rating will drop.`;
@@ -2260,7 +2336,8 @@ export function makeOffer(league, teamId, playerId, salary, years) {
   return { ok: true, ...res };
 }
 
-export function signFreeAgent(league, teamId, playerId, salary, years) {
+// opts: { playerOption, teamOption } — optional contract clause on the final year
+export function signFreeAgent(league, teamId, playerId, salary, years, opts = {}) {
   const team = getTeam(league, teamId);
   const idx = league.freeAgents.findIndex((p) => p.id === playerId);
   if (idx === -1 || team.roster.length >= ROSTER_MAX) return false;
@@ -2270,6 +2347,8 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
     salary: salary ?? askingPrice(p, league.settings),
     years: years ?? clamp(Math.round(gauss(2.5, 1, rng)), 1, 4),
   };
+  if (opts.playerOption) p.contract.playerOption = true;
+  if (opts.teamOption) p.contract.teamOption = true;
   recordContract(p, league.season, team.id, p.contract);
   if (teamId === league.userTeamId) {
     league.gmLegacy.faWatchlist.push({ playerId: p.id, season: league.season, salary: p.contract.salary, age: p.age });
@@ -2462,6 +2541,55 @@ export function releasePlayer(league, teamId, playerId) {
   pushNews(league, { day: 0, category: 'signing', teamIds: [team.id], text });
   recordTransaction(p, { season: league.season, type: 'waived', team: team.id, text });
   return true;
+}
+
+// Stretch provision: waive a player and spread their remaining cap hit over
+// 2× remaining years + 1 years instead of taking it all at once. Trades a
+// larger total obligation for a smaller annual hit — the classic cap-relief
+// escape valve for a bad multi-year contract.
+export function stretchRelease(league, teamId, playerId) {
+  const team = getTeam(league, teamId);
+  const idx = team.roster.findIndex((p) => p.id === playerId);
+  if (idx === -1) return { ok: false, error: 'Player not on this roster.' };
+  const p = team.roster[idx];
+  if (!p.contract || p.contract.twoWay) return { ok: false, error: 'Cannot stretch a two-way or unsigned player.' };
+  if (p.contract.years <= 1) return { ok: false, error: 'Stretch provision requires at least 2 years remaining on the contract.' };
+
+  const totalRemaining = p.contract.salary * p.contract.years;
+  const stretchYears = 2 * p.contract.years + 1;
+  const stretchSalary = Math.round(totalRemaining / stretchYears / 100_000) * 100_000;
+
+  team.roster.splice(idx, 1);
+  recordSeasonStint(p, teamId);
+  bumpTurmoil(team);
+
+  team.deadMoney.push({ playerName: p.name, salary: stretchSalary, years: stretchYears, stretched: true });
+  if (p.extension) {
+    const extTotal = p.extension.salary * p.extension.years;
+    const extStretchYrs = 2 * p.extension.years + 1;
+    team.deadMoney.push({
+      playerName: `${p.name} (ext)`,
+      salary: Math.round(extTotal / extStretchYrs / 100_000) * 100_000,
+      years: extStretchYrs,
+      stretched: true,
+    });
+  }
+
+  p.contract = null;
+  p.extension = null;
+  delete p.extOfferMade;
+  p.tradeDemand = false;
+  p.tradeDemandTeam = null;
+  p.moraleLowStreak = 0;
+
+  league.freeAgents.push(p);
+  league.freeAgents.sort((a, b) => overall(b) - overall(a));
+
+  const text = `The ${team.city} ${team.name} stretch-release ${p.name} (${fmtM(stretchSalary)}/yr × ${stretchYears} yrs).`;
+  pushNews(league, { day: league.dayIndex || 0, category: 'signing', teamIds: [team.id], text });
+  recordTransaction(p, { season: league.season, type: 'waived', team: team.id, text });
+
+  return { ok: true, stretchSalary, stretchYears, totalRemaining };
 }
 
 export function startNewSeason(league) {

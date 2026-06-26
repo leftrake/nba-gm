@@ -34,6 +34,25 @@ function SingleSlide({ league, icon, title, entry, openPlayer, openTeam }) {
   );
 }
 
+function CoachSlide({ league, icon, title, entry, openTeam }) {
+  const team = getTeam(league, entry.teamId);
+  const isUser = entry.teamId === league.userTeamId;
+  return (
+    <div className="award-slide">
+      <div className="award-icon">{icon}</div>
+      <div className="award-title">{title}</div>
+      <h1 className="display-font award-winner">{entry.coachName}</h1>
+      {team && (
+        <div className="award-team">
+          <TeamLink team={team} openTeam={openTeam}>{entry.teamName}</TeamLink>
+        </div>
+      )}
+      <p className="award-line">{entry.line}</p>
+      {isUser && <div className="award-yours">⭐ Your Coach</div>}
+    </div>
+  );
+}
+
 function TeamSlide({ league, icon, title, entries, openPlayer, openTeam }) {
   const hasUser = entries.some((e) => e.teamId === league.userTeamId);
   return (
@@ -77,6 +96,7 @@ export default function AwardCeremony({ league, openPlayer, openTeam, onContinue
     if (awards.roy) list.push({ key: 'roy', icon: '🌱', title: 'Rookie of the Year', entry: awards.roy });
     if (awards.sixth) list.push({ key: 'sixth', icon: '🔥', title: 'Sixth Man of the Year', entry: awards.sixth });
     if (awards.mip) list.push({ key: 'mip', icon: '📈', title: 'Most Improved Player', entry: awards.mip });
+    if (awards.coy) list.push({ key: 'coy', icon: '🎬', title: 'Coach of the Year', coachEntry: awards.coy });
     const NBA_NAMES = ['First', 'Second', 'Third'];
     (awards.allNba || []).forEach((teamArr, i) => {
       if (teamArr.length) list.push({ key: `allnba${i}`, icon: '⭐', title: `All-NBA ${NBA_NAMES[i]} Team`, entries: teamArr });
@@ -97,9 +117,11 @@ export default function AwardCeremony({ league, openPlayer, openTeam, onContinue
   const slide = slides[Math.min(index, slides.length - 1)];
   const isLast = index >= slides.length - 1;
   const isFirst = index === 0;
-  const userIsFeatured = slide.entry
-    ? slide.entry.teamId === league.userTeamId
-    : slide.entries.some((e) => e.teamId === league.userTeamId);
+  const userIsFeatured = slide.coachEntry
+    ? slide.coachEntry.teamId === league.userTeamId
+    : slide.entry
+      ? slide.entry.teamId === league.userTeamId
+      : (slide.entries || []).some((e) => e.teamId === league.userTeamId);
 
   return (
     <div className="modal-overlay">
@@ -110,7 +132,9 @@ export default function AwardCeremony({ league, openPlayer, openTeam, onContinue
           <div className="award-step">{league.season} Awards · {index + 1} / {slides.length}</div>
         </div>
 
-        {slide.entry ? (
+        {slide.coachEntry ? (
+          <CoachSlide league={league} icon={slide.icon} title={slide.title} entry={slide.coachEntry} openTeam={openTeam} />
+        ) : slide.entry ? (
           <SingleSlide league={league} icon={slide.icon} title={slide.title} entry={slide.entry} openPlayer={openPlayer} openTeam={openTeam} />
         ) : (
           <TeamSlide league={league} icon={slide.icon} title={slide.title} entries={slide.entries} openPlayer={openPlayer} openTeam={openTeam} />

@@ -29,6 +29,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   const [negotiatingId, setNegotiatingId] = useState(null);
   const [salaryM, setSalaryM] = useState(5);
   const [years, setYears] = useState(2);
+  const [withPlayerOption, setWithPlayerOption] = useState(false);
   const [responses, setResponses] = useState({});
   const [message, setMessage] = useState(null);
   const [filters, setFilters] = useState(loadFilters);
@@ -51,11 +52,12 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     setYears(2);
   };
 
-  const offer = (p, salM, yrs) => {
-    const res = makeOffer(league, team.id, p.id, Math.round(salM * 10) * 100_000, yrs);
+  const offer = (p, salM, yrs, opts = {}) => {
+    const res = makeOffer(league, team.id, p.id, Math.round(salM * 10) * 100_000, yrs, opts);
     if (res.ok && res.decision === 'accept') {
       setMessage({ type: 'ok', text: res.reason });
       setNegotiatingId(null);
+      setWithPlayerOption(false);
     } else {
       setMessage(null);
     }
@@ -259,6 +261,9 @@ export default function FreeAgency({ league, commit, openPlayer }) {
                     {team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}
                   </b></>
                 )}
+                {team.tpe && (
+                  <> · TPE: <b style={{ color: 'var(--color-success)' }} title="Transition Player Exception — one-time use, earned when a free agent departed last offseason">available (up to {money(team.tpe.amount)})</b></>
+                )}
               </span>
             }
           />
@@ -337,11 +342,19 @@ export default function FreeAgency({ league, commit, openPlayer }) {
                   {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </label>
+              {years >= 2 && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}
+                  title={`Player can opt out after year ${years} and become a free agent`}>
+                  <input type="checkbox" checked={withPlayerOption} onChange={(e) => setWithPlayerOption(e.target.checked)} />
+                  <span style={{ color: 'var(--text-muted)' }}>Player option yr {years}</span>
+                </label>
+              )}
               {(() => {
                 const left = OFFERS_PER_ROUND - offersUsed(negotiatingPlayer);
+                const opts = withPlayerOption && years >= 2 ? { playerOption: true } : {};
                 return (
                   <>
-                    <Button size="sm" variant="primary" disabled={left <= 0} onClick={() => offer(negotiatingPlayer, salaryM, years)}>
+                    <Button size="sm" variant="primary" disabled={left <= 0} onClick={() => offer(negotiatingPlayer, salaryM, years, opts)}>
                       Submit Offer
                     </Button>
                     <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
@@ -353,6 +366,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
               {(() => {
                 const exc = signingException(league, team.id, Math.round(salaryM * 10) * 100_000);
                 if (exc === 'mle') return <Badge variant="warning">Uses mid-level exception</Badge>;
+                if (exc === 'tpe') return <Badge variant="warning">Uses transition exception</Badge>;
                 if (exc === 'minimum') return <Badge variant="info">Uses minimum-salary exception</Badge>;
                 if (!exc) return <Badge variant="danger">Not enough cap room or exceptions</Badge>;
                 return null;

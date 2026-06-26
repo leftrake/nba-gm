@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getTeam, payroll, deadMoneyTotal, releasePlayer, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay, TRADE_DEADLINE_DAY } from '../engine/league.js';
+import { getTeam, payroll, deadMoneyTotal, releasePlayer, stretchRelease, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay, TRADE_DEADLINE_DAY } from '../engine/league.js';
 import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
@@ -769,6 +769,12 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                             ) : extType === 'veteran' ? (
                               <span className="ui-badge ui-badge--default" title={extensionWindowLabel('veteran')}>EXT</span>
                             ) : null}
+                            {p.contract?.playerOption && (
+                              <span className="ui-badge ui-badge--info" style={{ marginLeft: 4 }} title={`Player option in year ${p.contract.years} — ${p.name} can opt out at the end of this contract`}>PO</span>
+                            )}
+                            {p.contract?.teamOption && (
+                              <span className="ui-badge ui-badge--default" style={{ marginLeft: 4 }} title={`Team option in year ${p.contract.years} — you can decline and release ${p.name} with no dead money`}>TO</span>
+                            )}
                           </td>
                           {isUser && (
                             <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
@@ -783,6 +789,22 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                                 </span>
                               )}
                               {' '}
+                              {p.contract && !p.contract.twoWay && p.contract.years > 1 && (
+                                <button
+                                  className="ui-btn ui-btn--sm ui-btn--warning"
+                                  style={{ marginRight: 'var(--sp-1)' }}
+                                  disabled={team.roster.length <= 8}
+                                  title="Stretch provision: spread the remaining cap hit over more years at a lower annual rate"
+                                  onClick={() => {
+                                    const c = p.contract;
+                                    const totalRem = c.salary * c.years;
+                                    const stretchYrs = 2 * c.years + 1;
+                                    const stretchSal = Math.round(totalRem / stretchYrs / 100_000) * 100_000;
+                                    const msg = `Stretch-release ${p.name}?\n\nInstead of ${money(c.salary)}/yr × ${c.years} yrs (${money(totalRem)} total dead money), you'll owe ${money(stretchSal)}/yr × ${stretchYrs} yrs (${money(stretchSal * stretchYrs)} total).`;
+                                    if (confirm(msg)) { const r = stretchRelease(league, teamId, p.id); if (r.ok) commit(); else alert(r.error); }
+                                  }}
+                                >Stretch</button>
+                              )}
                               <button
                                 className="ui-btn ui-btn--sm ui-btn--danger"
                                 disabled={team.roster.length <= 8}
@@ -863,7 +885,11 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                   </thead>
                   <tbody>
                     {team.deadMoney.map((d, i) => (
-                      <tr key={i}><td>{d.playerName}</td><td className="num">{money(d.salary)}</td><td className="num">{d.years}</td></tr>
+                      <tr key={i}>
+                        <td>{d.playerName}{d.stretched ? <span className="ui-badge ui-badge--info" style={{ marginLeft: 4 }} title="Stretch provision — cap hit spread over extra years">STRETCHED</span> : null}</td>
+                        <td className="num">{money(d.salary)}</td>
+                        <td className="num">{d.years}</td>
+                      </tr>
                     ))}
                     <tr><td><b>Total</b></td><td className="num"><b>{money(dead)}</b></td><td></td></tr>
                   </tbody>
