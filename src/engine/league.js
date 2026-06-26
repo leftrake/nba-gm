@@ -838,19 +838,6 @@ function collectPlayoffPbpGames(po) {
   return out.sort((a, b) => a.round - b.round || a.idx - b.idx).map((x) => x.g);
 }
 
-// Injury truncation shaves points off a box line *after* simGame has already
-// banked its quarter-by-quarter line score live, so the quarters can sum to
-// more than the post-truncation final. Claw the difference back out of the
-// latest quarters (where a late injury would actually have cost the points)
-// so the displayed line score always adds up to the final score.
-function reconcileQuarters(qtrs, pts) {
-  let delta = qtrs.reduce((s, q) => s + q, 0) - pts;
-  for (let i = qtrs.length - 1; i >= 0 && delta > 0; i--) {
-    const take = Math.min(delta, qtrs[i]);
-    qtrs[i] -= take;
-    delta -= take;
-  }
-}
 
 // Simulate one day of games. Returns results.
 export function simDay(league) {
@@ -876,29 +863,21 @@ export function simDay(league) {
     }
     // Roll injuries before tallying stats so a player hurt mid-game banks
     // only the minutes he actually played.
-    const hurt = [
-      ...rollGameInjuries(league, home, r.homeBox, rng),
-      ...rollGameInjuries(league, away, r.awayBox, rng),
-    ];
+    const hurtHome = rollGameInjuries(league, home, r.homeBox, rng);
+    const hurtAway = rollGameInjuries(league, away, r.awayBox, rng);
+    const hurt = [...hurtHome, ...hurtAway];
     applyBoxToStats(home.roster, r.homeBox);
     applyBoxToStats(away.roster, r.awayBox);
     checkGameHighs(league, r, home, away);
     checkPlayerCareerHighs(league, r, home, away);
     const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft }));
-    for (const p of hurt) {
-      r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+    for (const p of hurtHome) {
+      r.events.push({ q: '', t: '', text: `🩹 ${p.name} (${home.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
     }
-    // Sync stored score to the box totals after injury truncation *before*
-    // deciding the winner, so the recorded result always matches the final
-    // score shown to the user. simGame plays out overtime until someone
-    // leads, so the pre-truncation score is never tied — use it only as a
-    // tiebreaker on the rare chance truncation rounding ties the box totals.
-    const rawHomeWon = r.homePts > r.awayPts;
-    r.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
-    r.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
-    reconcileQuarters(r.homeQtrs, r.homePts);
-    reconcileQuarters(r.awayQtrs, r.awayPts);
-    const homeWon = r.homePts !== r.awayPts ? r.homePts > r.awayPts : rawHomeWon;
+    for (const p of hurtAway) {
+      r.events.push({ q: '', t: '', text: `🩹 ${p.name} (${away.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+    }
+    const homeWon = r.homePts > r.awayPts;
     if (homeWon) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
     updateStreak(league, home, homeWon);
@@ -1065,7 +1044,7 @@ export function simPlayoffGame(league) {
       applyBoxToStats(team.roster, box, 'playoffStats');
       for (const p of rollGameInjuries(league, team, box, rng)) {
         hurt.push(p);
-        r.events.push({ q: '', t: '', text: `🩹 ${p.name} left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+        r.events.push({ q: '', t: '', text: `🩹 ${p.name} (${team.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
       }
     }
     const playoffGameNum = (m.games?.length ?? 0) + 1;
@@ -1094,15 +1073,7 @@ export function simPlayoffGame(league) {
     m.games.push(game);
     played.push({ series: m, game, round: po.round });
     po.gamesPlayed += 1;
-    // Sync stored score to the box totals after injury truncation *before*
-    // deciding the winner, so the series record always matches the final
-    // score shown to the user (see simDay for why rawHomeWon is the tiebreaker).
-    const rawHomeWon = r.homePts > r.awayPts;
-    game.homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
-    game.awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
-    reconcileQuarters(game.homeQtrs, game.homePts);
-    reconcileQuarters(game.awayQtrs, game.awayPts);
-    const homeWon = game.homePts !== game.awayPts ? game.homePts > game.awayPts : rawHomeWon;
+    const homeWon = r.homePts > r.awayPts;
     const highWon = homeWon === (homeId === m.high);
     if (highWon) m.highWins += 1; else m.lowWins += 1;
     // playoff results swing morale harder than a regular-season game
@@ -1254,13 +1225,10 @@ function playInSimGame(league, home, away, rng) {
   const homeTeam = getTeam(league, home);
   const awayTeam = getTeam(league, away);
   const r = simGame(homeTeam, awayTeam, rng);
-  const rawHomeWon = r.homePts > r.awayPts;
-  const homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
-  const awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
-  const homeWon = homePts !== awayPts ? homePts > awayPts : rawHomeWon;
+  const homeWon = r.homePts > r.awayPts;
   if (homeWon) { homeTeam.wins++; awayTeam.losses++; }
   else { awayTeam.wins++; homeTeam.losses++; }
-  return { home, away, homePts, awayPts, homeWon, homeBox: r.homeBox, awayBox: r.awayBox };
+  return { home, away, homePts: r.homePts, awayPts: r.awayPts, homeWon, homeBox: r.homeBox, awayBox: r.awayBox };
 }
 
 export function simPlayInGame(league) {
