@@ -253,7 +253,7 @@ export default function App() {
                   <div className="city" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
                     <span>{t.conf} · {t.div}</span>
                     <span style={{ fontSize: 10, opacity: 0.75 }}>
-                      {t.market === 'large' ? 'Easy' : t.market === 'small' ? 'Hard' : ''}
+                      {t.market === 'large' ? 'Easy' : t.market === 'small' ? 'Hard' : 'Medium'}
                     </span>
                   </div>
                 </button>
@@ -279,9 +279,12 @@ export default function App() {
             const marketColor = t.market === 'large' ? 'var(--green)' : t.market === 'small' ? 'var(--red)' : 'var(--muted)';
             return (
               <div className="panel" style={{ maxWidth: 520, marginInline: 'auto' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-                  <h2 style={{ marginTop: 0, marginBottom: 0 }}>{t.city} {t.name}</h2>
-                  <span style={{ fontSize: 12, color: marketColor }}>{marketLabel}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                    <h2 style={{ marginTop: 0, marginBottom: 0 }}>{t.city} {t.name}</h2>
+                    <span style={{ fontSize: 12, color: marketColor }}>{marketLabel}</span>
+                  </div>
+                  <button className="btn secondary" style={{ fontSize: 12, padding: '3px 10px', flexShrink: 0 }} onClick={() => { setPendingTeamId(null); setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' }); }}>← Change team</button>
                 </div>
 
                 <div style={{ marginBottom: 16 }}>
@@ -338,7 +341,6 @@ export default function App() {
 
                 <div className="controls">
                   <button className="btn" onClick={() => newGame(pendingTeamId, fantasyMode, difficulty)}>Start</button>
-                  <button className="btn secondary" onClick={() => { setPendingTeamId(null); setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' }); }}>Back</button>
                 </div>
               </div>
             );
