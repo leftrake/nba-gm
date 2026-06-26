@@ -487,7 +487,13 @@ export default function App() {
                 <button
                   key={key}
                   className={screen === key ? 'active' : ''}
-                  data-tour={key === 'roster' ? 'roster-tab' : key === 'scouting' ? 'scouting-tab' : undefined}
+                  data-tour={
+                    key === 'roster'      ? 'roster-tab'     :
+                    key === 'scouting'    ? 'scouting-tab'   :
+                    key === 'futurecap'   ? 'futurecap-nav'  :
+                    key === 'trade'       ? 'trade-nav'      :
+                    undefined
+                  }
                   onClick={() => {
                     if (key === 'roster') setRosterTeamId(null);
                     setScreen(key);
@@ -717,7 +723,7 @@ export default function App() {
         )}
       </main>
       </div>
-      {showWalkthrough && <Walkthrough onDone={() => setShowWalkthrough(false)} />}
+      {showWalkthrough && <Walkthrough league={league} onDone={() => setShowWalkthrough(false)} />}
     </div>
   );
 }

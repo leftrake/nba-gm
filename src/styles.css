@@ -1028,15 +1028,22 @@ button.slot-pick:hover { border-color: var(--accent); }
 .walkthrough-spotlight {
   position: fixed;
   border-radius: 8px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
   pointer-events: none;
   z-index: 1000;
-  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+  transition: top 220ms ease, left 220ms ease, width 220ms ease, height 220ms ease;
+  animation: wt-pulse 2.4s ease-in-out infinite;
+}
+@keyframes wt-pulse {
+  0%, 100% { outline-color: var(--accent); }
+  50%       { outline-color: transparent; }
 }
 .walkthrough-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.7);
   z-index: 1000;
   pointer-events: none;
 }
@@ -1044,23 +1051,57 @@ button.slot-pick:hover { border-color: var(--accent); }
   position: fixed;
   z-index: 1001;
   background: var(--panel);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  padding: 16px;
-  width: 320px;
+  border: 1px solid var(--color-primary-line);
+  border-radius: 10px;
+  padding: 18px;
   max-width: calc(100vw - 32px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  animation: wt-appear 160ms ease-out both;
 }
-.walkthrough-card h3 { margin: 0 0 8px; }
-.walkthrough-card p { margin: 0 0 14px; color: var(--text); font-size: 13px; }
+@keyframes wt-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.walkthrough-card h3 { margin: 0 0 8px; font-size: var(--text-md); }
+.walkthrough-card p  { margin: 0 0 14px; color: var(--text); font-size: 13px; line-height: 1.55; }
+.walkthrough-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.walkthrough-counter {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.walkthrough-dots { display: flex; gap: 5px; align-items: center; }
+.walkthrough-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 200ms;
+}
+.walkthrough-dot.active { background: var(--accent); width: 14px; border-radius: 3px; }
+.walkthrough-dot.done   { background: var(--green); }
+.walkthrough-done-check {
+  font-size: 28px;
+  color: var(--green);
+  margin-bottom: 8px;
+  line-height: 1;
+}
 .walkthrough-skip {
   position: fixed;
   top: 14px;
   right: 18px;
-  z-index: 1001;
+  z-index: 1002;
+  background: none;
+  border: none;
   color: var(--muted);
   cursor: pointer;
   font-size: 12px;
   text-decoration: underline;
+  padding: 0;
 }
 .walkthrough-skip:hover { color: var(--text); }
