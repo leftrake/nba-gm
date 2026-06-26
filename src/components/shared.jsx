@@ -17,10 +17,12 @@ function ovrClass(o) {
 export function Ovr({ p, league, fogged }) {
   if (fogged) {
     const teamId = league.userTeamId;
+    const settings = league.settings;
     const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-    if (isHidden(p, teamId, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
-    const [lo, hi] = scoutedOverallRange(p, league.season, teamId, proGames);
-    const u = scoutUncertainty(p, teamId, proGames);
+    if (isHidden(p, teamId, proGames, settings)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+    const [lo, hi] = scoutedOverallRange(p, league.season, teamId, proGames, settings);
+    const u = scoutUncertainty(p, teamId, proGames, settings);
+    if (lo === hi) return <span className={`ovr ${ovrClass(lo)}`}>{lo}</span>;
     return (
       <span className="ovr" title={`Scouting uncertainty ±${u}`}>
         {lo}–{hi}{' '}
@@ -36,8 +38,10 @@ export function Ovr({ p, league, fogged }) {
 // show a possibly-wide band that collapses as scouting/minutes accumulate.
 // "?" when there's no scouting information at all.
 export function Pot({ p, league, fogged }) {
-  const proGames = fogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
-  const band = traitBand(p, league.season, league.userTeamId, proGames, fogged);
+  const fogOff = league.settings?.difficulty?.scoutingFog === 'off';
+  const effectiveFogged = fogged && !fogOff;
+  const proGames = effectiveFogged ? (league.scouting?.proWatching?.[p.id] ?? 0) : 0;
+  const band = traitBand(p, league.season, league.userTeamId, proGames, effectiveFogged);
   if (band === null) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
   if (band.lo === band.hi) {
     return <span className="ovr" style={{ color: TRAIT_COLORS[band.lo] }}>{band.lo}</span>;
@@ -68,9 +72,11 @@ export function Sta({ p, league, fogged }) {
   if (p.stamina == null) return <span className="ovr">–</span>;
   if (fogged) {
     const teamId = league.userTeamId;
+    const settings = league.settings;
     const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-    if (isHidden(p, teamId, proGames)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
-    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta', teamId, proGames);
+    if (isHidden(p, teamId, proGames, settings)) return <span className="ovr" style={{ color: 'var(--muted)' }}>?</span>;
+    const [lo, hi] = scoutRange(p, p.stamina, league.season, 'sta', teamId, proGames, settings);
+    if (lo === hi) return <span className="ovr">{lo}</span>;
     return <span className="ovr">{lo}–{hi}</span>;
   }
   return <span className="ovr">{p.stamina}</span>;

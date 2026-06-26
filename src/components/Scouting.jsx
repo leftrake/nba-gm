@@ -74,7 +74,7 @@ function ProspectRow({ p, league, budget, userId, hasBigBoard, hasSleeper, sleep
   const full = pts >= DRAFT_POINTS_MAX;
   const isSleeper = hasSleeper && sleeperIds.includes(p.id);
   const bbRank = hasBigBoard ? bigBoardIds.indexOf(p.id) : -1;
-  const hidden = isHidden(p, userId);
+  const hidden = isHidden(p, userId, 0, league.settings);
   const pct = Math.min(100, Math.round((pts / DRAFT_POINTS_MAX) * 100));
 
   const doMission = (fn) => {
@@ -146,7 +146,7 @@ function DraftClassSection({ dc, label, league, budget, userId, scouts, commit }
   const bigBoardIds = hasBigBoard ? (league.scouting?.bigBoardRanks?.[userId] ?? []) : [];
 
   const discovered = dc.prospects.filter((p) => isDiscovered(p, userId, league));
-  const draftSortOvr = (p) => (isHidden(p, userId) ? -Infinity : scoutedOverall(p, league.season, userId));
+  const draftSortOvr = (p) => (isHidden(p, userId, 0, league.settings) ? -Infinity : scoutedOverall(p, league.season, userId, 0, league.settings));
   const sorted = [...discovered].sort((a, b) => draftSortOvr(b) - draftSortOvr(a));
 
   const undiscoveredByRegion = {};
@@ -392,7 +392,7 @@ function ProScoutingTab({ league, commit, openPlayer }) {
     if (!found) return null;
     const { p, team } = found;
     const games = proWatching[id] ?? 0;
-    const u = isHidden(p, userId, games) ? null : scoutUncertainty(p, userId, games);
+    const u = isHidden(p, userId, games, league.settings) ? null : scoutUncertainty(p, userId, games, league.settings);
     return {
       _key: id,
       _p: p,

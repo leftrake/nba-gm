@@ -94,6 +94,10 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
       bestSeasonRecord: null, bestTrade: null, bestDraftPick: null, bestFASigning: null,
       draftWatchlist: [], faWatchlist: [],
     },
+    settings: {
+      suppressInjuryAlerts: false,
+      difficulty: opts.difficulty ?? { scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' },
+    },
   };
   if (fantasy) {
     initFantasyDraft(league, rng);
@@ -429,6 +433,7 @@ export function backfillPlayers(league) {
   for (const team of league.teams) ensureUniqueJerseys(team);
   if (!league.settings) league.settings = {};
   if (league.settings.suppressInjuryAlerts == null) league.settings.suppressInjuryAlerts = false;
+  if (!league.settings.difficulty) league.settings.difficulty = { scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' };
   for (const team of league.teams) if (team.turmoil == null) team.turmoil = 0;
   for (const team of league.teams) {
     if (!team.streak) team.streak = { result: null, count: 0 };
@@ -1693,12 +1698,14 @@ function finalizeFreeAgency(league) {
 // (see faRoundsUnsigned, bumped once per FA round in simFreeAgencyDay) —
 // roughly 12% per round, so a star who's gone unsigned for a few rounds
 // becomes affordable to teams that passed on him at full price.
-export function askingPrice(p) {
+export function askingPrice(p, settings) {
   const base = salaryFor(overall(p), p.age);
   const discount = Math.pow(0.875, p.faRoundsUnsigned || 0);
+  const fw = settings?.difficulty?.faWillingness;
+  const diffMult = fw === 'friendly' ? 0.85 : fw === 'stingy' ? 1.2 : 1.0;
   // "Undrafted gem" types are systematically underpriced until their
   // reputation becomes public — see backstory.js
-  return clamp(Math.round((base * discount * askingPriceMult(p)) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
+  return clamp(Math.round((base * discount * askingPriceMult(p) * diffMult) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
 }
 
 // Deterministic per-team noise in [0,1), independent of the rng sequence so
@@ -1838,7 +1845,7 @@ function roleBlocked(team, p) {
 
 // Core of the demand formula, shared by free-agency offers and in-season
 // extensions; only the win percentage the player judges the team by differs.
-function demandSalary(team, p, years, winPct) {
+function demandSalary(team, p, years, winPct, settings) {
   const o = overall(p);
   let mult = greed(p);
   const caresAboutWinning = clamp((o - 60) / 25, 0, 1);
@@ -1848,7 +1855,7 @@ function demandSalary(team, p, years, winPct) {
   const pref = preferredYears(p);
   if (years < pref) mult *= 1 + 0.08 * (pref - years);
   else if (years > pref) mult *= Math.max(0.9, 1 - 0.03 * (years - pref));
-  const sal = Math.round((askingPrice(p) * mult) / 100_000) * 100_000;
+  const sal = Math.round((askingPrice(p, settings) * mult) / 100_000) * 100_000;
   return clamp(sal, MIN_SALARY, MAX_SALARY);
 }
 
@@ -1858,7 +1865,7 @@ export function offerDemand(league, teamId, p, years) {
   const team = getTeam(league, teamId);
   if (roleBlocked(team, p)) return null;
   if (p.tradeDemand && p.tradeDemandTeam === teamId) return null; // won't re-sign with the team he demanded out from
-  return demandSalary(team, p, years, (team.lastWins ?? 41) / 82);
+  return demandSalary(team, p, years, (team.lastWins ?? 41) / 82, league.settings);
 }
 
 // Mid-season: judge the team by this season's record once it means something
@@ -1888,7 +1895,7 @@ export function extensionDemand(league, teamId, p, years) {
   const winPct = currentWinPct(team);
   if (overall(p) >= 78 && winPct < 0.45 && faNoise(p.id, 7) < 0.6) return null;
   // "Family provider" types sign extensions cheaper — see backstory.js
-  return Math.round(demandSalary(team, p, years, winPct) * extensionDemandMult(p));
+  return Math.round(demandSalary(team, p, years, winPct, league.settings) * extensionDemandMult(p));
 }
 
 // User-facing extension offer. The player evaluates it like a free-agency
@@ -2015,7 +2022,7 @@ export function evaluateOffer(league, teamId, p, salary, years) {
   }
   const lastWins = team.lastWins ?? 41;
   let reason;
-  if (salary < askingPrice(p) * 0.7) reason = `${p.name}'s agent calls the offer insulting and hangs up.`;
+  if (salary < askingPrice(p, league.settings) * 0.7) reason = `${p.name}'s agent calls the offer insulting and hangs up.`;
   else if (lastWins < 35 && overall(p) >= 70) reason = `${p.name} wants to play for a winner — joining a ${lastWins}-win team will cost you a premium.`;
   else if (overall(p) >= 65 && betterAtPosition(team, p) >= 2) reason = `${p.name} sees too many good ${p.pos}s on your roster and wants to be paid for the smaller role.`;
   else if (years < preferredYears(p)) reason = `${p.name} is looking for a longer deal (${preferredYears(p)} years).`;
@@ -2093,7 +2100,7 @@ export function signFreeAgent(league, teamId, playerId, salary, years) {
   const p = league.freeAgents[idx];
   const rng = makeRng(league.seed + league.season * 1009 + p.id * 13);
   p.contract = {
-    salary: salary ?? askingPrice(p),
+    salary: salary ?? askingPrice(p, league.settings),
     years: years ?? clamp(Math.round(gauss(2.5, 1, rng)), 1, 4),
   };
   recordContract(p, league.season, team.id, p.contract);

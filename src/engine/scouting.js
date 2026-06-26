@@ -19,6 +19,11 @@ import { overall } from './players.js';
 //   2 000–5 000    → ±5
 //   5 000–10 000   → ±3
 //   10 000+        → ±1.5
+//
+// Difficulty setting (league.settings.difficulty.scoutingFog):
+//   'off'    — fog disabled; all true ratings visible, nothing hidden
+//   'normal' — default behavior above
+//   'heavy'  — uncertainty multiplied by 1.5; wider fog windows
 
 function hashStr(s) {
   let h = 2166136261;
@@ -82,7 +87,9 @@ function proBaseUncertainty(careerMin) {
 // Returns true when the player should show "?" instead of a range.
 // teamId is the viewing team — for a draft prospect, only that team's own
 // scouting missions count toward revealing them.
-export function isHidden(p, teamId, proGames = 0) {
+// Pass league.settings as `settings` from UI callers to respect the fog toggle.
+export function isHidden(p, teamId, proGames = 0, settings) {
+  if (settings?.difficulty?.scoutingFog === 'off') return false;
   if (isDraftProspect(p)) {
     return getDraftPoints(p, teamId) === 0;
   }
@@ -95,11 +102,14 @@ export function isHidden(p, teamId, proGames = 0) {
 
 // Uncertainty (half-width of the fog window). Callers should check isHidden
 // first; this returns 0 for fully-known players. teamId is the viewing team.
-export function scoutUncertainty(p, teamId, proGames = 0) {
+// Pass league.settings as `settings` from UI callers to respect the fog setting.
+export function scoutUncertainty(p, teamId, proGames = 0, settings) {
+  if (settings?.difficulty?.scoutingFog === 'off') return 0;
+  const fogMult = settings?.difficulty?.scoutingFog === 'heavy' ? 1.5 : 1;
   if (isDraftProspect(p)) {
     const pts = getDraftPoints(p, teamId);
     const u = 15 - (Math.min(pts, 100) / 100) * 13;
-    return Math.round(clamp(u, 2, 16));
+    return Math.round(clamp(u * fogMult, 2, 20));
   }
   // Pro track
   const base = proBaseUncertainty(totalCareerMinutes(p));
@@ -107,14 +117,14 @@ export function scoutUncertainty(p, teamId, proGames = 0) {
   const priorPts = p.scout?.priorDraftPoints ?? 0;
   const totalFilm = proGames + priorPts / 5;
   const filmReduction = Math.min(totalFilm / 20, 1) * 0.5;
-  return Math.round(clamp(effectiveBase * (1 - filmReduction), 0, 10));
+  return Math.round(clamp(effectiveBase * (1 - filmReduction) * fogMult, 0, 15));
 }
 
 // Builds the displayed [lo, hi] range. The true value can sit anywhere within
 // it — the seeded noise decides where, so it's stable within a season but
 // genuinely unpredictable to the user.
-export function scoutRange(p, trueValue, season, key, teamId, proGames = 0) {
-  const width = 2 * scoutUncertainty(p, teamId, proGames);
+export function scoutRange(p, trueValue, season, key, teamId, proGames = 0, settings) {
+  const width = 2 * scoutUncertainty(p, teamId, proGames, settings);
   const below = Math.round(noise01(p.id, season, key) * width);
   return [
     Math.max(25, trueValue - below),
@@ -122,23 +132,23 @@ export function scoutRange(p, trueValue, season, key, teamId, proGames = 0) {
   ];
 }
 
-export function scoutedOverallRange(p, season, teamId, proGames = 0) {
-  return scoutRange(p, overall(p), season, 'ovr', teamId, proGames);
+export function scoutedOverallRange(p, season, teamId, proGames = 0, settings) {
+  return scoutRange(p, overall(p), season, 'ovr', teamId, proGames, settings);
 }
 
 // Midpoint of the displayed range — used for sort order. The midpoint itself
 // has noise proportional to uncertainty, so sort order is genuinely unreliable
 // at wide fog and becomes accurate as fog narrows.
-export function scoutedOverall(p, season, teamId, proGames = 0) {
-  const [lo, hi] = scoutedOverallRange(p, season, teamId, proGames);
+export function scoutedOverall(p, season, teamId, proGames = 0, settings) {
+  const [lo, hi] = scoutedOverallRange(p, season, teamId, proGames, settings);
   return (lo + hi) / 2;
 }
 
 const GRADES = [[92, 'A+'], [86, 'A'], [80, 'B+'], [74, 'B'], [68, 'C+'], [60, 'C'], [-Infinity, 'D']];
 
-export function scoutedPotential(p, season, fogged, teamId, proGames = 0) {
+export function scoutedPotential(p, season, fogged, teamId, proGames = 0, settings) {
   let v = p.potential;
-  if (fogged) v += Math.round((noise01(p.id, season, 'pot') - 0.5) * scoutUncertainty(p, teamId, proGames) * 1.5);
+  if (fogged) v += Math.round((noise01(p.id, season, 'pot') - 0.5) * scoutUncertainty(p, teamId, proGames, settings) * 1.5);
   return clamp(v, 25, 99);
 }
 

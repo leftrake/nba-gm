@@ -232,8 +232,8 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   const seenOvr = (p) => {
     if (isUser) return overall(p);
     const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-    if (isHidden(p, league.userTeamId, proGames)) return -Infinity;
-    return scoutedOverall(p, league.season, league.userTeamId, proGames);
+    if (isHidden(p, league.userTeamId, proGames, league.settings)) return -Infinity;
+    return scoutedOverall(p, league.season, league.userTeamId, proGames, league.settings);
   };
 
   const filtered = posFilter === 'all'
@@ -513,7 +513,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 </div>
               </div>
               {(() => {
-                const fogOvr = (p) => { const g = league.scouting?.proWatching?.[p.id] ?? 0; return isHidden(p, league.userTeamId, g) ? -Infinity : scoutedOverall(p, league.season, league.userTeamId, g); };
+                const fogOvr = (p) => { const g = league.scouting?.proWatching?.[p.id] ?? 0; return isHidden(p, league.userTeamId, g, league.settings) ? -Infinity : scoutedOverall(p, league.season, league.userTeamId, g, league.settings); };
                 const sorted = [...team.roster].sort((a, b) => fogOvr(b) - fogOvr(a));
                 return (
                   <div className="ui-table-wrap">

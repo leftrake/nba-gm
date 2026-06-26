@@ -47,7 +47,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   const toggleNegotiation = (p) => {
     if (negotiatingId === p.id) { setNegotiatingId(null); return; }
     setNegotiatingId(p.id);
-    setSalaryM(askingPrice(p) / 1e6);
+    setSalaryM(askingPrice(p, league.settings) / 1e6);
     setYears(2);
   };
 
@@ -97,12 +97,12 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     ovr: (p) => {
       if (p.everOnUserTeam) return overall(p);
       const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-      if (isHidden(p, league.userTeamId, proGames)) return -Infinity;
-      return scoutedOverall(p, league.season, league.userTeamId, proGames);
+      if (isHidden(p, league.userTeamId, proGames, league.settings)) return -Infinity;
+      return scoutedOverall(p, league.season, league.userTeamId, proGames, league.settings);
     },
     pot: (p) => traitSortValue(p, league.season, league.userTeamId, league.scouting?.proWatching?.[p.id] ?? 0, true),
     age: (p) => p.age,
-    asking: (p) => askingPrice(p),
+    asking: (p) => askingPrice(p, league.settings),
     pos: (p) => POSITIONS.indexOf(p.pos),
   };
   const dirMul = filters.sortDir === 'asc' ? 1 : -1;
@@ -113,7 +113,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   const filtered = league.freeAgents.filter((p) =>
     (filters.pos === 'all' || p.pos === filters.pos || p.pos2 === filters.pos)
     && p.age >= minAge && p.age <= maxAge
-    && askingPrice(p) <= maxAsking
+    && askingPrice(p, league.settings) <= maxAsking
   );
   const shown = [...filtered].sort((a, b) => (sortValue(b) - sortValue(a)) * dirMul);
 
@@ -134,7 +134,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     { key: 'name', label: 'Player', render: (row) => <PlayerLink p={row._p} openPlayer={openPlayer} /> },
     { key: 'pos', label: 'Pos' },
     { key: 'age', label: 'Age', numeric: true },
-    { key: 'asking', label: 'Asking', numeric: true, render: (row) => money(askingPrice(row._p)) },
+    { key: 'asking', label: 'Asking', numeric: true, render: (row) => money(askingPrice(row._p, league.settings)) },
     { key: 'status', label: 'Status', render: (row) => {
       const sheet = offerSheets.find((s) => s.playerId === row._p.id);
       const roundsLeft = sheet ? sheet.deadlineRound + 1 - league.faDaysLeft : null;
@@ -165,7 +165,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     { key: 'pos', label: `Pos${arrow('pos')}`, sortable: true },
     { key: 'age', label: `Age${arrow('age')}`, numeric: true, sortable: true },
     { key: 'asking', label: `Asking${arrow('asking')}`, numeric: true, sortable: true,
-      render: (row) => money(askingPrice(row._p)) },
+      render: (row) => money(askingPrice(row._p, league.settings)) },
     { key: 'twoway', label: '', render: (row) => {
       if (!twoWayEligible(row._p) || row._p.restrictedFA) return null;
       return (

@@ -53,8 +53,8 @@ export default function Players({ league, openPlayer, openTeam }) {
     ovr: ({ p }) => {
       if (p.everOnUserTeam) return overall(p);
       const proGames = league.scouting?.proWatching?.[p.id] ?? 0;
-      if (isHidden(p, league.userTeamId, proGames)) return -Infinity;
-      return scoutedOverall(p, league.season, league.userTeamId, proGames);
+      if (isHidden(p, league.userTeamId, proGames, league.settings)) return -Infinity;
+      return scoutedOverall(p, league.season, league.userTeamId, proGames, league.settings);
     },
     pot: ({ p }) => traitSortValue(p, league.season, league.userTeamId, league.scouting?.proWatching?.[p.id] ?? 0, true),
     age: ({ p }) => p.age,

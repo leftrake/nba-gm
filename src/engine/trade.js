@@ -129,8 +129,10 @@ export function aiEvaluateTrade(league, teamBId, incoming, outgoing, incomingPic
     + outgoingPicks.reduce((s, p) => s + pickValue(league, p, strategy), 0);
   if (valueOut === 0) return { accept: valueIn > 0, ratio: Infinity };
   const ratio = valueIn / valueOut;
-  // AI wants at least ~95% value back, with slight team-specific noise
-  const greed = 0.92 + ((team.id.charCodeAt(0) + team.id.charCodeAt(2)) % 10) * 0.015;
+  const tightness = league.settings?.difficulty?.tradeTightness;
+  const tightMult = tightness === 'loose' ? 0.85 : tightness === 'tight' ? 1.15 : 1.0;
+  // AI wants at least ~92–95% value back, with slight team-specific noise
+  const greed = (0.92 + ((team.id.charCodeAt(0) + team.id.charCodeAt(2)) % 10) * 0.015) * tightMult;
   return { accept: ratio >= greed, ratio, greed };
 }
 

@@ -93,6 +93,7 @@ export default function App() {
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const [difficulty, setDifficulty] = useState({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' });
 
   const openTeam = useCallback((teamId) => {
     setViewPlayer(null);
@@ -162,8 +163,8 @@ export default function App() {
     // saveError is deliberately not a dependency — it's set here as a result, not a trigger.
   }, [league]);
 
-  const newGame = (teamId, fantasyDraft) => {
-    setLeagueState(createLeague(teamId, Date.now(), { fantasyDraft }));
+  const newGame = (teamId, fantasyDraft, diff) => {
+    setLeagueState(createLeague(teamId, Date.now(), { fantasyDraft, difficulty: diff }));
     setScreen(fantasyDraft ? 'fantasydraft' : 'dashboard');
     if (!isWalkthroughDone()) setShowWalkthrough(true);
   };
@@ -198,6 +199,7 @@ export default function App() {
       setViewGame(null);
       setPendingTeamId(null);
       setFantasyMode(false);
+      setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' });
     }
   };
 
@@ -248,29 +250,99 @@ export default function App() {
                 <button key={t.id} className="team-card" style={{ '--tc': t.color }} onClick={() => setPendingTeamId(t.id)}>
                   <div className="city">{t.city}</div>
                   <div className="name">{t.name}</div>
-                  <div className="city">{t.conf} · {t.div}</div>
+                  <div className="city" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                    <span>{t.conf} · {t.div}</span>
+                    <span style={{ fontSize: 10, opacity: 0.75 }}>
+                      {t.market === 'large' ? 'Easy' : t.market === 'small' ? 'Hard' : ''}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="panel" style={{ maxWidth: 480, marginInline: 'auto' }}>
-              {(() => {
-                const t = TEAMS.find((x) => x.id === pendingTeamId);
-                return <h2 style={{ marginTop: 0 }}>{t.city} {t.name}</h2>;
-              })()}
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                <input type="checkbox" checked={fantasyMode} onChange={(e) => setFantasyMode(e.target.checked)} />
-                <span>
-                  Fantasy Draft — pool every player from all 30 teams plus free agents,
-                  then draft your roster from scratch in a 15-round snake draft.
-                </span>
-              </label>
-              <div className="controls" style={{ marginTop: 12 }}>
-                <button className="btn" onClick={() => newGame(pendingTeamId, fantasyMode)}>Start</button>
-                <button className="btn secondary" onClick={() => setPendingTeamId(null)}>Back</button>
+          ) : (() => {
+            const t = TEAMS.find((x) => x.id === pendingTeamId);
+            const PRESETS = [
+              { label: 'Rookie', desc: 'No fog, loose trades, friendly FA — focus on the front office decisions', diff: { scoutingFog: 'off', tradeTightness: 'loose', faWillingness: 'friendly' } },
+              { label: 'Starter', desc: 'Balanced defaults — the intended experience', diff: { scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' } },
+              { label: 'GM', desc: 'Heavier scouting fog — player ratings are harder to read', diff: { scoutingFog: 'heavy', tradeTightness: 'normal', faWillingness: 'normal' } },
+              { label: 'Legend', desc: 'Heavy fog, tough trades, and agents who know their worth', diff: { scoutingFog: 'heavy', tradeTightness: 'tight', faWillingness: 'stingy' } },
+            ];
+            const activePreset = PRESETS.find((pr) =>
+              pr.diff.scoutingFog === difficulty.scoutingFog &&
+              pr.diff.tradeTightness === difficulty.tradeTightness &&
+              pr.diff.faWillingness === difficulty.faWillingness
+            );
+            const FOG_OPTS = [['off', 'Off'], ['normal', 'Normal'], ['heavy', 'Heavy']];
+            const TRADE_OPTS = [['loose', 'Loose'], ['normal', 'Normal'], ['tight', 'Tight']];
+            const FA_OPTS = [['friendly', 'Friendly'], ['normal', 'Normal'], ['stingy', 'Stingy']];
+            const marketLabel = t.market === 'large' ? 'Large market — easier to attract free agents' : t.market === 'small' ? 'Small market — harder to attract free agents' : 'Mid-market';
+            const marketColor = t.market === 'large' ? 'var(--green)' : t.market === 'small' ? 'var(--red)' : 'var(--muted)';
+            return (
+              <div className="panel" style={{ maxWidth: 520, marginInline: 'auto' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+                  <h2 style={{ marginTop: 0, marginBottom: 0 }}>{t.city} {t.name}</h2>
+                  <span style={{ fontSize: 12, color: marketColor }}>{marketLabel}</span>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Difficulty preset</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {PRESETS.map((pr) => (
+                      <button
+                        key={pr.label}
+                        className={`btn${activePreset?.label === pr.label ? '' : ' secondary'}`}
+                        style={{ fontSize: 13 }}
+                        onClick={() => setDifficulty(pr.diff)}
+                        title={pr.desc}
+                      >
+                        {pr.label}
+                      </button>
+                    ))}
+                  </div>
+                  {activePreset && (
+                    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6, marginBottom: 0 }}>{activePreset.desc}</p>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  {[
+                    { key: 'scoutingFog', label: 'Scouting fog', opts: FOG_OPTS, tip: 'Controls how much uncertainty is added to player ratings you haven\'t fully scouted' },
+                    { key: 'tradeTightness', label: 'Trade tightness', opts: TRADE_OPTS, tip: 'Loose: AI teams accept worse deals. Tight: AI demands better value' },
+                    { key: 'faWillingness', label: 'FA asking price', opts: FA_OPTS, tip: 'Friendly: free agents accept less. Stingy: agents demand top dollar' },
+                  ].map(({ key, label, opts, tip }) => (
+                    <div key={key}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }} title={tip}>{label}</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {opts.map(([val, lbl]) => (
+                          <button
+                            key={val}
+                            className={`btn${difficulty[key] === val ? '' : ' secondary'}`}
+                            style={{ fontSize: 11, padding: '2px 8px' }}
+                            onClick={() => setDifficulty((d) => ({ ...d, [key]: val }))}
+                          >
+                            {lbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer', marginBottom: 12 }}>
+                  <input type="checkbox" checked={fantasyMode} onChange={(e) => setFantasyMode(e.target.checked)} style={{ marginTop: 2 }} />
+                  <span>
+                    Fantasy Draft — pool every player from all 30 teams plus free agents,
+                    then draft your roster from scratch in a 15-round snake draft.
+                  </span>
+                </label>
+
+                <div className="controls">
+                  <button className="btn" onClick={() => newGame(pendingTeamId, fantasyMode, difficulty)}>Start</button>
+                  <button className="btn secondary" onClick={() => { setPendingTeamId(null); setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' }); }}>Back</button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </main>
       </div>
     );
