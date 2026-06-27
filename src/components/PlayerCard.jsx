@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { askingPrice, getTeam } from '../engine/league.js';
-import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, formatHeight, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
+import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, formatHeight, TRAINING_FOCUS_OPTIONS, DEV_ARC_LABELS } from '../engine/players.js';
+import { ARCHETYPE_LABELS } from '../engine/archetypes.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards, leaderMinGp } from '../engine/awards.js';
 import { positionalPercentiles } from '../engine/stats.js';
@@ -365,6 +366,11 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                   {formatHeight(p.heightIn)} · {p.weightLbs} lbs · {formatHeight(p.wingspanIn)} wingspan
                 </div>
               )}
+              {p.archetype && (
+                <div style={{ marginTop: 5 }}>
+                  <span className="ui-pill ui-pill--info">{ARCHETYPE_LABELS[p.archetype] ?? p.archetype}</span>
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'flex-start', flexShrink: 0 }}>
@@ -435,13 +441,18 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
             ⚕ {durabilityNote(p)}.
           </div>
         )}
-        <div style={{ marginBottom: 'var(--sp-4)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+        <div style={{ marginBottom: p.devArc && p.devArc !== 'standard' ? 'var(--sp-2)' : 'var(--sp-4)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
           {p.backstoryRevealed
             ? <>📰 {scoutBackstoryNote(p)}</>
             : (p.exp === 0 && p.draftYear)
             ? rookieBlurb(p)
             : <>Personality: comes across as {personalityNote(p)}.</>}
         </div>
+        {p.devArc && p.devArc !== 'standard' && (
+          <div style={{ marginBottom: 'var(--sp-4)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+            Development: <b style={{ color: 'var(--text-primary)' }}>{DEV_ARC_LABELS[p.devArc]}</b>
+          </div>
+        )}
 
         {/* Tab bar */}
         <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: 'var(--sp-4)', gap: 0 }}>

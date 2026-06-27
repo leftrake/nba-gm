@@ -8,6 +8,7 @@ import { reputationMult, tradedAwayPenalty } from './backstory.js';
 import { pickValue, pickLabel, violatesStepien } from './draftPicks.js';
 import { teamNeeds } from './strategy.js';
 import { applyTradeApprovalEffect } from './owner.js';
+import { ROSTER_NEED_ARCHETYPES, teamLacksArchetype } from './archetypes.js';
 
 // Discount applied to tradeValue for a player currently injured, by
 // injury.tier (injuries.js) — used by tradeValue itself, so every AI trade
@@ -72,6 +73,11 @@ export function tradeValue(p, strategy, team) {
     } else {
       const better = team.roster.filter((x) => x.pos === p.pos && overall(x) > ovr).length;
       if (better >= 2) v *= 0.9; // already two deep at this position
+    }
+    // Archetype need: settled players who fill a missing "role need" archetype
+    // are worth more to a team shopping for that specific piece.
+    if (p.archetype && ROSTER_NEED_ARCHETYPES.has(p.archetype) && teamLacksArchetype(team, p.archetype)) {
+      v *= 1.12;
     }
   }
   // once a backstory is public, AI valuations account for it (backstory.js)

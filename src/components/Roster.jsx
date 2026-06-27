@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { getTeam, payroll, deadMoneyTotal, releasePlayer, stretchRelease, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay, TRADE_DEADLINE_DAY } from '../engine/league.js';
 import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
+import { ARCHETYPE_LABELS } from '../engine/archetypes.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { teamGameLog, keyFindings, recentForm, homeAwaySplit, clutchRecord, strengthOfSchedule } from '../engine/analytics.js';
@@ -613,7 +614,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               <table className="ui-table sticky-head">
                 <thead>
                   <tr>
-                    <th>Ovr</th><th>Pot</th><th className="num">#</th><th>Player</th><th>Pos</th><th className="num">Age</th>
+                    <th>Ovr</th><th>Pot</th><th className="num">#</th><th>Player</th><th>Pos</th><th>Role</th><th className="num">Age</th>
                     <th className="num" title="Stamina">Sta</th>
                     <th className="num">Cond</th>
                     <th className="num">PPG</th><th className="num">RPG</th><th className="num">APG</th>
@@ -629,6 +630,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                       <td className="num">{p.jerseyNumber}</td>
                       <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
                       <td>{posLabel(p)}</td>
+                      <td>{p.archetype ? <span className="ui-pill ui-pill--info" style={{ fontSize: '10px' }}>{ARCHETYPE_LABELS[p.archetype] ?? p.archetype}</span> : <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>—</span>}</td>
                       <td className="num">{p.age}</td>
                       <td className="num"><Sta p={p} league={league} fogged={!isUser} /></td>
                       <td className="num"><Cond p={p} /></td>

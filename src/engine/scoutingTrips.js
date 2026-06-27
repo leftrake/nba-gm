@@ -40,20 +40,15 @@ export const SWEEP_COSTS = {
   'Asia-Pacific': 225_000,
 };
 
-export const WORKOUT_COSTS    = { Domestic: 75_000, Europe: 125_000, 'Latin America': 125_000, Africa: 150_000, 'Asia-Pacific': 150_000 };
-export const GAME_WATCH_COSTS = { Domestic: 30_000, Europe: 50_000,  'Latin America': 50_000,  Africa: 65_000,  'Asia-Pacific': 65_000  };
+export const WORKOUT_COSTS    = { Domestic: 60_000, Europe: 100_000, 'Latin America': 100_000, Africa: 120_000, 'Asia-Pacific': 120_000 };
+export const GAME_WATCH_COSTS = { Domestic: 25_000, Europe: 40_000,  'Latin America': 40_000,  Africa: 50_000,  'Asia-Pacific': 50_000  };
 export const POACH_COST = 400_000;
 
-// One-time-ever mission per team — domestic prospects are always visible, so
-// this isn't a discovery tool like the international sweeps. It's a single
-// cheap blanket scout that never recurs (no per-season refresh, no repeats).
-export const DOMESTIC_SWEEP_COST = 100_000;
-
-export const DRAFT_POINTS_WORKOUT       = 60;
-export const DRAFT_POINTS_GAME_WATCH    = 25;
-export const DRAFT_POINTS_SWEEP         = 75; // points granted to all prospects in a swept region
-export const DRAFT_POINTS_DOMESTIC_SWEEP = 50;
-export const DRAFT_POINTS_MAX           = 100;
+export const DRAFT_POINTS_WORKOUT    = 60;
+export const DRAFT_POINTS_GAME_WATCH = 25;
+export const DRAFT_POINTS_SWEEP      = 75; // points granted to all prospects in a swept region
+export const DRAFT_POINTS_COMBINE    = 25; // free baseline given to every domestic prospect via the annual combine
+export const DRAFT_POINTS_MAX        = 100;
 
 // Legacy compat
 export const DRAFT_SCOUT_COSTS = {
@@ -67,14 +62,14 @@ export const EXTENDED_WATCH_COUNT = 3;
 
 // ---- Budget ----
 
-const BUDGET_BASE = { small: 500_000, medium: 1_000_000, large: 1_500_000 };
+const BUDGET_BASE = { small: 750_000, medium: 1_500_000, large: 2_000_000 };
 
 export function scoutingBudget(team) {
   const market = team.market || 'medium';
   const tolerance = team.owner?.budgetTolerance ?? 50;
   const base = BUDGET_BASE[market] ?? BUDGET_BASE.medium;
   const mult = 0.7 + (tolerance / 100) * 0.6;
-  return clamp(Math.round((base * mult) / 50_000) * 50_000, 350_000, 2_000_000);
+  return clamp(Math.round((base * mult) / 50_000) * 50_000, 500_000, 2_500_000);
 }
 
 export function totalScoutSalary(scouts) {
@@ -254,6 +249,24 @@ function refreshBigBoard(league, teamId) {
   s.bigBoardRanks[teamId] = scored.slice(0, 20).map(({ p }) => p.id);
 }
 
+// ---- Draft Combine ----
+
+// Annual automatic event: every domestic prospect in the current draft class
+// gets a free baseline scouting bump for all teams. Simulates the public
+// pre-draft combine — no budget cost, runs once per offseason when the class
+// is promoted. International prospects aren't eligible (they have their own
+// regional discovery path).
+function runDraftCombine(league) {
+  const s = league.scouting;
+  const domestic = (s.prospects ?? []).filter((p) => regionFor(p) === 'Domestic');
+  if (!domestic.length) return;
+  for (const team of league.teams) {
+    for (const p of domestic) addDraftPoints(p, team.id, DRAFT_POINTS_COMBINE);
+  }
+  addReport(league, league.userTeamId,
+    `Draft Combine complete — ${domestic.length} domestic prospects received a baseline evaluation (all teams +${DRAFT_POINTS_COMBINE} pts).`);
+}
+
 // ---- Season initialization ----
 
 // Called at the start of each regular season (startNewSeason).
@@ -375,6 +388,9 @@ export function initScoutingPhase(league, rng) {
   }
   s.draftBoard = board;
 
+  // Annual Draft Combine: free baseline bump for all domestic prospects in the current class
+  runDraftCombine(league);
+
   // Apply scout effects for all teams (auto-discover, +10 pts, sleepers, big board)
   for (const team of league.teams) {
     const effectRng = makeRng(league.seed + league.season * 55_003 + team.id.charCodeAt(0) * 7);
@@ -408,19 +424,62 @@ const SKILL_LABELS = {
   offensiveRebounding: 'offensive rebounding', defensiveRebounding: 'defensive rebounding',
   speed: 'quickness', strength: 'physicality',
 };
-const topSkills = (p, n = 2) => Object.entries(p.ratings).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => SKILL_LABELS[k]);
-const weakestSkill = (p) => SKILL_LABELS[Object.entries(p.ratings).sort((a, b) => a[1] - b[1])[0][0]];
 
-export function generateScoutReport(p, season, rng, teamId) {
+function workoutPhysicalNote(p) {
+  const r = p.ratings;
+  if (r.speed >= 80) return 'tested explosively above average';
+  if (r.strength >= 80) return 'physical tools already look NBA-ready';
+  if (r.speed < 48)    return 'not the most explosive athlete — will need to rely on skill';
+  if (r.strength < 48) return 'still needs to add bulk before the next level';
+  return 'athletic profile checks the boxes';
+}
+
+function gameWatchNarrativeNote(p, rng) {
+  const r = p.ratings;
+  const notes = [];
+  if (r.threePoint >= 76)        notes.push('knocked down pull-up threes off movement');
+  if (r.block >= 76)             notes.push('altered shots around the rim all night');
+  if (r.steal >= 76)             notes.push('active hands — created turnovers in the passing lanes');
+  if (r.passing >= 78)           notes.push('made the right read on nearly every possession');
+  if (r.offensiveRebounding >= 76) notes.push('relentless on the offensive glass, found angles others missed');
+  if (r.speed >= 80)             notes.push('pace of play was a tier above the competition');
+  if (r.strength >= 78)          notes.push('physical play stood out — stronger than most at this level');
+  if (r.closeShot >= 78)         notes.push('finished through contact inside the arc');
+  if (r.ballHandling >= 78)      notes.push('showed excellent ball security under pressure');
+  if (r.defensiveRebounding >= 78) notes.push('owned the defensive glass all night');
+  if (r.midRange >= 78)          notes.push('hit tough pull-ups in the midrange consistently');
+  if (r.perimeterDefense >= 78)  notes.push('held assignments in check on the perimeter');
+  if (r.interiorDefense >= 78)   notes.push("presence around the rim disrupted the whole offense");
+  if (r.freeThrow < 45)          notes.push('free throws were a liability — could get intentionally fouled at the next level');
+  if (r.perimeterDefense < 45 && ['PG', 'SG', 'SF'].includes(p.pos))
+    notes.push('gave up too many buckets on the perimeter — defensive improvement needed');
+
+  if (notes.length) return notes[Math.floor(rng() * notes.length)];
+  const ovr = overall(p);
+  if (ovr >= 80) return 'overall impact was obvious from the opening tip';
+  if (ovr >= 70) return 'held their own and showed why they belong on the board';
+  return 'showed flashes worth continued tracking';
+}
+
+function generateWorkoutReport(p, season, rng, teamId) {
   const pts = getDraftPoints(p, teamId);
   const [lo, hi] = scoutedOverallRange(p, season, teamId);
   const grade = potentialGrade(scoutedPotential(p, season, pts < DRAFT_POINTS_MAX, teamId));
-  const strengths = topSkills(p, 2);
-  if (pts < 30)
-    return `Our scout caught ${p.name} (${p.pos}, ${p.age}, from ${p.from}). Early read: ${strengths[0]} stands out, projecting ${lo}–${hi} with ${grade} ceiling.`;
-  if (pts < 75)
-    return `Closer look at ${p.name}: ${strengths.join(' and ')} are real. Projects ${lo}–${hi}, ${grade} upside.`;
-  return `Extended report on ${p.name}: ${overall(p)} overall, ${strengths.join(' and ')} strengths, ${weakestSkill(p)} weakness. Ceiling: ${potentialGrade(p.potential)}.`;
+  const [topKey, topVal] = Object.entries(p.ratings).sort((a, b) => b[1] - a[1])[0];
+  const noise = pts >= 75 ? 3 : pts >= 45 ? 6 : 12;
+  const foggedVal = clamp(topVal + Math.round((rng() - 0.5) * noise * 2), 25, 99);
+  return `Private workout — ${p.name} (${p.pos}): ${SKILL_LABELS[topKey]} immediately stood out, grades at ~${foggedVal}. ${workoutPhysicalNote(p)}. Projects ${lo}–${hi} OVR, ${grade} ceiling.`;
+}
+
+function generateGameWatchReport(p, season, rng, teamId) {
+  const pts = getDraftPoints(p, teamId);
+  const [lo, hi] = scoutedOverallRange(p, season, teamId);
+  const grade = potentialGrade(scoutedPotential(p, season, pts < DRAFT_POINTS_MAX, teamId));
+  const note = gameWatchNarrativeNote(p, rng);
+  const projection = pts >= 75
+    ? `Full read: ${overall(p)} OVR, ${grade} ceiling.`
+    : `Projects ${lo}–${hi} OVR, ${grade} upside.`;
+  return `Watched ${p.name} (${p.pos}, ${p.from}): ${note}. ${projection}`;
 }
 
 function generateProScoutReport(league, p, gamesWatched) {
@@ -463,7 +522,7 @@ function findScoutTarget(league, playerId) {
 
 // ---- Draft missions ----
 
-function runDraftMission(league, teamId, playerId, points, cost) {
+function runDraftMission(league, teamId, playerId, points, cost, reportFn) {
   const s = league.scouting;
   if (!s) return { ok: false, error: 'Scouting not available.' };
   const p = findDraftProspect(league, playerId);
@@ -478,7 +537,7 @@ function runDraftMission(league, teamId, playerId, points, cost) {
   if (!s.watchlists[teamId]) s.watchlists[teamId] = [];
   if (!s.watchlists[teamId].includes(playerId)) s.watchlists[teamId].push(playerId);
   const rng = makeRng(league.seed + league.season * 80_001 + playerId * 13 + Math.floor((pts + points) / 10));
-  const text = generateScoutReport(p, league.season, rng, teamId);
+  const text = reportFn(p, league.season, rng, teamId);
   addReport(league, teamId, text, playerId);
   refreshBigBoard(league, teamId);
   return { ok: true, text };
@@ -488,14 +547,14 @@ export function workoutProspect(league, teamId, playerId) {
   const p = findDraftProspect(league, playerId);
   if (!p) return { ok: false, error: 'Prospect not found.' };
   const region = regionFor(p);
-  return runDraftMission(league, teamId, playerId, DRAFT_POINTS_WORKOUT, WORKOUT_COSTS[region] ?? WORKOUT_COSTS.Domestic);
+  return runDraftMission(league, teamId, playerId, DRAFT_POINTS_WORKOUT, WORKOUT_COSTS[region] ?? WORKOUT_COSTS.Domestic, generateWorkoutReport);
 }
 
 export function gameWatchProspect(league, teamId, playerId) {
   const p = findDraftProspect(league, playerId);
   if (!p) return { ok: false, error: 'Prospect not found.' };
   const region = regionFor(p);
-  return runDraftMission(league, teamId, playerId, DRAFT_POINTS_GAME_WATCH, GAME_WATCH_COSTS[region] ?? GAME_WATCH_COSTS.Domestic);
+  return runDraftMission(league, teamId, playerId, DRAFT_POINTS_GAME_WATCH, GAME_WATCH_COSTS[region] ?? GAME_WATCH_COSTS.Domestic, generateGameWatchReport);
 }
 
 // One-time discovery mission for an international region.
@@ -518,36 +577,6 @@ export function sweepRegion(league, teamId, region) {
   addReport(league, teamId, text);
   refreshBigBoard(league, teamId);
   return { ok: true, text, discovered: newCount };
-}
-
-// Cooldown mission per team, reusable once a new draft class has had time to
-// form. Domestic prospects are never hidden, so there's nothing to
-// "discover" — this just hands every domestic prospect (current class +
-// future board) a flat scouting bump for a flat fee.
-export const DOMESTIC_SWEEP_COOLDOWN_YEARS = 2;
-
-export function domesticSweepAvailable(league, teamId) {
-  const lastUsed = league.scouting?.domesticSweepUsed?.[teamId];
-  // Legacy saves stored `true` for a one-time-ever use; treat that as never used
-  // under the new cooldown so existing saves aren't permanently locked out.
-  if (lastUsed == null || lastUsed === true) return true;
-  return league.season - lastUsed >= DOMESTIC_SWEEP_COOLDOWN_YEARS;
-}
-
-export function domesticSweep(league, teamId) {
-  const s = league.scouting;
-  if (!s) return { ok: false, error: 'Scouting not available.' };
-  if (!domesticSweepAvailable(league, teamId)) return { ok: false, error: 'Domestic sweep is on cooldown.' };
-  if ((s.budgets[teamId] ?? 0) < DOMESTIC_SWEEP_COST) return { ok: false, error: 'Not enough scouting budget.' };
-  const targets = getAllDraftProspects(league).filter((p) => regionFor(p) === 'Domestic');
-  for (const p of targets) addDraftPoints(p, teamId, DRAFT_POINTS_DOMESTIC_SWEEP);
-  s.budgets[teamId] -= DOMESTIC_SWEEP_COST;
-  if (!s.domesticSweepUsed) s.domesticSweepUsed = {};
-  s.domesticSweepUsed[teamId] = league.season;
-  const text = `Domestic sweep: ${targets.length} domestic prospect${targets.length === 1 ? '' : 's'} evaluated (${DRAFT_POINTS_DOMESTIC_SWEEP} scouting pts each).`;
-  addReport(league, teamId, text);
-  refreshBigBoard(league, teamId);
-  return { ok: true, text };
 }
 
 export function poachIntel(league, teamId) {
@@ -707,12 +736,6 @@ export function aiScoutTurn(league, team, rng) {
     });
     if (unswept && budget >= (SWEEP_COSTS[unswept] ?? Infinity) && rng() < sweepChance) {
       sweepRegion(league, team.id, unswept);
-      continue;
-    }
-
-    // Domestic sweep, if off cooldown and affordable
-    if (domesticSweepAvailable(league, team.id) && budget >= DOMESTIC_SWEEP_COST && rng() < sweepChance) {
-      domesticSweep(league, team.id);
       continue;
     }
 

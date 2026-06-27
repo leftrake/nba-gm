@@ -335,6 +335,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     upside *= clamp((99 - ovr) / 10, 0, 1);
     p.potential = clamp(ovr + Math.max(0, Math.round(upside)), ovr, 99);
   }
+  p.devArc = assignDevArc(age, p.potential, rng);
   p.contract = opts.contract ?? generateContract(p, rng);
   return p;
 }
@@ -471,6 +472,33 @@ export function similarPlayers(league, target, count = 5) {
   return rows.sort((a, b) => a.dist - b.dist).slice(0, count);
 }
 
+// ---------- Development arcs ----------
+// Assigned once at generation, stored as p.devArc. Shapes the growth curve
+// and age breakpoints independent of backstory (the two stack). Standard arc
+// preserves pre-existing behavior; old saves without the field default to it.
+export const DEV_ARC_LABELS = {
+  prodigy:    'Prodigy',
+  earlyBloom: 'Early Bloomer',
+  lateBloom:  'Late Bloomer',
+  fadeResist: 'Slow Fade',
+};
+
+function assignDevArc(age, potential, rng) {
+  if (age > 30) return 'standard';
+  const r = rng();
+  if (age <= 24) {
+    // Prodigy only for high-ceiling young players
+    if (potential >= 82 && r < 0.07) return 'prodigy';
+    const r2 = potential >= 82 ? r - 0.07 : r;
+    if (r2 < 0.18) return 'earlyBloom';
+    if (r2 < 0.36) return 'lateBloom';
+    if (r2 < 0.41) return 'fadeResist';
+  } else {
+    if (r < 0.12) return 'fadeResist';
+  }
+  return 'standard';
+}
+
 // Training focus: the user can assign one of these per player (p.trainingFocus)
 // to weight that player's development roll toward a skill area, at the cost
 // of slight regression in a neglected attribute.
@@ -483,55 +511,66 @@ export const TRAINING_FOCUS_OPTIONS = [
 ];
 
 // Yearly development. Growth is ceiling-driven: high-potential players under
-// 25 close on their ceiling fast (3–6 overall a year, with occasional
-// breakout leaps), modest ceilings inch along and plateau early. Decline is
-// noticeable from 31 and steep after 33.
+// their arc's growthEnd close on their ceiling fast (3–6 OVR/yr, with
+// occasional breakout leaps); decline is noticeable from the primeEnd and
+// steep after the cliffStart. Dev arc shapes the curve; backstory stacks on
+// top via adjustGrowthDelta / adjustRatingDelta.
 export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
-  // A development-focused coach nudges a young player's ceiling up (or down)
-  // a little each offseason, rather than directly inflating this year's growth.
   if (coachBonus && p.age < 25) p.potential = clamp(p.potential + coachBonus, 25, 99);
-  // A prospect's true ceiling isn't perfectly known at the draft — it's a
-  // one-time re-evaluation after his rookie season, not a fixed number:
-  // most prospects converge almost exactly to their drafted potential given
-  // enough healthy years (growth never reverses, only stalls), so without
-  // this, "potential" is closer to a guaranteed outcome than a real ceiling.
-  // A single event (not a yearly drift) avoids compounding bias from
-  // repeatedly clamping a random walk against the current-overall floor.
-  // Busts trend down, gems trend up (reusing the existing backstory
-  // archetypes); floored at current overall since you can't have less
-  // ceiling than you've already shown.
+  // One-time ceiling re-evaluation after rookie season: busts trend down,
+  // gems trend up. A negative bias on the default offsets the structural
+  // upward skew from clamping a two-sided roll against a one-sided floor.
   if (p.exp === 1 && p.age < 26) {
-    // A small negative bias on the default case offsets the structural
-    // upward skew from clamping a two-sided roll against a one-sided floor
-    // (current overall) — without it, the floor-clipped downside draws get
-    // truncated while upward draws mostly pass through untouched, and the
-    // league's average overall creeps up indefinitely.
     const driftMean = p.backstory === 'bust' ? -4.0 : p.backstory === 'gem' ? 1.5 : -2.8;
     const drift = gauss(driftMean, 2.5, rng);
     p.potential = clamp(Math.round(p.potential + drift), Math.round(overall(p)), 99);
   }
   const ovr = overall(p);
   const room = p.potential - ovr;
+
+  // --- Dev arc age thresholds ---
+  const arc = p.devArc ?? 'standard';
+  const growthEnd  = arc === 'earlyBloom' ? 22 : arc === 'lateBloom' ? 27 : 25;
+  const primeEnd   = arc === 'lateBloom' || arc === 'fadeResist' ? 30 : 28;
+  const declineEnd = arc === 'lateBloom' || arc === 'fadeResist' ? 32 : 30;
+  const cliffStart = arc === 'lateBloom' ? 35 : arc === 'fadeResist' ? 36 : 33;
+  const speedMult  = arc === 'prodigy' ? 1.7 : arc === 'earlyBloom' ? 1.3 : arc === 'lateBloom' ? 0.75 : 1.0;
+  const breakChance = arc === 'prodigy' ? 0.25 : 0.15;
+  const breakMinPot = arc === 'prodigy' ? 74 : 78;
+  const cliffBase  = arc === 'fadeResist' ? -3.0 : -3.5;
+  const cliffRate  = arc === 'fadeResist' ? 0.5 : 0.6;
+
   let delta;
-  if (p.age < 25 && room > 0) {
-    const speed = p.potential >= 85 ? 5.5 : p.potential >= 75 ? 4.0 : 1.8;
-    delta = Math.max(0, gauss(speed, 1.5, rng)); // a bad year can mean no growth, but never guaranteed creep
-    if (p.potential >= 78 && rng() < 0.15) delta += 3 + rng() * 3; // breakout season
-    delta += repBonus; // extra reps (e.g. a G-League assignment) close the gap to his ceiling faster
+  if (p.age < growthEnd && room > 0) {
+    const baseSpeed = p.potential >= 85 ? 5.5 : p.potential >= 75 ? 4.0 : 1.8;
+    delta = Math.max(0, gauss(baseSpeed * speedMult, 1.5, rng));
+    if (p.potential >= breakMinPot && rng() < breakChance) delta += 3 + rng() * 3;
+    delta += repBonus;
     delta = Math.min(delta, room);
-  } else if (p.age < 25) {
-    delta = gauss(0, 0.6, rng); // hit his ceiling early — plateaued
-  } else if (p.age <= 28) {
-    // prime years hold steady: late bloomers inch up, finished products erode a touch
-    delta = room > 0 ? clamp(gauss(0.4, 0.8, rng), 0, Math.min(room, 1.2)) : gauss(-0.4, 0.6, rng);
-  } else if (p.age <= 30) {
+  } else if (p.age < growthEnd) {
+    delta = gauss(0, 0.6, rng); // hit ceiling early — plateaued
+  } else if (p.age <= primeEnd) {
+    // Late bloomers still have elevated growth right after their development window
+    if (arc === 'lateBloom' && p.age <= 28 && room > 0) {
+      delta = clamp(gauss(0.8, 0.9, rng), 0, Math.min(room, 2.0));
+    } else {
+      delta = room > 0 ? clamp(gauss(0.4, 0.8, rng), 0, Math.min(room, 1.2)) : gauss(-0.4, 0.6, rng);
+    }
+  } else if (p.age <= declineEnd) {
     delta = gauss(-1.4, 0.7, rng);
-  } else if (p.age <= 33) {
+  } else if (p.age <= cliffStart) {
     delta = gauss(-2.8, 0.8, rng);
   } else {
-    delta = gauss(-3.5 - (p.age - 34) * 0.6, 1.0, rng); // falling off the cliff
+    delta = gauss(cliffBase - (p.age - cliffStart - 1) * cliffRate, 1.0, rng);
   }
   delta = adjustGrowthDelta(p, delta, room, rng);
+
+  // Pre-compute skill rankings for growth specialization (done once per season,
+  // before any ratings change, so specialization is based on the current profile)
+  const sortedKeys = Object.keys(p.ratings).sort((a, b) => p.ratings[b] - p.ratings[a]);
+  const topRatingSet    = new Set(sortedKeys.slice(0, 3));
+  const bottomRatingSet = new Set(sortedKeys.slice(-3));
+
   const focus = TRAINING_FOCUS_OPTIONS.find((f) => f.id === p.trainingFocus);
   for (const key of Object.keys(p.ratings)) {
     let d = delta + gauss(0, 1.2, rng);
@@ -543,6 +582,17 @@ export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
       // every focus a much bigger net-positive growth bias than intended.
       if (focus.boost.includes(key)) d += 0.8 / focus.boost.length;
       else if (key === focus.neglect) d -= 0.5;
+    }
+    // Physical attributes (speed/strength) decay faster than skills after the prime —
+    // a 34-year-old can still shoot and pass but has visibly lost a step.
+    if ((key === 'speed' || key === 'strength') && p.age > 27) {
+      d -= (p.age - 27) * 0.35;
+    }
+    // During growth, skills specialize: existing strengths compound faster,
+    // weak spots lag — players become more distinct over time.
+    if (delta > 0) {
+      if (topRatingSet.has(key)) d += delta * 0.2;
+      else if (bottomRatingSet.has(key)) d -= delta * 0.15;
     }
     d = adjustRatingDelta(p, d, key, room, rng);
     if (d > 0 && room <= 0) d = 0; // the ceiling is a ceiling

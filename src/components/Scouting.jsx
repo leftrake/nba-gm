@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { scoutedOverall, scoutUncertainty, isHidden, fogColor, getDraftPoints } from '../engine/scouting.js';
 import {
-  workoutProspect, gameWatchProspect, sweepRegion, poachIntel, domesticSweep, domesticSweepAvailable,
+  workoutProspect, gameWatchProspect, sweepRegion, poachIntel,
   markProWatch, removeProWatch,
   hireScout, fireScout, getScouts,
   isDiscovered,
   DRAFT_POINTS_MAX, PRO_SCOUT_GAMES_FULL, PRO_WATCH_SLOTS,
-  SWEEP_COSTS, WORKOUT_COSTS, GAME_WATCH_COSTS, POACH_COST, DOMESTIC_SWEEP_COST, DOMESTIC_SWEEP_COOLDOWN_YEARS,
+  SWEEP_COSTS, WORKOUT_COSTS, GAME_WATCH_COSTS, POACH_COST,
   SCOUT_TYPES, MAX_SCOUTS,
   totalScoutSalary, scoutingBudget,
 } from '../engine/scoutingTrips.js';
@@ -227,14 +227,6 @@ function DraftBoardTab({ league, commit }) {
     else alert(res.error);
   };
 
-  const domesticSweepOnCooldown = !domesticSweepAvailable(league, userId);
-  const domesticSweepReadySeason = (s.domesticSweepUsed?.[userId] ?? -Infinity) + DOMESTIC_SWEEP_COOLDOWN_YEARS;
-  const doDomesticSweep = () => {
-    const res = domesticSweep(league, userId);
-    if (res.ok) commit();
-    else alert(res.error);
-  };
-
   const currentClass = s.prospects?.length
     ? [{ draftSeason: league.season, prospects: s.prospects, label: `Draft Class ${league.season} (current)` }]
     : [];
@@ -248,33 +240,21 @@ function DraftBoardTab({ league, commit }) {
     <>
       <GuideTooltip
         tipKey="scouting_draft_board"
-        text="Your annual scouting budget funds missions on future draft classes. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). International prospects must be discovered before you can scout them — hire a regional scout or run a one-time sweep. You also get a Domestic Sweep that gives every domestic prospect a flat scouting bump for a flat fee, reusable every 2 years once a new class comes around. The board spans 3 years so you can start building your board years in advance."
+        text="Your annual scouting budget funds missions on draft prospects. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). Each offseason an automatic Draft Combine gives every domestic prospect in the current class a free +25 pt baseline — all 30 teams attend. International prospects must be discovered first via a regional scout or one-time sweep before you can run missions on them. The board spans 3 years so you can start building your pipeline well in advance."
         block
       >
         <SectionHeader
           title="Draft Board"
           subtitle={<>Budget: <b>{dollars(budget)}</b></>}
           action={
-            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-              <Button
-                size="sm" variant="secondary"
-                disabled={domesticSweepOnCooldown || budget < DOMESTIC_SWEEP_COST}
-                onClick={doDomesticSweep}
-                title={domesticSweepOnCooldown
-                  ? `On cooldown — available again in ${domesticSweepReadySeason}`
-                  : `Gives every domestic prospect ${dollars(DOMESTIC_SWEEP_COST)} worth of scouting in one pass — reusable every ${DOMESTIC_SWEEP_COOLDOWN_YEARS} years`}
-              >
-                {domesticSweepOnCooldown ? `Domestic Sweep (cooldown)` : `Domestic Sweep (${dollars(DOMESTIC_SWEEP_COST)})`}
-              </Button>
-              <Button
-                size="sm" variant="secondary"
-                disabled={budget < POACH_COST}
-                onClick={doPoach}
-                title="Reveals which prospects 2 other teams have been scouting this offseason"
-              >
-                Poach Intel ({dollars(POACH_COST)})
-              </Button>
-            </div>
+            <Button
+              size="sm" variant="secondary"
+              disabled={budget < POACH_COST}
+              onClick={doPoach}
+              title="Reveals which prospects 2 other teams have been scouting this offseason"
+            >
+              Poach Intel ({dollars(POACH_COST)})
+            </Button>
           }
         />
       </GuideTooltip>

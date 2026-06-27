@@ -33,6 +33,7 @@ import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting 
 import { computeQualitySeasons, TRAIT_NEWS_REVEAL_TIERS, traitFromPotential } from './devTraits.js';
 import { generateCoach, devBonus, coachSalary } from './coach.js';
 import { checkPlayerCareerHighs, checkPtsThresholds, recordFirstChampionship } from './milestones.js';
+import { assignArchetype } from './archetypes.js';
 
 export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   const rng = makeRng(seed);
@@ -120,6 +121,15 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
   }
   initSeasonScouting(league, rng);
   initDraftBoard(league, rng); // pre-generate 2 future draft classes for multi-year scouting
+  // Seed archetypes for veteran players at league creation (exp-based proxy since
+  // no careerStats exist yet; we don't touch qualitySeasons to preserve trait fog).
+  for (const team of league.teams) {
+    for (const p of team.roster) {
+      if (p.age >= 23 && (p.exp ?? 0) >= 2) {
+        p.archetype = assignArchetype({ ...p, qualitySeasons: 2 });
+      }
+    }
+  }
   league.nextPlayerId = getNextPlayerId();
   return league;
 }
@@ -429,6 +439,14 @@ export function backfillPlayers(league) {
     if (p.qualitySeasons == null) p.qualitySeasons = computeQualitySeasons(p);
     // saves predating the potential field (traitBand crashes if undefined)
     if (p.potential == null) p.potential = overall(p);
+    // Backfill role archetypes on save load. Use exp as a quality-seasons proxy
+    // when careerStats haven't accumulated yet (first season, freshly-loaded game).
+    // Check for null too since a prior load may have written null before this
+    // exp-proxy logic existed.
+    if (p.archetype == null) {
+      const effectiveQS = (p.qualitySeasons ?? 0) >= 2 ? (p.qualitySeasons ?? 0) : ((p.exp ?? 0) >= 2 ? 2 : 0);
+      p.archetype = assignArchetype({ ...p, qualitySeasons: effectiveQS });
+    }
     // saves predating the "was on user team" no-fog flag
     if (!p.everOnUserTeam && league.userTeamId) {
       if (p.careerStats?.some((s) => s.team === league.userTeamId)) p.everOnUserTeam = true;
@@ -1457,6 +1475,7 @@ export function advanceOffseason(league) {
       // existing ceiling — separate from devBonus, which nudges the ceiling itself.
       const repBonus = clamp(gLeagueGp / 12, 0, 2.5);
       developPlayer(p, rng, devBonus(team.coach), repBonus);
+      p.archetype = assignArchetype(p);
       maybeRevealBackstory(league, p, team); // backstory.js: reputation emerges after 2 seasons
       const entry = isUserTeam
         ? { id: p.id, name: p.name, pos: p.pos, age: p.age, old: oldRow, now: ratingRow(p) }
