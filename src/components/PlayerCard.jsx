@@ -14,19 +14,19 @@ import { Ovr, OvrArc, Pot, Cond, money, perGame, fgPct, TeamLink, TeamBadge, Pla
 import ShotChart from './ShotChart.jsx';
 
 const RATINGS = [
-  { category: 'Shooting', items: [
+  { category: 'Shooting', color: '#4ade80', items: [
     ['closeShot', 'Close Shot'], ['midRange', 'Mid-Range'], ['threePoint', 'Three-Point'], ['freeThrow', 'Free Throw'],
   ] },
-  { category: 'Playmaking', items: [
+  { category: 'Playmaking', color: '#facc15', items: [
     ['passing', 'Passing'], ['ballHandling', 'Ball Handling'],
   ] },
-  { category: 'Defense', items: [
+  { category: 'Defense', color: '#60a5fa', items: [
     ['perimeterDefense', 'Perimeter D'], ['interiorDefense', 'Interior D'], ['steal', 'Steal'], ['block', 'Block'],
   ] },
-  { category: 'Rebounding', items: [
+  { category: 'Rebounding', color: '#fb923c', items: [
     ['offensiveRebounding', 'Off. Rebounding'], ['defensiveRebounding', 'Def. Rebounding'],
   ] },
-  { category: 'Physical', items: [
+  { category: 'Physical', color: '#c084fc', items: [
     ['speed', 'Speed'], ['strength', 'Strength'], ['stamina', 'Stamina'],
   ] },
 ];
@@ -486,7 +486,8 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
               </div>
               {RATINGS.map((group) => (
                 <div key={group.category}>
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', fontWeight: 600, margin: 'var(--sp-2) 0 4px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', margin: 'var(--sp-3) 0 6px', color: group.color, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: group.color, flexShrink: 0 }} />
                     {group.category}
                   </div>
                   {group.items.map(([key, label]) => {
@@ -497,9 +498,9 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                     const mid = (lo + hi) / 2;
                     return (
                       <div className="rating-row" key={key}>
-                        <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                        <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--text-muted)' : barColor(v) }} /></div>
-                        <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--text-muted)' : undefined }}>
+                        <span style={{ color: 'var(--text-secondary, var(--text-muted))' }}>{label}</span>
+                        <div className="rating-bar"><div style={{ width: `${hidden ? 0 : mid}%`, background: fogged ? 'var(--text-muted)' : group.color }} /></div>
+                        <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: hidden ? 'var(--text-muted)' : fogged ? 'var(--text-muted)' : group.color }}>
                           {hidden ? '?' : fogged ? `${lo}–${hi}` : v}
                         </span>
                       </div>
@@ -566,9 +567,9 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                 </div>
                 {positionalPercentiles(league, p, leaderMinGp(league)).map((row) => (
                   <div className="rating-row" key={row.key}>
-                    <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
+                    <span style={{ color: 'var(--text-secondary, var(--text-muted))' }}>{row.label}</span>
                     <div className="rating-bar"><div style={{ width: `${row.percentile}%`, background: barColor(row.percentile) }} /></div>
-                    <span className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.percentile}</span>
+                    <span className="num" style={{ fontVariantNumeric: 'tabular-nums', color: barColor(row.percentile) }}>{row.percentile}</span>
                   </div>
                 ))}
               </div>
