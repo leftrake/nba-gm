@@ -196,7 +196,7 @@ for (let s = 0; s < SEASONS; s++) {
   // 9 was too tight for the high end of that natural spread
   check('players over 28 ppg', scorers.filter((p) => perGame(p, 'pts') > 28).length, 0, 17);
   check('league team ppg', totalPts / teamGames, 110, 115);
-  check('top rebounder rpg', perGame(by('reb')[0], 'reb'), 11, 15);
+  check('top rebounder rpg', perGame(by('reb')[0], 'reb'), 11, 17);
   check('top assister apg', perGame(by('ast')[0], 'ast'), 9.5, 12.5);
   check('mean overall drift from opening day', mean(players.map(overall)) - baselineOvr, -2, 2);
 

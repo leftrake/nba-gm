@@ -5,6 +5,13 @@ import { moraleRatingMod } from './morale.js';
 import { clutchMod } from './backstory.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, playerFit, isInjured, minutesCap } from './lineup.js';
 
+// Guards rarely get blocks/boards regardless of their skill rating — height
+// and position on the floor matter more than timing/instincts at the rim.
+// Block uses a sharper range (exponent 2 inside the pick) vs. rebounds (2.9),
+// so rebound factors must be gentler to avoid concentrating boards on one big.
+const POS_BLOCK_MULT = { PG: 0.25, SG: 0.35, SF: 0.75, PF: 1.2, C: 1.5 };
+const POS_REB_MULT   = { PG: 0.55, SG: 0.65, SF: 0.90, PF: 1.0, C: 1.0 };
+
 // A team's game rotation: the saved lineup when it's legal, otherwise a
 // fresh auto lineup (AI teams never store one). Each entry carries the slot
 // the player occupies so out-of-position starters get a fit penalty.
@@ -202,6 +209,7 @@ function gamePlayer({ p, min, slot }, rng) {
   const lengthZ = clamp(((p.wingspanIn ?? 78) - (WINGSPAN_POS_AVG[p.pos] ?? 81)) / 4, -2, 2);
   return {
     name: p.name, // for the game-flow log
+    pos: p.pos,
     targetMin: min,
     remaining: min,
     score, // form-free scoring talent — decides who the featured option is
@@ -394,12 +402,7 @@ function offenseRebounds(off, def, rng, emit = () => {}) {
   const side = offensive ? off.five : def.five;
   // ~7% of misses go out of bounds / become team rebounds — no credit
   if (rng() < 0.93) {
-    // Splitting rebounding into offensive/defensive means the league's best
-    // rebounder needs to roll well on both independently rather than on one
-    // shared rating, which slightly lowers the combined-total ceiling — a
-    // touch more concentration here keeps the best rebounder's volume
-    // where it was.
-    const gp = weightedPick(side, (g) => Math.pow(offensive ? g.oreb : g.dreb, 2.9), rng);
+    const gp = weightedPick(side, (g) => Math.pow(offensive ? g.oreb : g.dreb, 2.3) * (POS_REB_MULT[g.pos] ?? 1), rng);
     gp.line.reb += 1;
     if (offensive) gp.line.oreb += 1;
     else gp.line.dreb += 1;
@@ -587,10 +590,10 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     shooter.line.fga += 1;
     shooter.line[`${zone.id}Fga`] += 1;
     if (type === 'three') shooter.line.tpa += 1;
-    const blockP = type === 'ins' ? 0.28 : type === 'mid' ? 0.08 : 0.02;
+    const blockP = type === 'ins' ? 0.52 : type === 'mid' ? 0.08 : 0.02;
     emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`);
     if (rng() < blockP) {
-      const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.7 + g.interiorDef * 0.3, 2), rng);
+      const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng);
       blocker.line.blk += 1;
       emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`, blocker.team);
     }

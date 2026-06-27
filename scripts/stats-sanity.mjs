@@ -121,7 +121,7 @@ for (let s = 0; s < SEASONS; s++) {
   check(league.season, 'league team ppg', r.teamPpg, 110, 115);
   // stamina caps trim big-man minutes and feed them to guards, so the
   // leader bands sit a touch wider than the pre-fatigue calibration
-  check(league.season, 'top rebounder rpg', r.topRpg, 11, 15);
+  check(league.season, 'top rebounder rpg', r.topRpg, 11, 17);
   check(league.season, 'top assister apg', r.topApg, 9.5, 12.5);
   check(league.season, 'mean overall drift', startOvr - baselineOvr, -2, 2);
   check(league.season, 'minutes leader mpg', r.topMpg, 35, 38.5);
