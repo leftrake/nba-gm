@@ -188,10 +188,17 @@ export default function NbaCup({ league, openTeam }) {
       <GroupStandings league={league} openTeam={openTeam} />
       <Bracket league={league} openTeam={openTeam} />
 
-      {cup.log.length > 0 && (
+      {league.cupHistory?.length > 0 && (
         <Card>
           <span className="ui-section-title" style={{ display: 'flex', marginBottom: 'var(--sp-2)' }}>History</span>
-          {cup.log.map((l, i) => <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', padding: '2px 0' }}>{l}</div>)}
+          {[...league.cupHistory].reverse().map((entry) => {
+            const t = getTeam(league, entry.champion);
+            return (
+              <div key={entry.season} style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', padding: '2px 0' }}>
+                {entry.season} — {t ? `${t.city} ${t.name}` : entry.champion}
+              </div>
+            );
+          })}
         </Card>
       )}
     </div>

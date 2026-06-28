@@ -27,7 +27,7 @@ function cupSimGame(league, home, away, rng) {
 }
 
 export function initCup(season) {
-  return { season, bracket: null, champion: null, log: [] };
+  return { season, bracket: null, champion: null };
 }
 
 // Called from simDay for any division game during the group stage window.
@@ -55,9 +55,9 @@ export function determineCupBracket(league) {
   const top4 = (conf) => {
     const confTeams = league.teams.filter((t) => t.conf === conf);
     const divs = [...new Set(confTeams.map((t) => t.div))];
-    const divWinners = divs.map((div) =>
-      confTeams.filter((t) => t.div === div).sort(cupRank)[0]
-    );
+    const divWinners = divs
+      .map((div) => confTeams.filter((t) => t.div === div).sort(cupRank)[0])
+      .sort(cupRank);
     const winnerIds = new Set(divWinners.map((t) => t.id));
     const wildCard = confTeams
       .filter((t) => !winnerIds.has(t.id))
@@ -149,7 +149,8 @@ export function simCupGame(league) {
       p.awards.push({ season: league.season, award: 'NBA Cup' });
     }
     bumpRosterMorale(winner, 3);
-    cup.log.push(`${winner.city} ${winner.name} won the ${league.season} NBA Cup.`);
+    if (!league.cupHistory) league.cupHistory = [];
+    league.cupHistory.push({ season: league.season, champion: cup.champion });
   }
 
   // Add game-result news items

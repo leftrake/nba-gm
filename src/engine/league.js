@@ -582,7 +582,7 @@ export function backfillPlayers(league) {
   if (!league.cup || league.cup.season !== league.season) {
     league.cup = initCup(league.season);
   }
-  if (!league.cup.log) league.cup.log = [];
+  if (!league.cupHistory) league.cupHistory = [];
   for (const team of league.teams) {
     if (team.cupWins == null) team.cupWins = 0;
     if (team.cupLosses == null) team.cupLosses = 0;
