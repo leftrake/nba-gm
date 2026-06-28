@@ -202,6 +202,45 @@ export function describeBrokenRecord(league, b) {
   return { text, isUserTeam };
 }
 
+// ---------- Retired player pruning ----------
+
+// Seasons back to retain retired players regardless of record/HOF status.
+// Recent retirees stay so their player cards remain accessible in news/history.
+// Notable players (record book top-10, HOF) are always kept.
+const RETIREE_RECENT_WINDOW = 5;
+
+// Drop retired players who can no longer affect the record book and are old
+// enough that active UI references to them are unlikely. Called every offseason
+// after computeRecordBook + evaluateHallOfFame, and once on save load.
+// Safe because: the record book top-10 is already stored as derived data, so
+// absent non-notable retirees don't change the leaderboards on the next recompute
+// (retired stats are fixed — a player outside the top-10 can never move up).
+export function pruneRetiredPlayers(league) {
+  if (!league.retiredPlayers?.length) return;
+  const retain = new Set();
+
+  for (const h of (league.hallOfFame || [])) retain.add(h.playerId);
+  for (const d of (league.dynasties || [])) {
+    for (const p of (d.corePlayers || [])) retain.add(p.id);
+  }
+
+  const book = league.recordBook || {};
+  for (const entries of Object.values(book.singleSeason || {})) {
+    for (const e of (entries || [])) if (e?.playerId != null) retain.add(e.playerId);
+  }
+  for (const entries of Object.values(book.career || {})) {
+    for (const e of (entries || [])) if (e?.playerId != null) retain.add(e.playerId);
+  }
+  for (const e of Object.values(book.gameHighs || {})) {
+    if (e?.playerId != null) retain.add(e.playerId);
+  }
+
+  const recentCutoff = (league.season ?? 0) - RETIREE_RECENT_WINDOW;
+  league.retiredPlayers = league.retiredPlayers.filter(
+    (p) => retain.has(p.id) || (p.retiredSeason ?? 0) >= recentCutoff
+  );
+}
+
 // ---------- Mid-season pace tracking ----------
 
 function currentSeasonLeaders(league, statKey, n = 3) {
@@ -222,6 +261,10 @@ function currentSeasonLeaders(league, statKey, n = 3) {
 export function checkRecordPace(league) {
   const season = league.season;
   if (!league.recordPaceFlags) league.recordPaceFlags = {};
+  // Prune stale season keys — only the current season's flags are ever read
+  for (const s of Object.keys(league.recordPaceFlags)) {
+    if (Number(s) < season) delete league.recordPaceFlags[s];
+  }
   if (!league.recordPaceFlags[season]) league.recordPaceFlags[season] = {};
   const flags = league.recordPaceFlags[season];
   const newlyFlagged = [];

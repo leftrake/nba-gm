@@ -26,7 +26,7 @@ import { checkMilestoneAlerts } from './milestoneAlerts.js';
 import { updateGLeagueHotStreak, maybeQueueCallUpPrompt } from './callUps.js';
 import {
   snapshotRetiree, computeRecordBook, describeBrokenRecord, checkRecordPace, checkGameHighs,
-  evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy,
+  evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy, pruneRetiredPlayers,
 } from './legacy.js';
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
 import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting } from './scoutingTrips.js';
@@ -597,6 +597,13 @@ export function backfillPlayers(league) {
   // lookup is unambiguous going forward.
   league.nextPlayerId = repairDuplicateLivePlayerIds(league, league.nextPlayerId);
   resetPlayerIds(league.nextPlayerId);
+  // One-time compaction for long franchises: drop retired players who are
+  // outside the record book top-10 and not in the HOF (their stats are already
+  // captured in the stored derived record book). Also prune stale pace flags.
+  pruneRetiredPlayers(league);
+  for (const s of Object.keys(league.recordPaceFlags || {})) {
+    if (Number(s) < (league.season ?? 0)) delete league.recordPaceFlags[s];
+  }
 }
 
 function repairDuplicateLivePlayerIds(league, nextId) {
@@ -1607,6 +1614,7 @@ export function advanceOffseason(league) {
     if (isUserTeam && !league.recordBreakingMoment) league.recordBreakingMoment = { ...b, text, isUserTeam: true };
   }
   evaluateHallOfFame(league, newlyRetired);
+  pruneRetiredPlayers(league);
   detectDynasties(league);
   updateGmLegacy(league, ownerResult);
   updateCrossSaveLegacy(league);
