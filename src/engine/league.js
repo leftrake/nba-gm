@@ -447,6 +447,8 @@ export function backfillPlayers(league) {
       const effectiveQS = (p.qualitySeasons ?? 0) >= 2 ? (p.qualitySeasons ?? 0) : ((p.exp ?? 0) >= 2 ? 2 : 0);
       p.archetype = assignArchetype({ ...p, qualitySeasons: effectiveQS });
     }
+    // saves predating within-position sub-archetypes (null = unspecialized, pre-system player)
+    if (p.subArchetype === undefined) p.subArchetype = null;
     // saves predating the "was on user team" no-fog flag
     if (!p.everOnUserTeam && league.userTeamId) {
       if (p.careerStats?.some((s) => s.team === league.userTeamId)) p.everOnUserTeam = true;

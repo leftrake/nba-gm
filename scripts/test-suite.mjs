@@ -198,8 +198,10 @@ for (let s = 0; s < SEASONS; s++) {
   check('league team ppg', totalPts / teamGames, 110, 115);
   check('top rebounder rpg', perGame(by('reb')[0], 'reb'), 11, 17);
   // floor lowered 9.5→9.0: occasional low-assist-leader seasons are real
-  // (9.35 observed across multiple seeds)
-  check('top assister apg', perGame(by('ast')[0], 'ast'), 9.0, 12.5);
+  // (9.35 observed across multiple seeds). Ceiling raised 12.5→14 after
+  // introducing within-position sub-archetypes: specialized scorers convert
+  // more PG passes into baskets, lifting the assist leader to 12-14 range.
+  check('top assister apg', perGame(by('ast')[0], 'ast'), 9.0, 14);
   check('mean overall drift from opening day', mean(players.map(overall)) - baselineOvr, -2, 2);
 
   console.log('  Minutes');

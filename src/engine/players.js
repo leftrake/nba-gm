@@ -91,25 +91,80 @@ export function posLabel(p) {
 // Per-position generation bias across all 14 ratings — a one-time
 // generation-time nudge toward each position's typical skill profile (not a
 // persistent weighting; overall() has its own position-dependent table
-// below). Each row is a hand-tuned split of the old 6-key table this
-// replaced, plus new speed/strength/freeThrow biases that didn't exist
-// before.
-// Each row is shifted by a uniform constant so its weighted sum under that
-// position's own POSITION_OVR_WEIGHTS (below) is ~0 — otherwise a position
-// whose heavily-weighted attributes (e.g. a center's rebounding/interior
-// D) also carry the biggest positive archetype bias gets a systematically
-// inflated overall purely from the interaction of the two tables, which
-// then inflates salaries/payroll league-wide. The shift pushes a
-// position's already-lightly-weighted "weak" attributes further down
-// rather than the reverse, which is the right trade: those attributes
-// barely move overall() for that position anyway.
+// below). Each row is shifted by a uniform constant so its weighted sum
+// under that position's own POSITION_OVR_WEIGHTS (below) is ~0 — keeping
+// league-wide OVR/salary equilibrium position-neutral. Anti-position mods
+// are large enough to create real attribute gaps: a base-80 PG lands in the
+// 50s for block/rebounding without a rebounder sub-archetype to lift them.
 const ARCHETYPES = {
-  PG: { closeShot: -5, midRange: -1, threePoint: 0, freeThrow: -1, passing: 8, ballHandling: 3, perimeterDefense: -1, interiorDefense: -5, steal: 0, block: -5, offensiveRebounding: -5, defensiveRebounding: -7, speed: 2, strength: -6 },
-  SG: { closeShot: -2, midRange: 1, threePoint: 2, freeThrow: 1, passing: 2, ballHandling: 2, perimeterDefense: 0, interiorDefense: -3, steal: 1, block: -3, offensiveRebounding: -3, defensiveRebounding: -4, speed: 2, strength: -3 },
-  SF: { closeShot: 0, midRange: 1, threePoint: 1, freeThrow: 0, passing: -1, ballHandling: -1, perimeterDefense: 1, interiorDefense: 1, steal: 0, block: 0, offensiveRebounding: 0, defensiveRebounding: 0, speed: 0, strength: 0 },
-  PF: { closeShot: 1, midRange: -2, threePoint: -3, freeThrow: -2, passing: -3, ballHandling: -4, perimeterDefense: -1, interiorDefense: 1, steal: -1, block: 1, offensiveRebounding: 2, defensiveRebounding: 2, speed: -4, strength: 2 },
-  C: { closeShot: 1, midRange: -6, threePoint: -8, freeThrow: -6, passing: -6, ballHandling: -7, perimeterDefense: -4, interiorDefense: 1, steal: -4, block: 1, offensiveRebounding: 2, defensiveRebounding: 2, speed: -7, strength: 1 },
+  // Scoring/passing attrs stay close to original values to keep league-wide
+  // PPG/APG equilibrium. Anti-position attrs (block/rebounding for guards;
+  // 3P/passing/speed for bigs) are large negatives — a base-80 PG lands in
+  // the 50s for block/rebounding. Speed absorbs the OVR compensation so
+  // attacking stats don't inflate.
+  PG: { closeShot: -5, midRange: -1, threePoint: 0, freeThrow: 0, passing: 8, ballHandling: 3, perimeterDefense: 0, interiorDefense: -20, steal: 1, block: -20, offensiveRebounding: -20, defensiveRebounding: -20, speed: 11, strength: -9 },
+  SG: { closeShot: -2, midRange: 1, threePoint: 2, freeThrow: 1, passing: 2, ballHandling: 4, perimeterDefense: 2, interiorDefense: -14, steal: 3, block: -14, offensiveRebounding: -14, defensiveRebounding: -14, speed: 8, strength: -8 },
+  SF: { closeShot: 1, midRange: 1, threePoint: 1, freeThrow: 0, passing: 1, ballHandling: -1, perimeterDefense: 1, interiorDefense: -6, steal: 0, block: -6, offensiveRebounding: -6, defensiveRebounding: -5, speed: 8, strength: 2 },
+  PF: { closeShot: 2, midRange: -2, threePoint: -15, freeThrow: -4, passing: -8, ballHandling: -14, perimeterDefense: -3, interiorDefense: 3, steal: -2, block: 3, offensiveRebounding: 5, defensiveRebounding: 6, speed: -8, strength: 5 },
+  C:  { closeShot: 2, midRange: -12, threePoint: -22, freeThrow: -16, passing: -16, ballHandling: -22, perimeterDefense: -12, interiorDefense: 3, steal: -12, block: 5, offensiveRebounding: 5, defensiveRebounding: 6, speed: -18, strength: 3 },
 };
+
+// Within-position specialization. Each player draws one sub-archetype that
+// shifts specific attributes ±10-22 points on top of the position baseline.
+// Weights are probabilities (sum to 1). Trade-offs are intentional: a
+// rebounder PG pays in shooting; a stretch C pays in rim protection. The
+// base + arch + sub combination determines a player's profile, while
+// gauss(0, 7) noise still produces rare outliers within any archetype.
+const SUB_ARCHETYPES = {
+  // Scoring/passing positive boosts are intentionally small (+3-6) so the
+  // position arch equilibrium drives league PPG/APG, not sub-archetypes.
+  // Differentiation is primarily expressed through what players DON'T do
+  // well (larger negative penalties); gauss(0, 7) noise still lets any
+  // archetype produce outlier seasons.
+  PG: [
+    { label: 'scorer',    w: 0.22, mods: { closeShot: 5, midRange: 3, threePoint: 2, passing: -12, ballHandling: -6, perimeterDefense: -5 } },
+    { label: 'playmaker', w: 0.28, mods: { closeShot: -10, midRange: -8, threePoint: -6, perimeterDefense: 4, steal: 3 } },
+    { label: 'shooter',   w: 0.20, mods: { threePoint: 6, midRange: 3, freeThrow: 4, closeShot: -4, passing: -6, ballHandling: -3, perimeterDefense: -3 } },
+    { label: 'two_way',   w: 0.20, mods: { perimeterDefense: 12, steal: 10, closeShot: -8, midRange: -5, threePoint: -5, ballHandling: -3 } },
+    { label: 'rebounder', w: 0.10, mods: { defensiveRebounding: 12, offensiveRebounding: 8, block: 8, closeShot: -14, threePoint: -12, midRange: -8 } },
+  ],
+  SG: [
+    { label: 'scorer',     w: 0.28, mods: { closeShot: 4, midRange: 3, threePoint: 2, passing: -7, ballHandling: -5, perimeterDefense: -5 } },
+    { label: 'shooter',    w: 0.28, mods: { threePoint: 6, midRange: 4, freeThrow: 4, closeShot: -4, passing: -6, perimeterDefense: -6 } },
+    { label: 'two_way',    w: 0.22, mods: { perimeterDefense: 14, steal: 10, closeShot: -6, midRange: -5, threePoint: -7, ballHandling: -3 } },
+    { label: 'playmaking', w: 0.22, mods: { threePoint: -4, midRange: -3, closeShot: -2, perimeterDefense: 4, steal: 3 } },
+  ],
+  SF: [
+    { label: 'scorer',        w: 0.28, mods: { closeShot: 4, midRange: 3, threePoint: 3, passing: -5, perimeterDefense: -7, interiorDefense: -5, defensiveRebounding: -4 } },
+    { label: '3d_wing',       w: 0.25, mods: { threePoint: 6, perimeterDefense: 12, closeShot: -8, interiorDefense: -5, defensiveRebounding: -5, passing: -3 } },
+    { label: 'wing_defender', w: 0.22, mods: { perimeterDefense: 16, steal: 10, defensiveRebounding: 10, closeShot: -12, threePoint: -10 } },
+    { label: 'versatile',     w: 0.25, mods: { passing: 4, defensiveRebounding: 4, threePoint: 3, steal: 3, block: -5, offensiveRebounding: -5, strength: -5 } },
+  ],
+  PF: [
+    { label: 'stretch', w: 0.28, mods: { threePoint: 10, midRange: 5, perimeterDefense: 3, ballHandling: 3, defensiveRebounding: -8, offensiveRebounding: -6, block: -6 } },
+    { label: 'power',   w: 0.28, mods: { defensiveRebounding: 8, offensiveRebounding: 6, block: 6, interiorDefense: 5, closeShot: -6, threePoint: -12, midRange: -6, speed: -4, ballHandling: -4, strength: -4 } },
+    { label: 'scoring', w: 0.25, mods: { closeShot: 5, midRange: 4, passing: 3, defensiveRebounding: -8, interiorDefense: -5, block: -5 } },
+    { label: 'two_way', w: 0.19, mods: { perimeterDefense: 12, steal: 8, passing: 4, block: 4, threePoint: -8, midRange: -5, ballHandling: -8, closeShot: -5 } },
+  ],
+  C: [
+    { label: 'defensive', w: 0.32, mods: { block: 14, interiorDefense: 12, defensiveRebounding: 10, offensiveRebounding: 6, closeShot: -8, passing: -6, threePoint: -10 } },
+    { label: 'scoring',   w: 0.28, mods: { closeShot: 5, passing: 5, offensiveRebounding: 5, block: -12, defensiveRebounding: -8, threePoint: -4 } },
+    { label: 'stretch',   w: 0.22, mods: { threePoint: 12, midRange: 8, block: -18, interiorDefense: -12, defensiveRebounding: -12, offensiveRebounding: -10 } },
+    { label: 'versatile', w: 0.18, mods: { closeShot: 6, passing: 8, threePoint: 5, block: 6, defensiveRebounding: 6, offensiveRebounding: 4 } },
+  ],
+};
+
+function pickSubArchetype(pos, rng) {
+  const subs = SUB_ARCHETYPES[pos];
+  if (!subs) return null;
+  let r = rng();
+  let cum = 0;
+  for (const sub of subs) {
+    cum += sub.w;
+    if (r < cum) return sub;
+  }
+  return subs[subs.length - 1];
+}
 
 // overall() weights by position (each row sums to 1.0). Built from a
 // category-total table (how much Shooting/Playmaking/Defense/Rebounding/
@@ -250,12 +305,14 @@ export function generatePlayer(rng = rand, opts = {}) {
   const age = opts.age ?? randInt(19, 36, rng);
   const base = opts.base ?? clamp(gauss(58, 11, rng), 35, 88);
   const arch = ARCHETYPES[pos];
+  const sub = pickSubArchetype(pos, rng);
+  const sm = sub ? sub.mods : {};
 
-  const mk = (mod) => Math.round(clamp(base + mod + gauss(0, 7, rng), 25, 99));
+  const mk = (attr) => Math.round(clamp(base + arch[attr] + (sm[attr] ?? 0) + gauss(0, 7, rng), 25, 99));
   // Physical attributes (speed/strength) decline with age at generation
   // time too, same as the old single "athleticism" field used to — a
   // 35-year-old free agent shouldn't generate with a rookie's legs.
-  const mkPhys = (mod) => Math.round(clamp(base + mod + gauss(0, 8, rng) - (age > 30 ? (age - 30) * 2 : 0), 25, 99));
+  const mkPhys = (attr) => Math.round(clamp(base + arch[attr] + (sm[attr] ?? 0) + gauss(0, 8, rng) - (age > 30 ? (age - 30) * 2 : 0), 25, 99));
 
   const id = opts._forcedId !== undefined ? opts._forcedId : nextPlayerId++;
   const country = pickCountry(rng);
@@ -269,21 +326,22 @@ export function generatePlayer(rng = rand, opts = {}) {
     age,
     // NBA seasons completed; veterans entered the league at 19–22
     exp: opts.exp ?? Math.max(0, age - randInt(19, 22, rng)),
+    subArchetype: sub ? sub.label : null,
     ratings: {
-      closeShot: mk(arch.closeShot),
-      midRange: mk(arch.midRange),
-      threePoint: mk(arch.threePoint),
-      freeThrow: mk(arch.freeThrow),
-      passing: mk(arch.passing),
-      ballHandling: mk(arch.ballHandling),
-      perimeterDefense: mk(arch.perimeterDefense),
-      interiorDefense: mk(arch.interiorDefense),
-      steal: mk(arch.steal),
-      block: mk(arch.block),
-      offensiveRebounding: mk(arch.offensiveRebounding),
-      defensiveRebounding: mk(arch.defensiveRebounding),
-      speed: mkPhys(arch.speed),
-      strength: mkPhys(arch.strength),
+      closeShot: mk('closeShot'),
+      midRange: mk('midRange'),
+      threePoint: mk('threePoint'),
+      freeThrow: mk('freeThrow'),
+      passing: mk('passing'),
+      ballHandling: mk('ballHandling'),
+      perimeterDefense: mk('perimeterDefense'),
+      interiorDefense: mk('interiorDefense'),
+      steal: mk('steal'),
+      block: mk('block'),
+      offensiveRebounding: mk('offensiveRebounding'),
+      defensiveRebounding: mk('defensiveRebounding'),
+      speed: mkPhys('speed'),
+      strength: mkPhys('strength'),
     },
     stamina: generateStamina(pos, age, rng),
     condition: 100, // game-day freshness, managed by the league's day loop
