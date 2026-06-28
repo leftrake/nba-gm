@@ -276,21 +276,22 @@ export function initSeasonScouting(league, rng) {
   const budgets = {};
   const budgetTotals = {};
   const reports = {};
-  const watchlists = {};
   for (const team of league.teams) {
     const annual = scoutingBudget(team);
     const scouts = prev.scouts?.[team.id] ?? [];
     budgetTotals[team.id] = annual;
     budgets[team.id] = Math.max(0, annual - totalScoutSalary(scouts));
     reports[team.id] = [];
-    watchlists[team.id] = [];
   }
   league.scouting = {
     prospects:    prev.prospects    ?? [],
     budgets,
     budgetTotals,
     reports,
-    watchlists,
+    // Carry watchlists forward so poach intel works during the regular season.
+    // Stale entries (drafted prospects no longer in the pool) are skipped
+    // gracefully in poachIntel when the prospect can't be found.
+    watchlists:   prev.watchlists   ?? {},
     scouts:       prev.scouts       ?? {},
     discovered:   prev.discovered   ?? {},
     domesticSweepUsed: prev.domesticSweepUsed ?? {},
@@ -350,6 +351,12 @@ export function initScoutingPhase(league, rng) {
   if (!s.discovered)   s.discovered   = {};
   if (!s.sleeperPicks) s.sleeperPicks = {};
   if (!s.bigBoardRanks) s.bigBoardRanks = {};
+
+  // Reset draft watchlists for the new class so each offseason starts fresh.
+  // AI teams will repopulate their watchlists via aiScoutTurn below, and those
+  // watchlists persist into the regular season so poach intel works year-round.
+  s.watchlists = {};
+  for (const team of league.teams) s.watchlists[team.id] = [];
 
   // AI teams adjust their scout rosters each offseason
   for (const team of league.teams) {

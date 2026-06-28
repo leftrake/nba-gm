@@ -1,10 +1,12 @@
 import { clamp } from './rng.js';
 import { overall } from './players.js';
+import { regionFor } from './backstory.js';
 
 // Scouting fog — human-player display layer only. AI always uses true OVR.
 //
 // Two tracks:
-//   Draft track  — budget missions on future prospects. 0 pts → "?"; 1–100 pts
+//   Draft track  — budget missions on future prospects. Domestic: 0 pts →
+//                  ±15 fog (never "?"); international: 0 pts → "?". 1–100 pts
 //                  → uncertainty ±15 down to ±2. True OVR sits at a seeded
 //                  random position anywhere within the displayed range.
 //   Pro track    — career-minutes-based baseline, film watching removes up to
@@ -91,7 +93,9 @@ function proBaseUncertainty(careerMin) {
 export function isHidden(p, teamId, proGames = 0, settings) {
   if (settings?.difficulty?.scoutingFog === 'off') return false;
   if (isDraftProspect(p)) {
-    return getDraftPoints(p, teamId) === 0;
+    // Domestic prospects are always visible (just fogged) — parallels isDiscovered.
+    // International prospects need at least 1 scouting point to show a range.
+    return getDraftPoints(p, teamId) === 0 && regionFor(p) !== 'Domestic';
   }
   if (totalCareerMinutes(p) > 0) return false;
   // Rookie with no prior draft scouting and no film yet

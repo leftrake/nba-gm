@@ -240,7 +240,7 @@ function DraftBoardTab({ league, commit }) {
     <>
       <GuideTooltip
         tipKey="scouting_draft_board"
-        text="Your annual scouting budget funds missions on draft prospects. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). Each offseason an automatic Draft Combine gives every domestic prospect in the current class a free +25 pt baseline — all 30 teams attend. International prospects must be discovered first via a regional scout or one-time sweep before you can run missions on them. The board spans 3 years so you can start building your pipeline well in advance."
+        text="Your annual scouting budget funds missions on draft prospects. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). Domestic prospects always show a fuzzy OVR range — no scouting required to see them, just to sharpen the read. International prospects must be discovered first via a regional scout or one-time sweep. Each offseason a Draft Combine gives every domestic prospect in the current class a free +25 pt tighter baseline (all 30 teams). The board spans 3 years so you can start building your pipeline early."
         block
       >
         <SectionHeader
