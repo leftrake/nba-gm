@@ -43,19 +43,27 @@ export function updateCupGroupGame(league, homeTeam, awayTeam, homeWon) {
   }
 }
 
-// Seed the 8-team bracket: top 4 per conference by cup wins (ties broken by
-// total division wins, then fewest losses).
+// Seed the 8-team bracket: division leader from each division (3 auto berths)
+// + 1 wild card per conference (best runner-up). Ties broken by cupWins,
+// then fewest cupLosses, then regular-season wins.
 export function determineCupBracket(league) {
-  const top4 = (conf) =>
-    league.teams
-      .filter((t) => t.conf === conf)
-      .sort((a, b) =>
-        (b.cupWins || 0) - (a.cupWins || 0) ||
-        (a.cupLosses || 0) - (b.cupLosses || 0) ||
-        b.wins - a.wins
-      )
-      .slice(0, 4)
-      .map((t) => t.id);
+  const cupRank = (a, b) =>
+    (b.cupWins || 0) - (a.cupWins || 0) ||
+    (a.cupLosses || 0) - (b.cupLosses || 0) ||
+    b.wins - a.wins;
+
+  const top4 = (conf) => {
+    const confTeams = league.teams.filter((t) => t.conf === conf);
+    const divs = [...new Set(confTeams.map((t) => t.div))];
+    const divWinners = divs.map((div) =>
+      confTeams.filter((t) => t.div === div).sort(cupRank)[0]
+    );
+    const winnerIds = new Set(divWinners.map((t) => t.id));
+    const wildCard = confTeams
+      .filter((t) => !winnerIds.has(t.id))
+      .sort(cupRank)[0];
+    return [...divWinners, wildCard].map((t) => t.id);
+  };
 
   const mk = (home, away) => ({ home, away, winner: null, homePts: null, awayPts: null });
   const eastSeeds = top4('East');
