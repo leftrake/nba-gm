@@ -743,13 +743,14 @@ function gameNarrative(r, home, away) {
 
 // Pushes news for one finished game: a compact line score for everyone, a
 // highlighted recap with a one-line narrative for the user's own game,
-// milestone call-outs (40+ points, triple-doubles, 20+ rebounds), and
-// injury reports.
+// milestone call-outs (40+ points, triple-doubles, 20+ rebounds, 5+ blocks,
+// 15+ assists), and injury reports.
 function pushGameNews(league, r, home, away, hurt) {
+  const isOT = r.homeQtrs?.length > 4;
   pushNews(league, {
     day: league.dayIndex, category: 'game',
     teamIds: [home.id, away.id],
-    text: `${away.id} ${r.awayPts} @ ${home.id} ${r.homePts}`,
+    text: `${away.id} ${r.awayPts} @ ${home.id} ${r.homePts}${isOT ? ' (OT)' : ''}`,
   });
 
   if (home.id === league.userTeamId || away.id === league.userTeamId) {
@@ -757,7 +758,10 @@ function pushGameNews(league, r, home, away, hurt) {
     const loser = r.homePts > r.awayPts ? away : home;
     const winPts = Math.max(r.homePts, r.awayPts);
     const losePts = Math.min(r.homePts, r.awayPts);
-    let text = `${winner.city} ${winner.name} beat ${loser.city} ${loser.name} ${winPts}-${losePts}.`;
+    const isDivision = home.div && home.div === away.div;
+    const rivalLabel = isDivision ? 'division rival ' : '';
+    const verb = isOT ? 'edged' : 'beat';
+    let text = `${winner.city} ${winner.name} ${verb} ${rivalLabel}${loser.city} ${loser.name} ${winPts}-${losePts}${isOT ? ' in overtime' : ''}.`;
     const narrative = gameNarrative(r, home, away);
     if (narrative) text += ` ${narrative}`;
     pushNews(league, { day: league.dayIndex, category: 'game', major: true, teamIds: [home.id, away.id], text });
@@ -777,6 +781,12 @@ function pushGameNews(league, r, home, away, hurt) {
       }
       if (l.reb >= 20) {
         pushNews(league, { day: league.dayIndex, category: 'milestone', major, teamIds: [team.id], text: `🌟 ${p.name} (${team.id}) hauled in ${l.reb} rebounds.` });
+      }
+      if (l.blk >= 5) {
+        pushNews(league, { day: league.dayIndex, category: 'milestone', major, teamIds: [team.id], text: `🛡️ ${p.name} (${team.id}) swatted ${l.blk} shots.` });
+      }
+      if (l.ast >= 15) {
+        pushNews(league, { day: league.dayIndex, category: 'milestone', major, teamIds: [team.id], text: `🎯 ${p.name} (${team.id}) dished out ${l.ast} assists.` });
       }
     }
   }
@@ -957,6 +967,15 @@ export function simDay(league) {
   if (league.dayIndex % 7 === 0) {
     const flaggedThisWeek = checkRecordPace(league);
     if (userTeam) checkMilestoneAlerts(league, userTeam, flaggedThisWeek);
+  }
+  if (league.dayIndex > 0 && league.dayIndex % 30 === 0) {
+    const fmtT = (t) => `${t.city} ${t.name} (${t.wins}-${t.losses})`;
+    const eastTop3 = standings(league, 'East').slice(0, 3).map(fmtT).join(', ');
+    const westTop3 = standings(league, 'West').slice(0, 3).map(fmtT).join(', ');
+    pushNews(league, {
+      day: league.dayIndex, category: 'league',
+      text: `📊 Standings: East — ${eastTop3}. West — ${westTop3}.`,
+    });
   }
   tickProScouting(league); // pro-scouting film accumulates each simmed game-day
   league.dayIndex += 1;
@@ -1579,8 +1598,9 @@ export function advanceOffseason(league) {
       // still fire at normal rate so AI doesn't hoard low-salary underperformers.
       const fireP = team.coach.salary >= 7_000_000 ? 0.35 : 0.3;
       if (team.coach.rating < 60 && coachRng() < fireP) {
-        pushNews(league, { day: 0, category: 'league', teamIds: [team.id], text: `The ${team.name} part ways with head coach ${team.coach.name} after a disappointing season.` });
+        const firedCoach = team.coach.name;
         team.coach = generateCoach(coachRng);
+        pushNews(league, { day: 0, category: 'coaching', teamIds: [team.id], text: `The ${team.city} ${team.name} part ways with head coach ${firedCoach} and hire ${team.coach.name}.` });
       } else {
         team.coach.seasonsWithTeam += 1;
       }

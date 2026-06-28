@@ -11,6 +11,7 @@ const CATS = [
   ['morale', '💬 Morale'],
   ['award', '🏆 Awards'],
   ['milestone', '📈 Milestones'],
+  ['coaching', '👔 Coaching'],
   ['owner', '🏛️ Ownership'],
   ['league', '🌐 League'],
 ];
