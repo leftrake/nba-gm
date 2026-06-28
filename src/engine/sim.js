@@ -9,8 +9,11 @@ import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, playerFit, isInjure
 // and position on the floor matter more than timing/instincts at the rim.
 // Block uses a sharper range (exponent 2 inside the pick) vs. rebounds (2.9),
 // so rebound factors must be gentler to avoid concentrating boards on one big.
-const POS_BLOCK_MULT = { PG: 0.25, SG: 0.35, SF: 0.75, PF: 1.2, C: 1.5 };
-const POS_REB_MULT   = { PG: 0.55, SG: 0.65, SF: 0.90, PF: 1.0, C: 1.0 };
+// C POS_BLOCK_MULT raised (1.5→1.8) and PF/SF/G lowered to spread blocks more
+// realistically toward the rim-protector position (NBA C ~1.5 blk/36, PF ~0.8).
+const POS_BLOCK_MULT = { PG: 0.20, SG: 0.28, SF: 0.55, PF: 0.95, C: 1.8 };
+// C raised to 1.25 so Cs lead PFs in rebounding as they do in the real NBA.
+const POS_REB_MULT   = { PG: 0.55, SG: 0.65, SF: 0.90, PF: 1.0, C: 1.25 };
 
 // A team's game rotation: the saved lineup when it's legal, otherwise a
 // fresh auto lineup (AI teams never store one). Each entry carries the slot
@@ -258,7 +261,10 @@ function gamePlayer({ p, min, slot }, rng) {
     clutchMod: clutchMod(p),
     wIns: Math.pow(Math.max(r.closeShot - 25, 5), 2),
     wMid: Math.pow(Math.max(r.midRange - 25, 5), 2) * 0.5,
-    wThree: Math.pow(Math.max(r.threePoint - 25, 5), 2) * 1.05,
+    // Centers rarely jack threes; scale their 3-point weight down unless they
+    // have an elite 3P rating (true stretch-5 archetype). Even then their mix
+    // stays inside-heavy, matching real-NBA shot charts.
+    wThree: Math.pow(Math.max(r.threePoint - 25, 5), 2) * 1.05 * (p.pos === 'C' ? 0.35 : 1.0),
     out: false, // fouled out
     cool: 0, // stints benched after picking up the 5th foul
     line: {
@@ -415,7 +421,9 @@ function offenseRebounds(off, def, rng, emit = () => {}) {
 // pts incremented per make so running totals are accurate inside the loop.
 function shootFreeThrows(shooter, n, rng, emit = () => {}) {
   let made = 0, lastMissed = false;
-  const ftPct = clamp(0.465 + shooter.ft * 0.005, 0.48, 0.95);
+  // Lowered intercept 0.465→0.44 so league-wide FT% lands near NBA's 77-78%
+  // (was running ~80.3% because the floor was too generous for average shooters).
+  const ftPct = clamp(0.44 + shooter.ft * 0.005, 0.46, 0.95);
   for (let i = 0; i < n; i++) {
     shooter.line.fta += 1;
     if (rng() < ftPct) {
@@ -590,7 +598,10 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     shooter.line.fga += 1;
     shooter.line[`${zone.id}Fga`] += 1;
     if (type === 'three') shooter.line.tpa += 1;
-    const blockP = type === 'ins' ? 0.52 : type === 'mid' ? 0.08 : 0.02;
+    // Lowered inside blockP 0.52→0.38: was generating ~7-8 blocks/team/game
+    // (NBA average is ~4.8). P(block|inside attempt) = clean_miss_rate * blockP
+    // = 0.363 * 0.38 ≈ 13.8% per inside attempt, closer to the real ~5% of FGA.
+    const blockP = type === 'ins' ? 0.38 : type === 'mid' ? 0.08 : 0.02;
     emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`);
     if (rng() < blockP) {
       const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng);
