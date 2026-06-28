@@ -54,8 +54,11 @@ export function fogColor(u) {
 
 // A draft prospect is someone not yet in the NBA — no contract, no exp.
 // Once a player signs (drafted or undrafted FA) they switch to the pro track.
+// Undrafted FAs get priorDraftPoints set in finishDraft; that flag routes them
+// to the pro track even though they still have draftPoints in their scout object.
 export function isDraftProspect(p) {
   if (p.contract != null || (p.exp ?? 0) > 0) return false;
+  if (p.scout?.priorDraftPoints != null) return false;
   return 'draftPoints' in (p.scout ?? {}) || p.draftYear == null;
 }
 

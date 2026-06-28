@@ -22,8 +22,8 @@ import { regionFor, SCOUT_REGIONS, personalityNote, scoutBackstoryNote } from '.
 
 export const SCOUT_TYPES = {
   regional:        { salary: 150_000, label: 'Regional Scout' },
-  sleeper:         { salary: 100_000, label: 'Sleeper Finder' },
-  bigBoard:        { salary: 125_000, label: 'Big Board Analyst' },
+  sleeper:         { salary: 125_000, label: 'Sleeper Finder' },
+  bigBoard:        { salary: 100_000, label: 'Big Board Analyst' },
   rangeSpecialist: { salary:  75_000, label: 'Draft Range Specialist' },
 };
 export const MAX_SCOUTS = 4;
@@ -36,15 +36,15 @@ export const PRO_SCOUT_PERSONALITY_THRESHOLD = 20;
 export const SWEEP_COSTS = {
   Europe: 150_000,
   'Latin America': 150_000,
-  Africa: 225_000,
-  'Asia-Pacific': 225_000,
+  Africa: 150_000,
+  'Asia-Pacific': 150_000,
 };
 
 export const WORKOUT_COSTS    = { Domestic: 60_000, Europe: 100_000, 'Latin America': 100_000, Africa: 120_000, 'Asia-Pacific': 120_000 };
 export const GAME_WATCH_COSTS = { Domestic: 25_000, Europe: 40_000,  'Latin America': 40_000,  Africa: 50_000,  'Asia-Pacific': 50_000  };
 export const POACH_COST = 400_000;
 
-export const DRAFT_POINTS_WORKOUT    = 60;
+export const DRAFT_POINTS_WORKOUT    = 75;
 export const DRAFT_POINTS_GAME_WATCH = 25;
 export const DRAFT_POINTS_SWEEP      = 75; // points granted to all prospects in a swept region
 export const DRAFT_POINTS_COMBINE    = 25; // free baseline given to every domestic prospect via the annual combine
@@ -194,16 +194,18 @@ function applyScoutEffects(league, teamId, rng) {
     }
   }
 
-  // Range specialists: +10 draftPoints to already-discovered prospects in range
+  // Range specialists: +10 draftPoints to already-discovered prospects in range.
+  // The secondRound specialist targets picks 31+ among discovered prospects; the
+  // pts check is intentionally omitted so international prospects discovered by a
+  // regional scout (who start at 0 pts) also receive the bonus.
   const rangeScouts = scouts.filter((sc) => sc.type === 'rangeSpecialist');
   if (rangeScouts.length) {
     const disc = allProspects.filter((p) => isDiscovered(p, teamId, league));
     const sorted = [...disc].sort((a, b) => scoutedOverall(b, league.season, teamId) - scoutedOverall(a, league.season, teamId));
     for (const sc of rangeScouts) {
-      const targets = sc.range === 'lottery' ? sorted.slice(0, 14) : sorted.slice(30, 60);
+      const targets = sc.range === 'lottery' ? sorted.slice(0, 14) : sorted.slice(30);
       for (const p of targets) {
-        const pts = getDraftPoints(p, teamId);
-        if (pts > 0 && pts < DRAFT_POINTS_MAX) addDraftPoints(p, teamId, 10);
+        if (getDraftPoints(p, teamId) < DRAFT_POINTS_MAX) addDraftPoints(p, teamId, 10);
       }
     }
   }
@@ -225,6 +227,8 @@ function applyScoutEffects(league, teamId, rng) {
 
 // Recompute the big board ranks for a single team. Called after hiring the
 // analyst and after each scouting action so the board stays current.
+// Includes prospects from both the current class and future board classes so
+// the analyst can rank multi-year pipeline candidates together.
 function refreshBigBoard(league, teamId) {
   const s = league.scouting;
   if (!s.bigBoardRanks) s.bigBoardRanks = {};
@@ -234,8 +238,11 @@ function refreshBigBoard(league, teamId) {
     return;
   }
   const team = league.teams.find((t) => t.id === teamId);
-  const currentProspects = s.prospects ?? [];
-  const disc = currentProspects.filter((p) => isDiscovered(p, teamId, league));
+  const allProspects = [
+    ...(s.prospects ?? []),
+    ...(s.draftBoard ?? []).flatMap((dc) => dc.prospects),
+  ];
+  const disc = allProspects.filter((p) => isDiscovered(p, teamId, league));
   const posCounts = {};
   for (const rp of team?.roster ?? []) posCounts[rp.pos] = (posCounts[rp.pos] ?? 0) + 1;
   const scored = disc.map((p) => {
@@ -294,7 +301,6 @@ export function initSeasonScouting(league, rng) {
     watchlists:   prev.watchlists   ?? {},
     scouts:       prev.scouts       ?? {},
     discovered:   prev.discovered   ?? {},
-    domesticSweepUsed: prev.domesticSweepUsed ?? {},
     draftBoard:   prev.draftBoard   ?? [],
     proWatching:  prev.proWatching   ?? {},
     proWatchList: prev.proWatchList  ?? [],
@@ -517,7 +523,8 @@ function findDraftProspect(league, playerId) {
 
 function findLeaguePlayer(league, playerId) {
   for (const team of league.teams) {
-    const p = team.roster.find((x) => x.id === playerId);
+    const p = team.roster.find((x) => x.id === playerId)
+            ?? (team.twoWay || []).find((x) => x.id === playerId);
     if (p) return p;
   }
   return league.freeAgents.find((x) => x.id === playerId) ?? null;
@@ -566,6 +573,9 @@ export function gameWatchProspect(league, teamId, playerId) {
 
 // One-time discovery mission for an international region.
 // Reveals all prospects across all draft classes from that region.
+// Scouting points are only granted to the current class — future classes are
+// discovered (visible) but still wide-fog until actively scouted closer to
+// their draft year.
 export function sweepRegion(league, teamId, region) {
   const s = league.scouting;
   if (!s) return { ok: false, error: 'Scouting not available.' };
@@ -576,11 +586,15 @@ export function sweepRegion(league, teamId, region) {
   const all = getAllDraftProspects(league);
   const targets = all.filter((p) => regionFor(p) === region);
   const newCount = discoverProspects(league, teamId, targets);
-  // Grant scouting points to every prospect in the region — the sweep team
-  // spends real time with each player, not just a name-check.
-  for (const p of targets) addDraftPoints(p, teamId, DRAFT_POINTS_SWEEP);
+  // Grant points only to current-class prospects — the team spent real time
+  // with them. Future-class players are identified on film but too far out for
+  // a deep evaluation.
+  const currentIds = new Set((s.prospects ?? []).map((p) => p.id));
+  for (const p of targets) {
+    if (currentIds.has(p.id)) addDraftPoints(p, teamId, DRAFT_POINTS_SWEEP);
+  }
   s.budgets[teamId] -= cost;
-  const text = `Scouting sweep of ${region}: ${newCount} new prospect${newCount === 1 ? '' : 's'} discovered, all evaluated (${DRAFT_POINTS_SWEEP} scouting pts each).`;
+  const text = `Scouting sweep of ${region}: ${newCount} new prospect${newCount === 1 ? '' : 's'} discovered. Current-class prospects evaluated (${DRAFT_POINTS_SWEEP} scouting pts each); future classes identified but not yet deeply scouted.`;
   addReport(league, teamId, text);
   refreshBigBoard(league, teamId);
   return { ok: true, text, discovered: newCount };
@@ -589,6 +603,9 @@ export function sweepRegion(league, teamId, region) {
 export function poachIntel(league, teamId) {
   const s = league.scouting;
   if (!s) return { ok: false, error: 'Scouting not available.' };
+  const team = league.teams.find((t) => t.id === teamId);
+  if ((team?.market ?? 'medium') !== 'large')
+    return { ok: false, error: 'Poach intel requires a large-market organization.' };
   if ((s.budgets[teamId] ?? 0) < POACH_COST) return { ok: false, error: 'Not enough scouting budget.' };
   s.budgets[teamId] -= POACH_COST;
   s.poachCount = (s.poachCount ?? 0) + 1;
@@ -656,6 +673,9 @@ export function tickProScouting(league) {
     ...league.teams.flatMap((t) => (t.twoWay || []).map((p) => p.id)),
     ...league.freeAgents.map((p) => p.id),
   ]);
+  // Prune players who have left the league and clean up their film counts.
+  const pruned = s.proWatchList.filter((id) => !activeIds.has(id));
+  for (const id of pruned) delete s.proWatching[id];
   s.proWatchList = s.proWatchList.filter((id) => activeIds.has(id));
   for (const id of s.proWatchList) {
     const prev = s.proWatching[id] ?? 0;
@@ -756,11 +776,10 @@ export function aiScoutTurn(league, team, rng) {
       if (budget >= gwCost) { gameWatchProspect(league, team.id, target.id); continue; }
     }
 
-    // Drain fallback: re-confirm a known prospect to spend remaining budget
+    // Drain fallback: budget remaining but all visible prospects are fully scouted —
+    // spend it down silently (overhead, travel, admin) rather than emitting fake intel.
     if (budget >= GAME_WATCH_COSTS.Domestic) {
-      const recheck = targets[randInt(0, Math.max(0, targets.length - 1), rng)];
       s.budgets[team.id] -= GAME_WATCH_COSTS.Domestic;
-      if (recheck) addReport(league, team.id, `Scouts re-confirmed their read on ${recheck.name}.`, recheck.id);
       continue;
     }
     break;

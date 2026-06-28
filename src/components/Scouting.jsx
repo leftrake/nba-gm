@@ -124,7 +124,7 @@ function ProspectRow({ p, league, budget, userId, hasBigBoard, hasSleeper, sleep
           <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
             <Button size="sm" variant="primary" disabled={budget < wkCost}
                     onClick={() => doMission(workoutProspect)}
-                    title="Individual workout — +60 scouting points">
+                    title="Individual workout — +75 scouting points">
               Workout ({dollars(wkCost)})
             </Button>
             <Button size="sm" variant="secondary" disabled={budget < gwCost}
@@ -220,6 +220,8 @@ function DraftBoardTab({ league, commit }) {
   const budget = s.budgets[userId] ?? 0;
   const reports = s.reports[userId] ?? [];
   const scouts = getScouts(league, userId);
+  const userTeam = league.teams.find((t) => t.id === userId);
+  const isLargeMarket = (userTeam?.market ?? 'medium') === 'large';
 
   const doPoach = () => {
     const res = poachIntel(league, userId);
@@ -240,7 +242,7 @@ function DraftBoardTab({ league, commit }) {
     <>
       <GuideTooltip
         tipKey="scouting_draft_board"
-        text="Your annual scouting budget funds missions on draft prospects. Workouts give a big reveal (+60 pts); game watches are cheaper (+25 pts). Domestic prospects always show a fuzzy OVR range — no scouting required to see them, just to sharpen the read. International prospects must be discovered first via a regional scout or one-time sweep. Each offseason a Draft Combine gives every domestic prospect in the current class a free +25 pt tighter baseline (all 30 teams). The board spans 3 years so you can start building your pipeline early."
+        text="Your annual scouting budget funds missions on draft prospects. Workouts give a big reveal (+75 pts); game watches are cheaper (+25 pts). Domestic prospects always show a fuzzy OVR range — no scouting required to see them, just to sharpen the read. International prospects must be discovered first via a regional scout or one-time sweep. Each offseason a Draft Combine gives every domestic prospect in the current class a free +25 pt tighter baseline (all 30 teams). The board spans 3 years so you can start building your pipeline early."
         block
       >
         <SectionHeader
@@ -249,9 +251,11 @@ function DraftBoardTab({ league, commit }) {
           action={
             <Button
               size="sm" variant="secondary"
-              disabled={budget < POACH_COST}
+              disabled={!isLargeMarket || budget < POACH_COST}
               onClick={doPoach}
-              title="Reveals which prospects 2 other teams have been scouting this offseason"
+              title={!isLargeMarket
+                ? 'Large-market organizations only — requires the network and resources to poach intel from rival front offices'
+                : 'Reveals which prospects 2 other teams have been scouting this offseason'}
             >
               Poach Intel ({dollars(POACH_COST)})
             </Button>
