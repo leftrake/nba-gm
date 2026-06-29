@@ -261,9 +261,6 @@ export default function FreeAgency({ league, commit, openPlayer }) {
                     {team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}
                   </b></>
                 )}
-                {team.tpe && (
-                  <> · TPE: <b style={{ color: 'var(--color-success)' }} title="Transition Player Exception — one-time use, earned when a free agent departed last offseason">available (up to {money(team.tpe.amount)})</b></>
-                )}
               </span>
             }
           />
@@ -366,7 +363,6 @@ export default function FreeAgency({ league, commit, openPlayer }) {
               {(() => {
                 const exc = signingException(league, team.id, Math.round(salaryM * 10) * 100_000);
                 if (exc === 'mle') return <Badge variant="warning">Uses mid-level exception</Badge>;
-                if (exc === 'tpe') return <Badge variant="warning">Uses transition exception</Badge>;
                 if (exc === 'minimum') return <Badge variant="info">Uses minimum-salary exception</Badge>;
                 if (!exc) return <Badge variant="danger">Not enough cap room or exceptions</Badge>;
                 return null;

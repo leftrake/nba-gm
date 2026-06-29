@@ -104,13 +104,16 @@ export function validateTrade(league, teamAId, playersAIds, teamBId, playersBIds
   if (newSizeA > ROSTER_MAX || newSizeB > ROSTER_MAX) return { ok: false, reason: `A team would exceed ${ROSTER_MAX} players.` };
   if (newSizeA < 8 || newSizeB < 8) return { ok: false, reason: 'A team would drop below 8 players.' };
 
-  // Salary matching: if over the cap after trade, incoming salary <= 125% outgoing + 250k
+  // Salary matching: if over the cap after trade, incoming <= 125% outgoing + 250k.
+  // A TPE can cover the gap beyond what matching allows.
   const salOutA = outA.reduce((s, p) => s + p.contract.salary, 0);
   const salOutB = outB.reduce((s, p) => s + p.contract.salary, 0);
   const check = (team, salOut, salIn) => {
     const newPayroll = payroll(team) - salOut + salIn;
-    if (newPayroll > SALARY_CAP && salIn > salOut * 1.25 + 250_000) return false;
-    return true;
+    if (newPayroll <= SALARY_CAP) return true;
+    if (salIn <= salOut * 1.25 + 250_000) return true;
+    const gap = salIn - (salOut * 1.25 + 250_000);
+    return (team.tpes || []).some(t => t.amount >= gap);
   };
   if (!check(a, salOutA, salOutB)) return { ok: false, reason: `${a.name} fail salary matching (over the cap, taking back too much).` };
   if (!check(b, salOutB, salOutA)) return { ok: false, reason: `${b.name} fail salary matching (over the cap, taking back too much).` };
@@ -177,6 +180,13 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   const b = getTeam(league, teamBId);
   const outA = a.roster.filter((p) => playersAIds.includes(p.id));
   const outB = b.roster.filter((p) => playersBIds.includes(p.id));
+
+  // Capture salary flows and pre-trade payrolls before the roster swap
+  const salOutA = outA.reduce((s, p) => s + (p.contract?.salary || 0), 0);
+  const salOutB = outB.reduce((s, p) => s + (p.contract?.salary || 0), 0);
+  const prePayrollA = payroll(a);
+  const prePayrollB = payroll(b);
+
   for (const p of outA) recordSeasonStint(p, a.id);
   for (const p of outB) recordSeasonStint(p, b.id);
   a.roster = a.roster.filter((p) => !playersAIds.includes(p.id)).concat(outB);
@@ -204,6 +214,26 @@ export function executeTrade(league, teamAId, playersAIds, teamBId, playersBIds,
   bumpTurmoil(b);
   a.tradesThisSeason = (a.tradesThisSeason || 0) + 1;
   b.tradesThisSeason = (b.tradesThisSeason || 0) + 1;
+
+  // TPE: consume if a team needed their TPE to satisfy salary matching
+  for (const [team, salOut, salIn, prePayroll] of [[a, salOutA, salOutB, prePayrollA], [b, salOutB, salOutA, prePayrollB]]) {
+    if (prePayroll - salOut + salIn > SALARY_CAP && salIn > salOut * 1.25 + 250_000) {
+      const gap = salIn - (salOut * 1.25 + 250_000);
+      if (!team.tpes) team.tpes = [];
+      const idx = team.tpes.findIndex(t => t.amount >= gap);
+      if (idx >= 0) team.tpes.splice(idx, 1);
+    }
+  }
+  // TPE: generate for the team that sent more salary than it received
+  const MIN_TPE = 1_000_000;
+  if (salOutA - salOutB >= MIN_TPE) {
+    if (!a.tpes) a.tpes = [];
+    a.tpes.push({ amount: salOutA - salOutB, season: league.season });
+  } else if (salOutB - salOutA >= MIN_TPE) {
+    if (!b.tpes) b.tpes = [];
+    b.tpes.push({ amount: salOutB - salOutA, season: league.season });
+  }
+
   const names = (ps, picks) => [...ps.map((p) => p.name), ...picks.map((p) => pickLabel(p))].join(', ') || 'nothing';
   const tradeText = `${a.name} send ${names(outA, picksA)} to the ${b.name} for ${names(outB, picksB)}.`;
   for (const p of outA) recordTransaction(p, { season: league.season, day: league.dayIndex, type: 'trade', team: b.id, fromTeam: a.id, text: tradeText });
@@ -301,9 +331,12 @@ export function validateMultiTrade(league, teamIds, sends) {
     const salIn = inPlayers.reduce((s, p) => s + p.contract.salary, 0);
     const newPayroll = payroll(team) - salOut + salIn;
     if (newPayroll > SALARY_CAP && salIn > salOut * 1.25 + 250_000) {
-      perTeam[team.id] = { ok: false, reason: `${team.name} fail salary matching (over the cap, taking back too much).` };
-      ok = false;
-      continue;
+      const gap = salIn - (salOut * 1.25 + 250_000);
+      if (!(team.tpes || []).some(t => t.amount >= gap)) {
+        perTeam[team.id] = { ok: false, reason: `${team.name} fail salary matching (over the cap, taking back too much).` };
+        ok = false;
+        continue;
+      }
     }
     if (violatesStepien(league, team.id, outPicks.map((p) => p.id))) {
       perTeam[team.id] = { ok: false, reason: `${team.name} can't trade away first-round picks in consecutive years.` };
@@ -335,6 +368,14 @@ export function aiEvaluateMultiTrade(league, teamIds, sends, userId, legs) {
 // destination team in one shot.
 export function executeMultiTrade(league, teamIds, sends) {
   const legs = resolveMultiTradeLegs(league, teamIds, sends);
+
+  // Capture pre-trade salary flows and payrolls for TPE calculations
+  const legSalary = legs.map(leg => ({
+    salOut: leg.outPlayers.reduce((s, p) => s + (p.contract?.salary || 0), 0),
+    salIn: leg.inPlayers.reduce((s, p) => s + (p.contract?.salary || 0), 0),
+    prePayroll: payroll(leg.team),
+  }));
+
   for (const leg of legs) {
     for (const p of leg.outPlayers) recordSeasonStint(p, leg.team.id);
     const outIds = new Set(leg.outPlayers.map((p) => p.id));
@@ -361,6 +402,22 @@ export function executeMultiTrade(league, teamIds, sends) {
       if (dest) pick.teamId = dest.team.id;
     }
   }
+  // TPE: for each team, consume a TPE if needed and generate one if earned
+  const MIN_TPE = 1_000_000;
+  for (let i = 0; i < legs.length; i++) {
+    const { team } = legs[i];
+    const { salOut, salIn, prePayroll } = legSalary[i];
+    if (!team.tpes) team.tpes = [];
+    if (prePayroll - salOut + salIn > SALARY_CAP && salIn > salOut * 1.25 + 250_000) {
+      const gap = salIn - (salOut * 1.25 + 250_000);
+      const idx = team.tpes.findIndex(t => t.amount >= gap);
+      if (idx >= 0) team.tpes.splice(idx, 1);
+    }
+    if (salOut - salIn >= MIN_TPE) {
+      team.tpes.push({ amount: salOut - salIn, season: league.season });
+    }
+  }
+
   let userDiff = null;
   for (const leg of legs) {
     bumpTurmoil(leg.team);

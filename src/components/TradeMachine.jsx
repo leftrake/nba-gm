@@ -144,6 +144,15 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
         <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>Projected: </span>
         <span className="cap-impact" style={{ color: projColor }}>{money(projected)}</span>
       </p>
+      {(team.tpes || []).length > 0 && (
+        <p style={{ marginTop: 'var(--sp-1)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          TPE{team.tpes.length > 1 ? 's' : ''}: {team.tpes.map((t, i) => (
+            <span key={i} title="Traded Player Exception — absorb incoming salary beyond normal matching rules">
+              {i > 0 ? ', ' : ''}<b style={{ color: 'var(--color-success)' }}>{money(t.amount)}</b>
+            </span>
+          ))}
+        </p>
+      )}
 
       {/* Sends */}
       <div className="ui-section-title" style={{ marginTop: 'var(--sp-4)', marginBottom: 'var(--sp-2)' }}>Sends</div>
