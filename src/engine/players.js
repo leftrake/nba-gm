@@ -410,9 +410,9 @@ export function emptyStats() {
 // zero. Kept just under the SALARY_CURVE minimum-salary anchor below, so it
 // doesn't redefine what "minimum salary" means — it just stops generation
 // from dropping players far below it.
-export const FRINGE_OVR_MEAN = 53;
+export const FRINGE_OVR_MEAN = 58;
 export const FRINGE_OVR_SPREAD = 7;
-export const FRINGE_OVR_FLOOR = 45;
+export const FRINGE_OVR_FLOOR = 50;
 export const FRINGE_OVR_CEIL = 72;
 
 // Market salary by overall, linear between the tier breakpoints below:
@@ -574,17 +574,34 @@ export const TRAINING_FOCUS_OPTIONS = [
 // steep after the cliffStart. Dev arc shapes the curve; backstory stacks on
 // top via adjustGrowthDelta / adjustRatingDelta.
 export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
-  if (coachBonus && p.age < 25) p.potential = clamp(p.potential + coachBonus, 25, 99);
+  // Gem reveal: once a hidden-gem prospect's OVR climbs past the fake scouted
+  // ceiling, surface the true value — this is the "eureka" moment.
+  if (p._truePotential != null && overall(p) >= p.potential) {
+    p.potential = p._truePotential;
+    delete p._truePotential;
+  }
+
+  // Helpers to read/write the effective development ceiling. For hidden gems
+  // _truePotential is the real ceiling; p.potential stays at the scouted
+  // (fake) value until the reveal above fires.
+  const getPot = () => p._truePotential ?? p.potential;
+  const setPot = (v) => {
+    if (p._truePotential != null) p._truePotential = v;
+    else p.potential = v;
+  };
+
+  if (coachBonus && p.age < 25) setPot(clamp(getPot() + coachBonus, 25, 99));
   // One-time ceiling re-evaluation after rookie season: busts trend down,
   // gems trend up. A negative bias on the default offsets the structural
   // upward skew from clamping a two-sided roll against a one-sided floor.
   if (p.exp === 1 && p.age < 26) {
     const driftMean = p.backstory === 'bust' ? -4.0 : p.backstory === 'gem' ? 1.5 : -2.8;
     const drift = gauss(driftMean, 2.5, rng);
-    p.potential = clamp(Math.round(p.potential + drift), Math.round(overall(p)), 99);
+    setPot(clamp(Math.round(getPot() + drift), Math.round(overall(p)), 99));
   }
   const ovr = overall(p);
-  const room = p.potential - ovr;
+  const pot = getPot();
+  const room = pot - ovr;
 
   // --- Dev arc age thresholds ---
   const arc = p.devArc ?? 'standard';
@@ -600,9 +617,9 @@ export function developPlayer(p, rng = rand, coachBonus = 0, repBonus = 0) {
 
   let delta;
   if (p.age < growthEnd && room > 0) {
-    const baseSpeed = p.potential >= 85 ? 5.5 : p.potential >= 75 ? 4.0 : 1.8;
+    const baseSpeed = pot >= 85 ? 5.5 : pot >= 75 ? 4.0 : 1.8;
     delta = Math.max(0, gauss(baseSpeed * speedMult, 1.5, rng));
-    if (p.potential >= breakMinPot && rng() < breakChance) delta += 3 + rng() * 3;
+    if (pot >= breakMinPot && rng() < breakChance) delta += 3 + rng() * 3;
     delta += repBonus;
     delta = Math.min(delta, room);
   } else if (p.age < growthEnd) {

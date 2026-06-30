@@ -43,30 +43,71 @@ export function rookieSalary(pickNumber) {
 // class is promoted to the active draft pool.
 export function generateDraftClass(rng, opts = {}) {
   const prospects = [];
+  // Five-tier talent pyramid matching real NBA draft distributions:
+  // picks 1-2 are transcendent, 3-8 are future all-stars/starters, 9-17 are
+  // rotation-caliber, 18-25 are late-1st bench contributors, 26-68 are 2nd-round
+  // grinders. Every first-round pick has at least a 65+ OVR ceiling, preventing
+  // the hard cliff that previously made only 5-6 players per team meaningful.
   const superstars = randInt(1, 3, rng);
-  const starters = superstars + randInt(4, 7, rng);
+  const allstars = superstars + randInt(4, 7, rng);
+  const rotation = allstars + randInt(5, 8, rng);
+  const late1st = rotation + randInt(3, 7, rng);
   for (let i = 0; i < CLASS_SIZE; i++) {
     let age, potential, gap;
+    let truePotential = null; // set only for hidden-gem fringe picks
     if (i < superstars) {
       age = randInt(18, 20, rng); potential = randInt(88, 97, rng);
       gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
-    } else if (i < starters) {
-      age = randInt(18, 21, rng); potential = randInt(76, 87, rng);
+    } else if (i < allstars) {
+      age = randInt(18, 21, rng); potential = randInt(78, 88, rng);
       gap = Math.max(6, (23 - age) * 3.5 + 4 + gauss(0, 3, rng));
+    } else if (i < rotation) {
+      // Picks ~9-17: rotation-caliber to starting-caliber ceiling
+      age = randInt(18, 22, rng); potential = randInt(72, 81, rng);
+      gap = Math.max(5, (23 - age) * 2.5 + 4 + gauss(0, 2.5, rng));
+    } else if (i < late1st) {
+      // Picks ~18-25: late 1st round / early 2nd, solid bench contributor
+      age = randInt(19, 23, rng); potential = randInt(65, 74, rng);
+      gap = Math.max(5, (23 - age) * 2 + 4 + gauss(0, 2.5, rng));
     } else {
-      // Beyond the lottery/starter tiers, age alone shouldn't swallow a
-      // prospect's potential — a mid-60s-potential 18-year-old should still
-      // be able to crack a bad team's rotation, with development variance
-      // (not a depressed debut) deciding whether he busts.
-      age = randInt(18, 22, rng); potential = Math.round(clamp(gauss(60, 9, rng), 50, 74));
-      gap = Math.max(5, (23 - age) * 2 + 3 + gauss(0, 2.5, rng));
+      // 2nd round / fringe: mostly role players, but rarely a hidden gem whose
+      // true ceiling is far above what pre-draft evaluation reveals.
+      // Probabilities per pick across ~43 fringe slots per draft:
+      //   0.3%  → superstar gem  (~1 per 8 drafts, Jokic / Ginobili tier)
+      //   1.0%  → all-star gem   (~1 per 2.5 drafts, Draymond tier)
+      //   2.5%  → starter gem    (~1 per draft, Millsap tier)
+      age = randInt(19, 23, rng);
+      const gemRoll = rng();
+      if (gemRoll < 0.003) truePotential = randInt(85, 93, rng);
+      else if (gemRoll < 0.013) truePotential = randInt(77, 85, rng);
+      else if (gemRoll < 0.038) truePotential = randInt(70, 78, rng);
+
+      if (truePotential != null) {
+        potential = truePotential;
+        // Force starting OVR into ordinary 2nd-round range (48–57) so the gem
+        // doesn't stand out on the big board despite their real ceiling.
+        const targetBase = randInt(48, 57, rng);
+        gap = potential - targetBase + gauss(0, 2, rng);
+      } else {
+        potential = Math.round(clamp(gauss(58, 6, rng), 52, 67));
+        gap = Math.max(4, (23 - age) * 1.5 + 3 + gauss(0, 2.5, rng));
+      }
     }
-    const base = clamp(potential - gap, i < starters ? 42 : 45, 76);
+    const base = clamp(potential - gap, i < allstars ? 42 : 46, 78);
     const playerOpts = { age, base, exp: 0, potential };
     if (opts.boardSeason != null) playerOpts._forcedId = -(opts.boardSeason * CLASS_SIZE + i + 1);
     const p = generatePlayer(rng, playerOpts);
     p.contract = null;
     p.scout = { draftPoints: {} }; // per scouting-team: { [teamId]: pts }
+    // Gems: stash the real ceiling and show a fake scouted potential so the
+    // AI's pick formula (0.5 * ovr + 0.5 * potential) can't identify them.
+    // developPlayer uses _truePotential as the development ceiling; when the
+    // player's OVR eventually climbs past the fake visible value the true
+    // ceiling is surfaced — that's the discovery moment.
+    if (truePotential != null) {
+      p._truePotential = truePotential;
+      p.potential = Math.round(clamp(gauss(63, 1.5, rng), 60, 67));
+    }
     prospects.push(p);
   }
   return prospects;

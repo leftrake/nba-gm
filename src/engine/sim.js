@@ -219,7 +219,7 @@ function gamePlayer({ p, min, slot }, rng) {
     // The trailing term separates true superstars from everyday stars:
     // without it the league's top ~10 scorers bunch tightly around the
     // same ppg, and no one looks like a season-leading #1 option.
-    usage: Math.pow(Math.max(score + sharp, 25) / 60, 2.36) * (1 + Math.max(0, score - 88) * 0.012),
+    usage: Math.pow(Math.max(score + sharp, 25) / 60, 1.95) * (1 + Math.max(0, score - 82) * 0.020),
     ins: r.closeShot + lengthZ + sharp + moraleAdj,
     mid: r.midRange + sharp + moraleAdj,
     three: r.threePoint + sharp + moraleAdj,

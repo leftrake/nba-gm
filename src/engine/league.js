@@ -135,17 +135,14 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
 }
 
 function makeRoster(rng) {
-  // Talent pyramid, NBA-shaped: a star, a second option, supporting
-  // starters, rotation pieces, and bench filler. (gauss() here has an
-  // effective sd of ~0.4x the nominal value, so i.i.d. rolls would produce
-  // a league with no stars at all — the pyramid is explicit instead.)
-  // Priced by salaryFor, a roster like this naturally costs near the cap.
-  // Tier levels match the league the draft pipeline sustains long-run, so
-  // the league-wide average rating holds steady from season one instead of
-  // inflating toward a stronger steady state.
+  // Talent pyramid matching realistic NBA roster depth: star, second star,
+  // third starter, two more starters, 6th man, and meaningful bench through
+  // slot 14. Tiers calibrated to match the five-tier draft pipeline so the
+  // league's opening-day talent matches what years of drafts sustain long-run.
+  // Real NBA bench players (slots 6-10) are 65-72 OVR; deep bench 58-64 OVR.
   const tiers = [
-    [81, 10], [75, 8], [71, 7], [67, 6], [67, 6], [63, 6], [63, 6],
-    [57, 6], [57, 6], [57, 6], [53, 6], [53, 6], [53, 6], [53, 6],
+    [83, 9], [78, 8], [74, 7], [71, 6], [71, 6], [69, 6], [67, 6],
+    [65, 6], [63, 6], [62, 6], [60, 6], [59, 6], [58, 6], [57, 6],
   ];
   // positional coverage: 2 of each position + 4 random, shuffled so the
   // star slot isn't always a point guard
@@ -1820,6 +1817,10 @@ export function simFreeAgencyDay(league) {
       if (!exception && demand > ask * stretch) continue; // demanding more than this office will pay
       if (!exception && demand > room) continue;
       if (exception === 'minimum' && demand > MIN_SALARY * 1.05) continue;
+      // Non-minimum signings must not push current payroll past the apron.
+      // 1-year MLE deals are excluded from the multi-year projected check below
+      // but still count against this season's payroll, so they need their own guard.
+      if (exception !== 'minimum' && payroll(team) + demand > APRON) continue;
       // Multi-year deals carry into next season at full salary — make sure
       // they don't stack on top of next season's already-committed payroll
       // (expiring deals dropping off, pending extensions kicking in) and
