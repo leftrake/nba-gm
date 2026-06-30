@@ -1,4 +1,4 @@
-import { TEAMS, SALARY_CAP, LUXURY_TAX, FIRST_APRON, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, TAXPAYER_MLE, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, LUXURY_TAX, FIRST_APRON, APRON, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, TAXPAYER_MLE, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { initCup, updateCupGroupGame, determineCupBracket, simCupGame, cupComplete, CUP_GROUP_DAYS } from './cup.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
@@ -2281,14 +2281,16 @@ export function evaluateOffer(league, teamId, p, salary, years) {
 // Which cap mechanism would cover a contract of this salary for this team,
 // or null if none does. 'cap-room' covers it outright; 'mle' is the
 // once-per-offseason mid-level exception (up to MLE_AMOUNT for teams below
-// the first apron, or TAXPAYER_MLE above it); 'minimum' is always available.
+// the first apron, or TAXPAYER_MLE between the two aprons); teams at or above
+// the second apron lose MLE access entirely. 'minimum' is always available.
 export function signingException(league, teamId, salary) {
   const team = getTeam(league, teamId);
   const capRoom = SALARY_CAP - payroll(team);
   if (salary <= capRoom) return 'cap-room';
   if (salary <= MIN_SALARY * 1.05) return 'minimum';
-  const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
-  if (capRoom <= 0 && !team.usedMLE && salary <= teamMLE) return 'mle';
+  const teamPayroll = payroll(team);
+  const teamMLE = teamPayroll >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
+  if (capRoom <= 0 && !team.usedMLE && salary <= teamMLE && teamPayroll + salary <= APRON) return 'mle';
   return null;
 }
 
@@ -2310,14 +2312,18 @@ export function makeOffer(league, teamId, playerId, salary, years, opts = {}) {
   if (team.roster.length >= ROSTER_MAX) return { ok: false, error: `Roster full (${ROSTER_MAX}). Waive someone first.` };
   const exception = signingException(league, teamId, salary);
   if (!exception) {
-    const room = SALARY_CAP - payroll(team);
-    const aboveApron = payroll(team) >= FIRST_APRON;
-    const teamMLE = aboveApron ? TAXPAYER_MLE : MLE_AMOUNT;
-    const mleNote = team.usedMLE
-      ? "you've already used this offseason's mid-level exception"
-      : aboveApron
-        ? `you're above the first apron — only the taxpayer MLE (${fmtM(teamMLE)}) is available`
-        : `the mid-level exception only covers up to ${fmtM(teamMLE)}`;
+    const teamPayroll = payroll(team);
+    const room = SALARY_CAP - teamPayroll;
+    const aboveSecondApron = teamPayroll >= APRON;
+    const aboveFirstApron = teamPayroll >= FIRST_APRON;
+    const teamMLE = aboveFirstApron ? TAXPAYER_MLE : MLE_AMOUNT;
+    const wouldCrossApron = !team.usedMLE && salary <= teamMLE && teamPayroll + salary > APRON;
+    let mleNote;
+    if (aboveSecondApron) mleNote = 'you are above the second apron — the mid-level exception is not available';
+    else if (wouldCrossApron) mleNote = `this signing would push you past the second apron — the MLE cannot be used to cross that threshold`;
+    else if (team.usedMLE) mleNote = "you've already used this offseason's mid-level exception";
+    else if (aboveFirstApron) mleNote = `you're above the first apron — only the taxpayer MLE (${fmtM(teamMLE)}) is available`;
+    else mleNote = `the mid-level exception only covers up to ${fmtM(teamMLE)}`;
     return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}. Minimum contracts can always be offered.` };
   }
   const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
