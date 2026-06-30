@@ -11,7 +11,9 @@ import { ProgressBar } from './ui/ProgressBar.jsx';
 import { Tooltip } from './ui/Tooltip.jsx';
 import { Modal } from './ui/Modal.jsx';
 import { Table } from './ui/Table.jsx';
-import { Ovr, Pot, Sta, TeamBadge, money } from './shared.jsx';
+import { Ovr, Pot, Sta } from './PlayerDisplay.jsx';
+import { TeamBadge } from './TeamDisplay.jsx';
+import { money } from './formatters.js';
 import { TEAMS } from '../data/teams.js';
 import { safeAccent, textOnColor, contrastRatio } from '../engine/colorUtils.js';
 

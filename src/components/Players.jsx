@@ -3,7 +3,9 @@ import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { overall, posLabel } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
-import { Ovr, Pot, Origin, PlayerLink, TeamLink, TeamBadge, money } from './shared.jsx';
+import { Ovr, Pot, Origin, PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
+import { money } from './formatters.js';
 import { Section, SectionHeader, Button, Table } from './ui/index.js';
 
 const FILTERS_KEY = 'nba-gm-players-filters';

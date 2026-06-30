@@ -11,7 +11,8 @@ import {
   totalScoutSalary, scoutingBudget,
 } from '../engine/scoutingTrips.js';
 import { regionFor, SCOUT_REGIONS } from '../engine/backstory.js';
-import { Ovr, Pot, PlayerLink, Origin, GuideTooltip } from './shared.jsx';
+import { Ovr, Pot, PlayerLink, Origin } from './PlayerDisplay.jsx';
+import { GuideTooltip } from './onboarding.jsx';
 import { Card, Button, Badge, Section, SectionHeader, Divider, Tabs, ProgressBar, Table, Stat } from './ui/index.js';
 
 const INTL_REGIONS = SCOUT_REGIONS.filter((r) => r !== 'Domestic');

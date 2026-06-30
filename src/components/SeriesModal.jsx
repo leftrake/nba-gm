@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { getTeam } from '../engine/league.js';
-import { TeamLink, TeamBadge, PlayerLink } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 import { asLines, usePlayerIndex } from './BoxScore.jsx';
 
 // Per-player totals across every stored box in the series, best scorers

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayerLink } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
 
 // Report row arrays come from ratingRow() in engine/players.js:
 // [overall, ...HISTORY_KEYS (14 ratings), stamina]

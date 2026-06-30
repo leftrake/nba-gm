@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NewsText } from './shared.jsx';
+import { NewsText } from './TeamDisplay.jsx';
 
 // Horizontal headline ticker: the 10 most recent news items, auto-advancing
 // every few seconds (paused once a headline is expanded), with prev/next

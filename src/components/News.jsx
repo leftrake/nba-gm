@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { NewsText, fmtDate } from './shared.jsx';
+import { NewsText } from './TeamDisplay.jsx';
+import { fmtDate } from './formatters.js';
 
 const CATS = [
   ['all', '🗞️ All'],

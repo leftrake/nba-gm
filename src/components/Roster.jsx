@@ -9,7 +9,10 @@ import { teamGameLog, keyFindings, recentForm, homeAwaySplit, clutchRecord, stre
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
-import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, money, perGame, fgPct, fmtDate, TeamLink, PlayerLink, StrategyTag, turmoilLabel, turmoilColor, GuideTooltip } from './shared.jsx';
+import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, StrategyTag, turmoilLabel, turmoilColor } from './TeamDisplay.jsx';
+import { money, fmtPerGame, fmtFgPct, fmtDate } from './formatters.js';
+import { GuideTooltip } from './onboarding.jsx';
 import { MORALE_WARNING_STREAK } from '../engine/morale.js';
 import { Section, Tooltip } from './ui/index.js';
 
@@ -634,12 +637,12 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                       <td className="num">{p.age}</td>
                       <td className="num"><Sta p={p} league={league} fogged={!isUser} /></td>
                       <td className="num"><Cond p={p} /></td>
-                      <td className="num">{perGame(p.stats, 'pts')}</td>
-                      <td className="num">{perGame(p.stats, 'reb')}</td>
-                      <td className="num">{perGame(p.stats, 'ast')}</td>
-                      <td className="num">{perGame(p.stats, 'stl')}</td>
-                      <td className="num">{perGame(p.stats, 'blk')}</td>
-                      <td className="num">{fgPct(p.stats)}</td>
+                      <td className="num">{fmtPerGame(p.stats, 'pts')}</td>
+                      <td className="num">{fmtPerGame(p.stats, 'reb')}</td>
+                      <td className="num">{fmtPerGame(p.stats, 'ast')}</td>
+                      <td className="num">{fmtPerGame(p.stats, 'stl')}</td>
+                      <td className="num">{fmtPerGame(p.stats, 'blk')}</td>
+                      <td className="num">{fmtFgPct(p.stats)}</td>
                       {onTradeFor && (
                         <td onClick={(e) => e.stopPropagation()}>
                           <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => onTradeFor(p)}>Trade</button>
@@ -936,7 +939,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                               </span>
                               {!calledUp && p.gLeagueStats?.gp > 0 && (
                                 <span style={{ marginLeft: 'var(--sp-2)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-                                  G League: {perGame(p.gLeagueStats, 'pts')}/{perGame(p.gLeagueStats, 'reb')}/{perGame(p.gLeagueStats, 'ast')} in {p.gLeagueStats.gp}G
+                                  G League: {fmtPerGame(p.gLeagueStats, 'pts')}/{fmtPerGame(p.gLeagueStats, 'reb')}/{fmtPerGame(p.gLeagueStats, 'ast')} in {p.gLeagueStats.gp}G
                                 </span>
                               )}
                             </td>

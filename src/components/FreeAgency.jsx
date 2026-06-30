@@ -5,7 +5,9 @@ import { overall } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
 import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX } from '../data/teams.js';
-import { Ovr, Pot, money, PlayerLink, GuideTooltip } from './shared.jsx';
+import { Ovr, Pot, PlayerLink } from './PlayerDisplay.jsx';
+import { money } from './formatters.js';
+import { GuideTooltip } from './onboarding.jsx';
 import { Card, Button, Badge, Section, SectionHeader, Divider, Table } from './ui/index.js';
 
 const OFFERS_PER_ROUND = 3;

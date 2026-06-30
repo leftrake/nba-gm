@@ -4,7 +4,8 @@ import {
   perGame, fgPct, tpPct, ftPct, tsPct, possessions,
   teamStatTotals, pointsAllowed, allPlayerStatRows, leaderRows,
 } from '../engine/stats.js';
-import { PlayerLink, TeamLink, TeamBadge } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
 

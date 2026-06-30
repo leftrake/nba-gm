@@ -1,6 +1,7 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
-import { PlayerLink, TeamLink, Confetti } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, Confetti } from './TeamDisplay.jsx';
 
 // First offseason phase: the champion is crowned, the Finals MVP revealed,
 // and a quick game-by-game recap of the series. league.finalsMVP and

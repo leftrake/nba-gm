@@ -9,7 +9,10 @@ import { teamNeeds } from '../engine/strategy.js';
 import { ownerSignoffRequired, ownerBlocksTrade, ownerStance } from '../engine/owner.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
-import { Ovr, Pot, StrategyTag, money, PlayerLink, GuideTooltip } from './shared.jsx';
+import { Ovr, Pot, PlayerLink } from './PlayerDisplay.jsx';
+import { StrategyTag } from './TeamDisplay.jsx';
+import { money } from './formatters.js';
+import { GuideTooltip } from './onboarding.jsx';
 import { Card, Button, SectionHeader, Divider } from './ui/index.js';
 
 // Map raw trade value to 0.5–5 star rating in 0.5 increments.

@@ -4,7 +4,9 @@ import {
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
 } from '../engine/league.js';
 import { clamp } from '../engine/rng.js';
-import { fmtDate, TeamLink, TeamBadge, NewsText, InjuryAlertModal } from './shared.jsx';
+import { TeamLink, TeamBadge, NewsText } from './TeamDisplay.jsx';
+import { InjuryAlertModal } from './GameAlerts.jsx';
+import { fmtDate } from './formatters.js';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 // At most one interactive prompt blocks the sim at a time — see

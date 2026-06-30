@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { TEAMS } from '../data/teams.js';
-import { markWalkthroughDone } from './shared.jsx';
+import { markWalkthroughDone } from './onboarding.jsx';
 
 function makeSteps(league) {
   const team = league ? TEAMS.find((t) => t.id === league.userTeamId) : null;

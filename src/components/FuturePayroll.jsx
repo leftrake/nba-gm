@@ -9,7 +9,10 @@ import { getTeamPicks, pickLabel, projectedSlot } from '../engine/draftPicks.js'
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus, respondToExtension } from '../engine/owner.js';
 import { SPECIALTY_INFO, STYLE_INFO, coachSalary } from '../engine/coach.js';
-import { money, PlayerLink, GuideTooltip, ApprovalMeter, approvalColor } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { ApprovalMeter } from './TeamDisplay.jsx';
+import { money, approvalColor } from './formatters.js';
+import { GuideTooltip } from './onboarding.jsx';
 import { Section, Card } from './ui/index.js';
 
 const STATUS_COLOR = { under: 'var(--green)', over: 'var(--yellow)', tax: 'var(--red)', 'first-apron': '#e05000', apron: '#c00' };

@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { getTeam, standings, makeRoundMatchups, teamPlayoffStatus } from '../engine/league.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
-import { TeamLink, NewsText, GuideTooltip } from './shared.jsx';
+import { TeamLink, NewsText } from './TeamDisplay.jsx';
+import { GuideTooltip } from './onboarding.jsx';
 import { Card } from './ui/Card.jsx';
 import SeriesModal from './SeriesModal.jsx';
 

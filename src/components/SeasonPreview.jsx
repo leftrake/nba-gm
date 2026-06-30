@@ -3,7 +3,8 @@ import { overall } from '../engine/players.js';
 import { teamStrength } from '../engine/sim.js';
 import { ownerStance, seatStatus, personalitySummary } from '../engine/owner.js';
 import { scoutingBudget } from '../engine/scoutingTrips.js';
-import { PlayerLink, money } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { money } from './formatters.js';
 
 // One-line summary of what changed on the user's roster this offseason,
 // derived from league.offseasonRosterSnapshot (captured the moment the

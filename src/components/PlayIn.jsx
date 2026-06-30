@@ -1,7 +1,7 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
-import { TeamLink } from './shared.jsx';
+import { TeamLink } from './TeamDisplay.jsx';
 import { Card } from './ui/Card.jsx';
 
 function GameResult({ league, game, label, openTeam }) {

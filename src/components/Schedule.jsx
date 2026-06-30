@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { getTeam, dateForDay, teamPlayoffStatus } from '../engine/league.js';
-import { fmtDate, TeamLink, TeamBadge } from './shared.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
+import { fmtDate } from './formatters.js';
 import { ROUND_NAMES } from './Playoffs.jsx';
 import { Section } from './ui/index.js';
 

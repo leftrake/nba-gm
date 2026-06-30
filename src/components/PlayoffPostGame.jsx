@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getTeam, seriesHomeTeam } from '../engine/league.js';
-import { TeamLink } from './shared.jsx';
+import { TeamLink } from './TeamDisplay.jsx';
 import { BoxTable, LineScore, TopPerformers, GameFlow, PlayByPlay } from './BoxScore.jsx';
 import { ROUND_NAMES } from './Playoffs.jsx';
 

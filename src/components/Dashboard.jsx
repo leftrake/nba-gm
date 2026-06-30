@@ -2,7 +2,10 @@ import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
-import { OvrArc, money, perGame, fmtDate, TeamLink, TeamBadge, PlayerLink, GuideTooltip } from './shared.jsx';
+import { OvrArc, PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
+import { money, fmtDate, fmtPerGame } from './formatters.js';
+import { GuideTooltip } from './onboarding.jsx';
 import { LineScore, TopPerformers, usePlayerIndex, asLines } from './BoxScore.jsx';
 import { injuryTimeline } from '../engine/injuries.js';
 import { NewsItem } from './News.jsx';
@@ -317,7 +320,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
                 ovr: <OvrArc value={overall(p)} size={30} />,
                 name: <PlayerLink p={p} openPlayer={openPlayer} />,
                 pos: p.pos,
-                pts: perGame(p.stats, 'pts'),
+                pts: fmtPerGame(p.stats, 'pts'),
               }))}
             />
           </div>

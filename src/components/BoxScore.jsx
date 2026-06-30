@@ -4,7 +4,8 @@ import { decodeBox, periodLabel, starLines } from '../engine/sim.js';
 import { injuryTimeline } from '../engine/injuries.js';
 import { ddTd } from '../engine/stats.js';
 import { ZONE_STAT_COLS } from '../engine/shotZones.js';
-import { TeamLink, TeamBadge, PlayerLink } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 import ShotChart from './ShotChart.jsx';
 
 // Sums every zone Fgm/Fga column across a team's box lines, for a

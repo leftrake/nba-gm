@@ -2,7 +2,9 @@ import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { acceptTradeOffer, declineTradeOffer } from '../engine/tradeOffers.js';
 import { pickLabel } from '../engine/draftPicks.js';
-import { Ovr, Pot, PlayerLink, TeamBadge, money } from './shared.jsx';
+import { Ovr, Pot, PlayerLink } from './PlayerDisplay.jsx';
+import { TeamBadge } from './TeamDisplay.jsx';
+import { money } from './formatters.js';
 import { Section } from './ui/index.js';
 
 function OfferSide({ league, players, fogged, openPlayer }) {

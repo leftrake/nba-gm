@@ -4,7 +4,9 @@ import {
   SINGLE_SEASON_CATS, CAREER_CATS, GAME_HIGH_CATS, formatCatValue, findPlayerById, PACE_CATS,
 } from '../engine/legacy.js';
 import { groupAwards } from '../engine/awards.js';
-import { TeamLink, PlayerLink, NewsText, money } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, NewsText } from './TeamDisplay.jsx';
+import { money } from './formatters.js';
 import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
 

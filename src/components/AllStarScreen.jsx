@@ -2,7 +2,8 @@ import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { getPlayerById, simAllStarGame, userHasAllStar } from '../engine/allstar.js';
 import { BoxTable, LineScore, TopPerformers, GameFlow } from './BoxScore.jsx';
-import { PlayerLink, TeamLink } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink } from './TeamDisplay.jsx';
 
 function PlayerRow({ league, playerId, teamId, openPlayer, openTeam, extra }) {
   const found = getPlayerById(league, playerId);

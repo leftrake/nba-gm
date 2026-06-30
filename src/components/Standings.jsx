@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { standings } from '../engine/league.js';
-import { TeamLink, TeamBadge } from './shared.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
 

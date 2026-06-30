@@ -3,7 +3,8 @@ import { getTeam } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { POSITIONS } from '../engine/lineup.js';
 import { onFantasyClock, makeFantasyPick } from '../engine/fantasyDraft.js';
-import { Ovr, Pot, PlayerLink, TeamLink, Origin } from './shared.jsx';
+import { Ovr, Pot, PlayerLink, Origin } from './PlayerDisplay.jsx';
+import { TeamLink } from './TeamDisplay.jsx';
 import { Section, SectionHeader } from './ui/index.js';
 
 const SORTS = {

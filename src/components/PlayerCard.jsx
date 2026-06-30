@@ -10,7 +10,9 @@ import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
 import { personalityNote, scoutBackstoryNote, rookieBlurb } from '../engine/backstory.js';
 import { getMilestones, milestoneIcon } from '../engine/milestones.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
-import { Ovr, OvrArc, Pot, Cond, money, perGame, fgPct, TeamLink, TeamBadge, PlayerLink, Origin } from './shared.jsx';
+import { Ovr, OvrArc, Pot, Cond, PlayerLink, Origin } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
+import { money, fmtPerGame, fmtFgPct } from './formatters.js';
 import ShotChart from './ShotChart.jsx';
 
 const RATINGS = [
@@ -65,9 +67,9 @@ function SeasonStats({ stats }) {
   const tp = stats.tpa ? ((stats.tpm / stats.tpa) * 100).toFixed(1) : '–';
   const ft = stats.fta ? ((stats.ftm / stats.fta) * 100).toFixed(1) : '–';
   const cells = [
-    ['GP', stats.gp], ['MPG', perGame(stats, 'min')], ['PPG', perGame(stats, 'pts')],
-    ['RPG', perGame(stats, 'reb')], ['APG', perGame(stats, 'ast')], ['SPG', perGame(stats, 'stl')],
-    ['BPG', perGame(stats, 'blk')], ['FG%', fgPct(stats)], ['3P%', tp], ['FT%', ft],
+    ['GP', stats.gp], ['MPG', fmtPerGame(stats, 'min')], ['PPG', fmtPerGame(stats, 'pts')],
+    ['RPG', fmtPerGame(stats, 'reb')], ['APG', fmtPerGame(stats, 'ast')], ['SPG', fmtPerGame(stats, 'stl')],
+    ['BPG', fmtPerGame(stats, 'blk')], ['FG%', fmtFgPct(stats)], ['3P%', tp], ['FT%', ft],
   ];
   return (
     <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
@@ -128,14 +130,14 @@ function CareerStatsTable({ league, rows, openTeam }) {
               <td>{s.season}</td>
               <td>{s.team != null ? <TeamLink team={getTeam(league, s.team)} openTeam={openTeam} /> : '–'}</td>
               <td className="num">{s.gp}</td>
-              <td className="num">{perGame(s, 'min')}</td>
-              <td className="num">{perGame(s, 'pts')}</td>
-              <td className="num">{perGame(s, 'reb')}</td>
-              <td className="num">{perGame(s, 'ast')}</td>
-              <td className="num">{perGame(s, 'stl')}</td>
-              <td className="num">{perGame(s, 'blk')}</td>
-              <td className="num">{s.tov != null ? perGame(s, 'tov') : '–'}</td>
-              <td className="num">{fgPct(s)}</td>
+              <td className="num">{fmtPerGame(s, 'min')}</td>
+              <td className="num">{fmtPerGame(s, 'pts')}</td>
+              <td className="num">{fmtPerGame(s, 'reb')}</td>
+              <td className="num">{fmtPerGame(s, 'ast')}</td>
+              <td className="num">{fmtPerGame(s, 'stl')}</td>
+              <td className="num">{fmtPerGame(s, 'blk')}</td>
+              <td className="num">{s.tov != null ? fmtPerGame(s, 'tov') : '–'}</td>
+              <td className="num">{fmtFgPct(s)}</td>
               <td className="num">{s.tpa ? ((s.tpm / s.tpa) * 100).toFixed(1) : '–'}</td>
               <td className="num">{s.fta ? ((s.ftm / s.fta) * 100).toFixed(1) : '–'}</td>
             </tr>
@@ -223,15 +225,15 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
             <span className="ui-stat__label">Career GP</span>
           </div>
           <div className="ui-stat ui-stat--md">
-            <span className="ui-stat__value">{perGame(totals, 'pts')}</span>
+            <span className="ui-stat__value">{fmtPerGame(totals, 'pts')}</span>
             <span className="ui-stat__label">PPG</span>
           </div>
           <div className="ui-stat ui-stat--md">
-            <span className="ui-stat__value">{perGame(totals, 'reb')}</span>
+            <span className="ui-stat__value">{fmtPerGame(totals, 'reb')}</span>
             <span className="ui-stat__label">RPG</span>
           </div>
           <div className="ui-stat ui-stat--md">
-            <span className="ui-stat__value">{perGame(totals, 'ast')}</span>
+            <span className="ui-stat__value">{fmtPerGame(totals, 'ast')}</span>
             <span className="ui-stat__label">APG</span>
           </div>
           {p.championships > 0 && (
@@ -297,10 +299,10 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
                       <td>{s.season}</td>
                       <td>{s.team != null ? <TeamLink team={getTeam(league, s.team)} openTeam={openTeam} /> : '–'}</td>
                       <td className="num">{s.gp}</td>
-                      <td className="num">{perGame(s, 'pts')}</td>
-                      <td className="num">{perGame(s, 'reb')}</td>
-                      <td className="num">{perGame(s, 'ast')}</td>
-                      <td className="num">{fgPct(s)}</td>
+                      <td className="num">{fmtPerGame(s, 'pts')}</td>
+                      <td className="num">{fmtPerGame(s, 'reb')}</td>
+                      <td className="num">{fmtPerGame(s, 'ast')}</td>
+                      <td className="num">{fmtFgPct(s)}</td>
                     </tr>
                   ))}
                 </tbody>

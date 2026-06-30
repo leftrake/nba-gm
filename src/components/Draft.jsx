@@ -3,7 +3,9 @@ import { getTeam } from '../engine/league.js';
 import { makeDraftPick, onTheClock, rookieSalary, rookieContractYears } from '../engine/draft.js';
 import { scoutedOverall, scoutedPotential } from '../engine/scouting.js';
 import { getScouts } from '../engine/scoutingTrips.js';
-import { Ovr, Pot, money, PlayerLink, TeamLink, TeamBadge, Origin } from './shared.jsx';
+import { Ovr, Pot, PlayerLink, Origin } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
+import { money } from './formatters.js';
 import { Section, SectionHeader } from './ui/index.js';
 
 function boardValue(p, season, teamId, settings) {

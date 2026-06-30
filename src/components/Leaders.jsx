@@ -1,6 +1,7 @@
 import React from 'react';
 import { LEADER_CATS, LEADER_MIN_GP, leaderMinGp, statLeaders } from '../engine/awards.js';
-import { PlayerLink, TeamLink, TeamBadge } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 
 function LeaderTable({ league, statKey, label, unit, openPlayer, openTeam, openStats }) {
   const rows = statLeaders(league, statKey);

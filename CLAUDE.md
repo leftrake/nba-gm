@@ -97,6 +97,20 @@ The hard split is **engine vs. UI**:
   `src/components/ui/` is a small shared design-system layer (`Card`,
   `Button`, `Badge`, `Table`, `Modal`, etc. — see `StyleGuide.jsx` for a live
   catalog); prefer composing from there over ad hoc markup for new screens.
+  Several shared helper modules live alongside the screens:
+  - `PlayerDisplay.jsx` — player rating/status display components (`Ovr`, `Pot`,
+    `Sta`, `Origin`, `Cond`, `Morale`, `InjuryTag`, `OvrArc`, `PlayerLink`).
+  - `TeamDisplay.jsx` — team display components (`TeamBadge`, `TeamLink`,
+    `StrategyTag`, `ApprovalMeter`, `Confetti`, `NewsText`, `turmoilLabel/Color`,
+    `approvalColor`).
+  - `GameAlerts.jsx` — the four blocking interrupt modals (`InjuryAlertModal`,
+    `CoachTalkModal`, `MilestoneAlertModal`, `CallUpPromptModal`).
+  - `formatters.js` — pure display-formatting utilities (`money`, `fmtDate`,
+    `fmtPerGame`, `fmtFgPct`, color/label helpers). Distinct from
+    `engine/stats.js`, which exports the same-named numeric computation
+    versions (`perGame`, `fgPct`).
+  - `onboarding.jsx` — walkthrough + first-encounter tooltip system
+    (`GuideTooltip`, `isWalkthroughDone`, `resetTutorial`, etc.).
 - `src/theme.js` — dark color themes + optional custom accent, stored as
   separate localStorage keys (a browser preference, not part of the save)
   and applied as CSS variables.

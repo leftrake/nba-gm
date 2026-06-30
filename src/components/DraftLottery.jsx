@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getTeam } from '../engine/league.js';
 import { LOTTERY_WEIGHTS } from '../engine/draft.js';
-import { TeamLink } from './shared.jsx';
+import { TeamLink } from './TeamDisplay.jsx';
+
 
 const REVEAL_DELAY_MS = 1400;
 

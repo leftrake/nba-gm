@@ -1,6 +1,7 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
-import { PlayerLink, TeamLink, Confetti } from './shared.jsx';
+import { PlayerLink } from './PlayerDisplay.jsx';
+import { TeamLink, Confetti } from './TeamDisplay.jsx';
 
 // Award Ceremony: a full-screen slideshow shown once per season, right after
 // the regular season ends and before the playoffs begin. league.seasonAwards
