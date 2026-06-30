@@ -316,7 +316,7 @@ export function generatePlayer(rng = rand, opts = {}) {
 
   const id = opts._forcedId !== undefined ? opts._forcedId : nextPlayerId++;
   const country = pickCountry(rng);
-  const backstory = assignBackstory(rng);
+  const backstory = assignBackstory(rng, country.name);
   const heightIn = opts.heightIn ?? generateHeight(pos, rng);
   const p = {
     id,

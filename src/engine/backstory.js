@@ -25,9 +25,13 @@ export const BACKSTORIES = {
 
 const TOTAL_WEIGHT = Object.values(BACKSTORIES).reduce((s, b) => s + b.weight, 0);
 
-export function assignBackstory(rng) {
-  let roll = rng() * TOTAL_WEIGHT;
-  for (const [key, b] of Object.entries(BACKSTORIES)) {
+export function assignBackstory(rng, nationality) {
+  const entries = Object.entries(BACKSTORIES).filter(
+    ([key]) => !(key === 'international' && nationality === 'USA')
+  );
+  const total = entries.reduce((s, [, b]) => s + b.weight, 0);
+  let roll = rng() * total;
+  for (const [key, b] of entries) {
     roll -= b.weight;
     if (roll < 0) return key;
   }
