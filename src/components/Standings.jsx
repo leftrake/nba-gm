@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { standings } from '../engine/league.js';
+import { standings, computePowerRankings, playoffPicture } from '../engine/league.js';
 import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
@@ -194,9 +194,187 @@ function ranksFor(rows) {
   return new Map(rows.map((t, i) => [t.id, i]));
 }
 
+// ── Power Rankings ───────────────────────────────────────────────────────────
+function powerNarrative(rank, prevRank, recentWins, last10Games) {
+  const form = last10Games > 0 ? `${recentWins}-${last10Games - recentWins} last ${last10Games}` : null;
+  if (prevRank == null) return form ?? '';
+  const diff = prevRank - rank;
+  if (diff > 0) return `Rose ${diff} — ${form ?? ''}`;
+  if (diff < 0) return `Fell ${Math.abs(diff)} — ${form ?? ''}`;
+  return form ?? 'Holding steady';
+}
+
+function PowerRankings({ league, openTeam }) {
+  const current = computePowerRankings(league);
+  const prevOrder = league.prevPowerRankings ?? [];
+  const prevRankMap = new Map(prevOrder.map((id, i) => [id, i + 1]));
+
+  return (
+    <Card noPad>
+      <div style={{ padding: 'var(--sp-5) var(--sp-5) var(--sp-3)' }}>
+        <span className="ui-section-title">Power Rankings</span>
+        <span style={{ marginLeft: 'var(--sp-3)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+          Updated weekly · win%, recent form, roster strength
+        </span>
+      </div>
+      <div className="ui-table-wrap">
+        <table className="ui-table zebra">
+          <thead>
+            <tr>
+              <th style={{ width: 48 }}>#</th>
+              <th>Team</th>
+              <th className="num">W</th>
+              <th className="num">L</th>
+              <th className="num">Pct</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {current.map(({ teamId, rank, winPct, recentWins, last10Games }) => {
+              const team = league.teams.find((t) => t.id === teamId);
+              if (!team) return null;
+              const prevRank = prevRankMap.get(teamId) ?? null;
+              const diff = prevRank != null ? prevRank - rank : 0;
+              const isUser = team.id === league.userTeamId;
+              return (
+                <tr key={teamId} style={isUser ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
+                  <td style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>
+                    {rank}
+                    {diff > 0 && <span style={{ color: 'var(--color-success)', fontSize: 'var(--text-xs)', marginLeft: 2 }}> ▲{diff}</span>}
+                    {diff < 0 && <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)', marginLeft: 2 }}> ▼{Math.abs(diff)}</span>}
+                  </td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                      <TeamBadge team={team} size="small" />
+                      <TeamLink team={team} openTeam={openTeam} />
+                    </span>
+                  </td>
+                  <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{team.wins}</td>
+                  <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{team.losses}</td>
+                  <td className="num">{(team.wins + team.losses) ? winPct.toFixed(3) : '–'}</td>
+                  <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                    {powerNarrative(rank, prevRank, recentWins, last10Games)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ── Playoff Picture ──────────────────────────────────────────────────────────
+const STATUS_LABEL = {
+  clinched: 'Clinched',
+  playoff: 'Playoff',
+  'playin-clinched': 'Play-In',
+  playin: 'Play-In',
+  out: 'Out',
+  eliminated: 'Eliminated',
+};
+const STATUS_VARIANT = {
+  clinched: 'success',
+  playoff: 'success',
+  'playin-clinched': 'warning',
+  playin: 'warning',
+  out: 'danger',
+  eliminated: 'danger',
+};
+
+function PlayoffPictureConf({ league, conf, openTeam }) {
+  const rows = playoffPicture(league, conf);
+  return (
+    <div>
+      <div style={{ padding: 'var(--sp-5) var(--sp-5) var(--sp-3)' }}>
+        <span className="ui-section-title">{conf}ern Conference</span>
+      </div>
+      <div className="ui-table-wrap">
+        <table className="ui-table zebra">
+          <thead>
+            <tr>
+              <th style={{ width: 32 }}>#</th>
+              <th>Team</th>
+              <th className="num">W</th>
+              <th className="num">L</th>
+              <th className="num">GB</th>
+              <th>Status</th>
+              <th className="num" style={{ whiteSpace: 'nowrap' }}>Magic #</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ team, seed, status, magicNumber, elimNumber }, i) => {
+              const isUser = team.id === league.userTeamId;
+              const leader = rows[0].team;
+              const gb = ((leader.wins - team.wins) + (team.losses - leader.losses)) / 2;
+              const gbStr = gb <= 0 ? '–' : gb % 1 === 0 ? gb.toFixed(0) : gb.toFixed(1);
+              return (
+                <React.Fragment key={team.id}>
+                  {i === 6 && (
+                    <tr className="standings-cutoff-row">
+                      <td colSpan={7}><div className="standings-cutoff-line"><span className="standings-cutoff-label">Playoff Line</span></div></td>
+                    </tr>
+                  )}
+                  {i === 10 && (
+                    <tr className="standings-cutoff-row">
+                      <td colSpan={7}><div className="standings-cutoff-line"><span className="standings-cutoff-label">Play-In Line</span></div></td>
+                    </tr>
+                  )}
+                  <tr style={isUser ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
+                    <td style={{ color: 'var(--text-muted)' }}>{seed}</td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                        <TeamBadge team={team} size="small" />
+                        <TeamLink team={team} openTeam={openTeam} />
+                      </span>
+                    </td>
+                    <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{team.wins}</td>
+                    <td className="num" style={{ fontFamily: 'var(--font-tabular)', fontWeight: 'var(--weight-bold)' }}>{team.losses}</td>
+                    <td className="num">{gbStr}</td>
+                    <td>
+                      <span className={`ui-badge ui-badge--${STATUS_VARIANT[status]}`} style={{ fontSize: 'var(--text-xs)' }}>
+                        {STATUS_LABEL[status]}
+                      </span>
+                    </td>
+                    <td className="num" style={{ fontFamily: 'var(--font-tabular)', color: 'var(--text-muted)' }}>
+                      {status === 'clinched' || status === 'playin-clinched' ? '✓' :
+                       status === 'eliminated' ? '✕' :
+                       magicNumber != null ? magicNumber :
+                       elimNumber != null ? `E${elimNumber}` : '–'}
+                    </td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PlayoffPictureView({ league, openTeam }) {
+  return (
+    <Card noPad>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+        <PlayoffPictureConf league={league} conf="East" openTeam={openTeam} />
+        <div style={{ borderLeft: '1px solid var(--border)' }}>
+          <PlayoffPictureConf league={league} conf="West" openTeam={openTeam} />
+        </div>
+      </div>
+      <div style={{ padding: 'var(--sp-3) var(--sp-5)', borderTop: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+        Magic # = wins + opponent losses needed to clinch · E# = elimination number · ✓ = clinched · ✕ = eliminated
+      </div>
+    </Card>
+  );
+}
+
 const VIEW_TABS = [
   { key: 'conference', label: 'Conference' },
   { key: 'league', label: 'League' },
+  { key: 'picture', label: 'Playoff Picture' },
+  { key: 'power', label: 'Power Rankings' },
 ];
 
 export default function Standings({ league, openTeam }) {
@@ -214,14 +392,24 @@ export default function Standings({ league, openTeam }) {
   }
   const prevRanks = ranksRef.current.prevRanks;
 
+  const tabs = league.phase === 'regular'
+    ? VIEW_TABS
+    : VIEW_TABS.filter((t) => t.key !== 'picture');
+
   return (
     <div>
-      <Tabs tabs={VIEW_TABS} activeTab={tab} onTabChange={setTab} />
+      <Tabs tabs={tabs} activeTab={tab} onTabChange={setTab} />
       {tab === 'conference' && (
         <ConferenceView league={league} openTeam={openTeam} prevRanks={prevRanks} />
       )}
       {tab === 'league' && (
         <LeagueTable league={league} openTeam={openTeam} prevRanks={prevRanks?.League} />
+      )}
+      {tab === 'picture' && league.phase === 'regular' && (
+        <PlayoffPictureView league={league} openTeam={openTeam} />
+      )}
+      {tab === 'power' && (
+        <PowerRankings league={league} openTeam={openTeam} />
       )}
     </div>
   );

@@ -8,7 +8,7 @@ import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGa
 import { initDraft } from './draft.js';
 import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
-import { computeAwards, honorsSummary } from './awards.js';
+import { computeAwards, honorsSummary, liveAwardRaces } from './awards.js';
 import { evaluateStrategies, maybeAiTrade, maybeAiSalaryDump, maybeAiBuyoutRelease, maybeAiContenderTrade } from './strategy.js';
 import { autoLineup } from './lineup.js';
 import { SAVE_VERSION, NEWS_MAX, pushNews } from './save.js';
@@ -965,6 +965,17 @@ export function simDay(league) {
   if (league.dayIndex % 7 === 0) {
     const flaggedThisWeek = checkRecordPace(league);
     if (userTeam) checkMilestoneAlerts(league, userTeam, flaggedThisWeek);
+    // Snapshot current rankings so the UI can show weekly movement arrows.
+    league.prevPowerRankings = computePowerRankings(league).map((r) => r.teamId);
+    const races = liveAwardRaces(league);
+    league.prevAwardRaces = {
+      week: league.dayIndex,
+      mvp: races.mvp.map((c) => c.p.id),
+      dpoy: races.dpoy.map((c) => c.p.id),
+      roy: races.roy.map((c) => c.p.id),
+      sixth: races.sixth.map((c) => c.p.id),
+      mip: races.mip.map((c) => c.p.id),
+    };
   }
   if (league.dayIndex > 0 && league.dayIndex % 30 === 0) {
     const fmtT = (t) => `${t.city} ${t.name} (${t.wins}-${t.losses})`;
@@ -1014,6 +1025,63 @@ export function standings(league, conf) {
   return league.teams
     .filter((t) => !conf || t.conf === conf)
     .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+}
+
+// Power score: win% (60%) + recent L10 form (25%) + roster OVR strength (15%).
+// The roster component keeps the formula from being purely reactive to hot/cold streaks.
+export function computePowerRankings(league) {
+  return league.teams.map((team) => {
+    const games = team.wins + team.losses;
+    const winPct = games ? team.wins / games : 0.5;
+    const log = [];
+    for (const day of league.resultsByDay || []) {
+      const r = day?.find((x) => x.home === team.id || x.away === team.id);
+      if (r) log.push(r.home === team.id ? r.homePts > r.awayPts : r.awayPts > r.homePts);
+    }
+    const last10 = log.slice(-10);
+    const recentWins = last10.filter(Boolean).length;
+    const recentForm = last10.length ? recentWins / last10.length : 0.5;
+    const topOvr = [...team.roster].sort((a, b) => overall(b) - overall(a)).slice(0, 8);
+    const avgOvr = topOvr.length ? topOvr.reduce((s, p) => s + overall(p), 0) / topOvr.length : 65;
+    const rosterScore = Math.max(0, Math.min(1, (avgOvr - 60) / 30));
+    const score = winPct * 0.6 + recentForm * 0.25 + rosterScore * 0.15;
+    return { teamId: team.id, score, winPct, recentWins, last10Games: last10.length };
+  }).sort((a, b) => b.score - a.score).map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+// Playoff picture: per-conference seeding status with magic/elimination numbers.
+// Magic number formula: M = 83 - teamA.wins - teamB.losses (team A clinches over team B when M = 0).
+export function playoffPicture(league, conf) {
+  const rows = standings(league, conf);
+  const magicN = (a, b) => Math.max(0, 83 - a.wins - b.losses);
+  return rows.map((team, i) => {
+    const seed = i + 1;
+    const gamesRemaining = 82 - team.wins - team.losses;
+    let status, magicNumber, elimNumber;
+    if (seed <= 6) {
+      const seventh = rows[6];
+      if (!seventh) { status = 'clinched'; }
+      else {
+        magicNumber = magicN(team, seventh);
+        status = magicNumber === 0 ? 'clinched' : 'playoff';
+      }
+    } else if (seed <= 10) {
+      const eleventh = rows[10];
+      if (!eleventh) { status = 'playin-clinched'; }
+      else {
+        magicNumber = magicN(team, eleventh);
+        status = magicNumber === 0 ? 'playin-clinched' : 'playin';
+      }
+    } else {
+      const tenth = rows[9];
+      if (!tenth) { status = 'out'; }
+      else {
+        elimNumber = magicN(tenth, team);
+        status = elimNumber === 0 ? 'eliminated' : 'out';
+      }
+    }
+    return { team, seed, status, magicNumber, elimNumber, gamesRemaining };
+  });
 }
 
 // ---------- Playoffs ----------

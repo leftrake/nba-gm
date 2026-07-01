@@ -60,6 +60,53 @@ function top(pool, score) {
   return best;
 }
 
+// Mid-season live leaders for each award race, used for the in-season tracker UI.
+// Uses lower GP thresholds early in the year so the races populate before GP floors kick in.
+export function liveAwardRaces(league) {
+  const minGp = Math.max(1, leaderMinGp(league));
+  const awardsGp = Math.min(30, minGp);
+  const rookieGp = Math.min(15, minGp);
+
+  const cands = [];
+  for (const team of league.teams) {
+    const games = team.wins + team.losses;
+    const winPct = games ? team.wins / games : 0.5;
+    const topMin = new Set(
+      [...team.roster].filter((p) => p.stats.gp > 0)
+        .sort((a, b) => b.stats.min / b.stats.gp - a.stats.min / a.stats.gp)
+        .slice(0, 5).map((p) => p.id)
+    );
+    for (const p of team.roster) cands.push({ p, team, winPct, bench: !topMin.has(p.id) });
+  }
+
+  const eligible = cands.filter((c) => c.p.stats.gp >= awardsGp);
+
+  const mvpScore = (c) => {
+    const base = valueScore(c.p.stats);
+    if (c.winPct < 0.35) return base * 0.3;
+    if (c.winPct < 0.45) return base * (0.3 + c.winPct);
+    return base * (0.5 + 1.0 * c.winPct);
+  };
+  const dpoyScore = (c) =>
+    (3 * pg(c.p.stats, 'stl') + 3 * pg(c.p.stats, 'blk') + 0.4 * pg(c.p.stats, 'reb')
+      + 0.15 * (c.p.ratings.perimeterDefense + c.p.ratings.interiorDefense) / 2) * (0.8 + 0.4 * c.winPct);
+
+  const topN = (pool, score, n) => [...pool].sort((a, b) => score(b) - score(a)).slice(0, n);
+
+  const mipEligible = eligible.filter((c) => {
+    const prev = c.p.careerStats?.[c.p.careerStats.length - 1];
+    return prev && prev.gp >= 20 && c.p.exp >= 1;
+  });
+
+  return {
+    mvp: topN(eligible, mvpScore, 5),
+    dpoy: topN(eligible, dpoyScore, 5),
+    roy: topN(cands.filter((c) => c.p.exp === 0 && c.p.stats.gp >= rookieGp), (c) => valueScore(c.p.stats), 3),
+    sixth: topN(eligible.filter((c) => c.bench), (c) => valueScore(c.p.stats), 3),
+    mip: topN(mipEligible, (c) => valueScore(c.p.stats) - valueScore(c.p.careerStats[c.p.careerStats.length - 1]), 3),
+  };
+}
+
 export function computeAwards(league) {
   const season = league.season;
   const cands = [];

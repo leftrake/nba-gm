@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { leaderMinGp, LEADER_MIN_GP } from '../engine/awards.js';
+import { leaderMinGp, LEADER_MIN_GP, liveAwardRaces, pg } from '../engine/awards.js';
 import {
   perGame, fgPct, tpPct, ftPct, tsPct, possessions,
   teamStatTotals, pointsAllowed, allPlayerStatRows, leaderRows,
@@ -280,17 +280,106 @@ function LeagueLeadersTab({ league, openPlayer, openTeam }) {
   );
 }
 
+const RACE_DEFS = [
+  { key: 'mvp', label: 'MVP Race' },
+  { key: 'dpoy', label: 'DPOY Race' },
+  { key: 'roy', label: 'Rookie of the Year' },
+  { key: 'sixth', label: 'Sixth Man' },
+  { key: 'mip', label: 'Most Improved' },
+];
+
+function RaceArrow({ rank, prevIds, playerId }) {
+  if (!prevIds || prevIds.length === 0) return null;
+  const prevRank = prevIds.indexOf(playerId);
+  if (prevRank === -1) return <span style={{ color: 'var(--color-success)', fontSize: 'var(--text-xs)', marginLeft: 3 }}>new</span>;
+  const diff = prevRank - rank;
+  if (diff > 0) return <span style={{ color: 'var(--color-success)', fontSize: 'var(--text-xs)', marginLeft: 3 }}>▲{diff}</span>;
+  if (diff < 0) return <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)', marginLeft: 3 }}>▼{Math.abs(diff)}</span>;
+  return null;
+}
+
+function AwardRaceCard({ label, candidates, prevIds, openPlayer, openTeam, league }) {
+  if (candidates.length === 0) return null;
+  return (
+    <Card noPad>
+      <div style={{ padding: 'var(--sp-4) var(--sp-4) var(--sp-2)' }}>
+        <span className="ui-section-title">{label}</span>
+      </div>
+      <div className="ui-table-wrap">
+        <table className="ui-table">
+          <thead>
+            <tr>
+              <th style={{ width: 32 }}>#</th>
+              <th>Player</th>
+              <th>Team</th>
+              <th className="num">PPG</th>
+              <th className="num">RPG</th>
+              <th className="num">APG</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.map(({ p, team }, i) => (
+              <tr key={p.id} style={team.id === league.userTeamId ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
+                <td style={{ whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+                  {i + 1}
+                  <RaceArrow rank={i} prevIds={prevIds} playerId={p.id} />
+                </td>
+                <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                    <TeamBadge team={team} size="small" />
+                    <TeamLink team={team} openTeam={openTeam}>{team.id}</TeamLink>
+                  </span>
+                </td>
+                <td className="num">{pg(p.stats, 'pts').toFixed(1)}</td>
+                <td className="num">{pg(p.stats, 'reb').toFixed(1)}</td>
+                <td className="num">{pg(p.stats, 'ast').toFixed(1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function AwardRacesTab({ league, openPlayer, openTeam }) {
+  const races = liveAwardRaces(league);
+  const prev = league.prevAwardRaces ?? {};
+  const hasAny = Object.values(races).some((r) => r.length > 0);
+  if (!hasAny) {
+    return <p style={{ color: 'var(--text-muted)', padding: 'var(--sp-4) 0' }}>Award races will populate once enough games have been played.</p>;
+  }
+  return (
+    <div className="grid2">
+      {RACE_DEFS.map(({ key, label }) => (
+        <AwardRaceCard
+          key={key}
+          label={label}
+          candidates={races[key]}
+          prevIds={prev[key] ?? null}
+          openPlayer={openPlayer}
+          openTeam={openTeam}
+          league={league}
+        />
+      ))}
+    </div>
+  );
+}
+
 const TABS = [
+  { key: 'races', label: 'Award Races' },
   { key: 'players', label: 'Player Stats' },
   { key: 'teams', label: 'Team Stats' },
   { key: 'leaders', label: 'League Leaders' },
 ];
 
 export default function Stats({ league, openPlayer, openTeam }) {
-  const [tab, setTab] = useState('players');
+  const [tab, setTab] = useState('races');
   return (
     <div>
       <Tabs tabs={TABS} activeTab={tab} onTabChange={setTab} />
+      {tab === 'races' && <AwardRacesTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'players' && <PlayerStatsTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'teams' && <TeamStatsTab league={league} openTeam={openTeam} />}
       {tab === 'leaders' && <LeagueLeadersTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
