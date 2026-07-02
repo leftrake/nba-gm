@@ -67,7 +67,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     resultsByDay: [],
     phase: fantasy ? 'fantasydraft' : 'regular',
     // regular | cup | play-in | awards | playoffs | fantasydraft | offseason/finals-mvp | offseason/development
-    // | offseason/coaching | offseason/lottery | offseason/draft | offseason/freeagency | offseason/preview
+    // | offseason/coaching | offseason/lottery | offseason/combine | offseason/draft | offseason/freeagency | offseason/preview
     playoffs: null,
     playIn: null,
     cup: initCup(2026),

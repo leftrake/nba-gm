@@ -155,7 +155,7 @@ export default function App() {
   // draft and freeagency are excluded — those have dedicated full screens.
   useEffect(() => {
     if (!league) return;
-    const HUB_PHASES = ['offseason/finals-mvp', 'offseason/development', 'offseason/coaching', 'offseason/lottery', 'offseason/preview'];
+    const HUB_PHASES = ['offseason/finals-mvp', 'offseason/development', 'offseason/coaching', 'offseason/lottery', 'offseason/combine', 'offseason/preview'];
     if (HUB_PHASES.includes(league.phase)) setScreen('dashboard');
   }, [league?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -453,7 +453,7 @@ export default function App() {
   // The Dev Report tab only shows while this offseason's report is fresh
   // (between development and the next season tipping off)
   const hasDevReport = !!league.devReport?.entries?.length
-    && (league.phase === 'offseason/coaching' || league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
+    && (league.phase === 'offseason/coaching' || league.phase === 'offseason/combine' || league.phase === 'offseason/draft' || league.phase === 'offseason/freeagency' || league.phase === 'offseason/preview');
 
   const phaseLabel =
     league.phase === 'regular'                 ? `Day ${league.dayIndex + 1} / ${league.schedule.length}`
@@ -465,6 +465,7 @@ export default function App() {
     : league.phase === 'offseason/development' ? 'Development'
     : league.phase === 'offseason/coaching'    ? 'Coaching'
     : league.phase === 'offseason/lottery'     ? 'Draft Lottery'
+    : league.phase === 'offseason/combine'     ? 'Pre-Draft Combine'
     : league.phase === 'offseason/draft'       ? 'Draft'
     : league.phase === 'fantasydraft'          ? 'Fantasy Draft'
     : league.phase === 'offseason/freeagency'  ? 'Free Agency'

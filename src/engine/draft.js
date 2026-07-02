@@ -277,6 +277,105 @@ export function simDraftToUser(league) {
   while (simDraftPick(league)) {}
 }
 
+// ---- Pre-Draft Combine Engine ----
+// Runs during offseason/combine — the phase between lottery and draft.
+// Generates measurables, archetypes, mock-draft consensus, and private workout slots.
+
+export const COMBINE_WORKOUT_SLOTS_BASE = 8; // private workout invitations per team
+export const COMBINE_WORKOUT_POINTS = 50;    // fog reduction per workout (between game-watch 25 and full workout 75)
+
+// Height baselines by position in inches (NBA realistic)
+const POS_HEIGHT_BASE = { PG: 75, SG: 77, SF: 79, PF: 81, C: 83 };
+
+// Returns stable, seeded combine measurables for a prospect.
+// Seeded so values don't change between reloads within a season.
+export function getCombineMeasurables(p, seed) {
+  const rng = makeRng(seed ^ (Math.abs(p.id) * 1_234_567 + 99_991));
+  const posBase = POS_HEIGHT_BASE[p.pos] ?? 79;
+  const heightIn = Math.round(clamp(posBase + gauss(0, 1.5, rng), posBase - 3, posBase + 4));
+  // Wingspan: longer wingspan correlates with defensive tools
+  const defAvg = (((p.ratings?.perimeterDefense ?? 50) + (p.ratings?.interiorDefense ?? 50)) / 2);
+  const wingBonus = Math.round(clamp((defAvg - 50) / 10 + gauss(1.5, 1.2, rng), -1, 7));
+  const wingspanIn = heightIn + wingBonus;
+  // Vertical: driven by speed rating (27–43" realistic range)
+  const vertBase = 27 + ((p.ratings?.speed ?? 50) / 100) * 16;
+  const verticalIn = Math.round(clamp(vertBase + gauss(0, 2, rng), 24, 45));
+  // Bench press reps: driven by strength
+  const strengthReps = Math.round(clamp(5 + ((p.ratings?.strength ?? 50) / 100) * 14 + gauss(0, 1.5, rng), 4, 21));
+  // Composite 0–100 for riser/faller classification
+  const athleticComposite = Math.round(
+    ((verticalIn - 24) / 21) * 50 +
+    ((p.ratings?.speed ?? 50) / 100) * 30 +
+    ((strengthReps - 4) / 17) * 20
+  );
+  return { heightIn, wingspanIn, verticalIn, strengthReps, athleticComposite };
+}
+
+// Returns a short archetype label based on a prospect's dominant skill mix.
+export function getDraftArchetype(p) {
+  const r = p.ratings ?? {};
+  const isShooter  = (r.threePoint ?? 0) >= 72;
+  const isMaker    = (r.passing ?? 0) >= 72 || (r.ballHandling ?? 0) >= 72;
+  const isPerimDef = (r.perimeterDefense ?? 0) >= 70;
+  const isRimProt  = (r.block ?? 0) >= 72 && (r.interiorDefense ?? 0) >= 70;
+  const isStretch  = (r.threePoint ?? 0) >= 66 && ['PF', 'C'].includes(p.pos);
+  const isAthlete  = (r.speed ?? 0) >= 76;
+  const isSlasher  = (r.closeShot ?? 0) >= 72 && (r.speed ?? 0) >= 68;
+
+  if (p.pos === 'PG') {
+    if (isMaker && isShooter)    return 'Scoring Playmaker';
+    if (isMaker && isAthlete)    return 'Dynamic Playmaker';
+    if (isMaker)                 return 'Primary Playmaker';
+    if (isShooter && isPerimDef) return '3-and-D Guard';
+    if (isShooter)               return 'Spot-Up Threat';
+    if (isPerimDef)              return 'Defensive Guard';
+    return 'Traditional Guard';
+  }
+  if (p.pos === 'SG') {
+    if (isShooter && isPerimDef) return '3-and-D Wing';
+    if (isShooter && isSlasher)  return 'Two-Way Scorer';
+    if (isShooter)               return 'Shooting Guard';
+    if (isPerimDef && isAthlete) return 'Athletic Defender';
+    if (isSlasher)               return 'Athletic Slasher';
+    return 'Combo Guard';
+  }
+  if (p.pos === 'SF') {
+    if (isShooter && isPerimDef) return '3-and-D Wing';
+    if (isStretch && isPerimDef) return 'Stretch Wing';
+    if (isShooter)               return 'Stretch Forward';
+    if (isAthlete && isSlasher)  return 'Athletic Wing';
+    if (isPerimDef)              return 'Defensive Forward';
+    return 'Small Forward';
+  }
+  if (p.pos === 'PF') {
+    if (isStretch && isRimProt) return 'Versatile Big';
+    if (isStretch)              return 'Stretch Four';
+    if (isRimProt)              return 'Rim-Running Big';
+    if (isAthlete)              return 'Athletic Power Forward';
+    return 'Power Forward';
+  }
+  if (p.pos === 'C') {
+    if (isRimProt && isStretch) return 'Two-Way Center';
+    if (isRimProt)              return 'Rim Protector';
+    if (isStretch)              return 'Stretch Center';
+    if (isMaker)                return 'Passing Big';
+    return 'Interior Anchor';
+  }
+  return 'Prospect';
+}
+
+// Returns prospect IDs in consensus mock-draft order (best pick first).
+// Uses a blend of true OVR + potential with seeded noise for variation.
+export function computeMockDraftBoard(prospects, seed, season) {
+  const rng = makeRng(seed + season * 31_337 + 88_001);
+  const scored = prospects.map((p) => ({
+    id: p.id,
+    score: overall(p) * 0.55 + p.potential * 0.45 + gauss(0, 2.5, rng),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((x) => x.id);
+}
+
 // Undrafted prospects join the free-agent pool; free agency opens.
 export function finishDraft(league) {
   const d = league.draft;

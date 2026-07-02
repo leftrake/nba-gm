@@ -1,7 +1,8 @@
 import React from 'react';
 import { getTeam, advanceOffseason, simFreeAgencyDay, startNewSeason } from '../engine/league.js';
 import { overall } from '../engine/players.js';
-import { onTheClock, simDraftToUser, simDraftPick, simDraftRound, finishDraft } from '../engine/draft.js';
+import { onTheClock, simDraftToUser, simDraftPick, simDraftRound, finishDraft, COMBINE_WORKOUT_SLOTS_BASE } from '../engine/draft.js';
+import { initCombinePhase } from '../engine/scoutingTrips.js';
 import { bumpTurmoil } from '../engine/morale.js';
 import { pushNews } from '../engine/save.js';
 import { TeamLink } from './TeamDisplay.jsx';
@@ -10,16 +11,18 @@ import FinalsMVP from './FinalsMVP.jsx';
 import DevelopmentReport from './DevelopmentReport.jsx';
 import CoachingDecisions from './CoachingDecisions.jsx';
 import DraftLottery from './DraftLottery.jsx';
+import DraftCombine from './DraftCombine.jsx';
 import SeasonPreview from './SeasonPreview.jsx';
 
 const STEPS = [
-  { phase: 'offseason/finals-mvp',  label: 'Championship',   icon: '🏆', desc: 'Champion crowned & Finals MVP revealed' },
-  { phase: 'offseason/development', label: 'Development',    icon: '📈', desc: 'Player development over the summer' },
-  { phase: 'offseason/coaching',    label: 'Coaching',       icon: '📋', desc: 'Head coaching decisions' },
-  { phase: 'offseason/lottery',     label: 'Draft Lottery',  icon: '🎰', desc: 'Draft order revealed' },
-  { phase: 'offseason/draft',       label: 'Draft',          icon: '🎓', desc: 'Select next-generation talent' },
-  { phase: 'offseason/freeagency',  label: 'Free Agency',    icon: '✍️', desc: 'Sign and shape the roster' },
-  { phase: 'offseason/preview',     label: 'Season Preview', icon: '🏀', desc: 'Ready for tip-off' },
+  { phase: 'offseason/finals-mvp',  label: 'Championship',      icon: '🏆', desc: 'Champion crowned & Finals MVP revealed' },
+  { phase: 'offseason/development', label: 'Development',       icon: '📈', desc: 'Player development over the summer' },
+  { phase: 'offseason/coaching',    label: 'Coaching',          icon: '📋', desc: 'Head coaching decisions' },
+  { phase: 'offseason/lottery',     label: 'Draft Lottery',     icon: '🎰', desc: 'Draft order revealed' },
+  { phase: 'offseason/combine',     label: 'Pre-Draft Combine', icon: '🏋', desc: 'Evaluate prospects, run private workouts' },
+  { phase: 'offseason/draft',       label: 'Draft',             icon: '🎓', desc: 'Select next-generation talent' },
+  { phase: 'offseason/freeagency',  label: 'Free Agency',       icon: '✍️', desc: 'Sign and shape the roster' },
+  { phase: 'offseason/preview',     label: 'Season Preview',    icon: '🏀', desc: 'Ready for tip-off' },
 ];
 
 function stepStatusOf(currentPhase, stepPhase) {
@@ -88,6 +91,17 @@ function LotterySummary({ league }) {
   const userPick = draft.order ? draft.order.findIndex((id) => id === league.userTeamId) + 1 : 0;
   if (!userPick) return <span style={{ color: 'var(--muted)', fontSize: 12 }}>No round-1 pick</span>;
   return <strong>Pick #{userPick}</strong>;
+}
+
+function CombineSummary({ league }) {
+  const c = league.combine;
+  if (!c) return <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>;
+  const done = c.workoutsDone?.length ?? 0;
+  return (
+    <span style={{ fontSize: 12 }}>
+      {done} workout{done !== 1 ? 's' : ''} · {c.risers?.length ?? 0} risers · {c.fallers?.length ?? 0} fallers
+    </span>
+  );
 }
 
 function DraftSummary({ league, openPlayer }) {
@@ -271,6 +285,12 @@ export default function OffseasonHub({ league, commit, openPlayer, openTeam, set
   };
 
   const handleLotteryContinue = () => {
+    initCombinePhase(league);
+    league.phase = 'offseason/combine';
+    commit();
+  };
+
+  const handleCombineContinue = () => {
     league.phase = 'offseason/draft';
     commit();
     setScreen('draft');
@@ -317,6 +337,7 @@ export default function OffseasonHub({ league, commit, openPlayer, openTeam, set
                 {step.phase === 'offseason/development' && <DevelopmentSummary league={league} />}
                 {step.phase === 'offseason/coaching'    && <CoachingSummary league={league} />}
                 {step.phase === 'offseason/lottery'     && <LotterySummary league={league} />}
+                {step.phase === 'offseason/combine'     && <CombineSummary league={league} />}
                 {step.phase === 'offseason/draft'       && <DraftSummary league={league} openPlayer={openPlayer} />}
                 {step.phase === 'offseason/freeagency'  && <FreeAgencySummary league={league} />}
               </div>
@@ -364,6 +385,13 @@ export default function OffseasonHub({ league, commit, openPlayer, openTeam, set
                 openTeam={openTeam}
                 onContinue={handleLotteryContinue}
                 embedded
+              />
+            )}
+            {league.phase === 'offseason/combine' && (
+              <DraftCombine
+                league={league}
+                commit={commit}
+                onContinue={handleCombineContinue}
               />
             )}
             {league.phase === 'offseason/draft' && (

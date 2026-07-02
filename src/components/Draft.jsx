@@ -47,6 +47,10 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
     (a, b) => boardValue(b, league.season, userId, league.settings) - boardValue(a, league.season, userId, league.settings)
   );
 
+  // Consensus mock draft order from the pre-draft combine (may be null for old saves)
+  const mockOrder = league.combine?.season === league.season ? (league.combine?.mockDraft ?? []) : [];
+  const mockRankByPid = Object.fromEntries(mockOrder.map((id, i) => [id, i + 1]));
+
   const draft = (p) => {
     makeDraftPick(league, p.id);
     commit();
@@ -86,18 +90,36 @@ export default function Draft({ league, commit, openPlayer, openTeam }) {
                   <tr>
                     <th className="num">#</th>
                     {hasAnalyst && <th className="num" title="Big Board Analyst rank — weighted by positional need">Analyst</th>}
+                    {mockOrder.length > 0 && <th className="num" title="Consensus mock draft rank from the pre-draft combine">Mock</th>}
                     <th>Ovr</th><th>Pot</th><th>Player</th><th>Pos</th><th className="num">Age</th><th>From</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {board.map((p, i) => {
                     const analystRank = analystRanks.indexOf(p.id);
+                    const mockRank = mockRankByPid[p.id];
+                    const boardPos = i + 1;
+                    // Positive diff = your board is lower than mock = value pick
+                    // Negative diff = your board is higher than mock = potential reach
+                    const mockDiff = mockRank ? boardPos - mockRank : null;
                     return (
                       <tr key={p.id}>
                         <td className="num">{i + 1}</td>
                         {hasAnalyst && (
                           <td className="num" style={{ color: analystRank >= 0 ? 'var(--color-warning)' : 'var(--text-muted)' }}>
                             {analystRank >= 0 ? `#${analystRank + 1}` : '–'}
+                          </td>
+                        )}
+                        {mockOrder.length > 0 && (
+                          <td className="num">
+                            {mockRank ? (
+                              <span
+                                style={{ color: mockDiff > 3 ? 'var(--color-success)' : mockDiff < -3 ? 'var(--color-warning)' : 'var(--text-muted)' }}
+                                title={mockDiff > 3 ? 'Value — consensus has this prospect ranked higher' : mockDiff < -3 ? 'Reach — consensus has this prospect ranked lower' : 'Near consensus'}
+                              >
+                                #{mockRank}
+                              </span>
+                            ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                           </td>
                         )}
                         <td><Ovr p={p} league={league} fogged /></td>

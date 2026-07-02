@@ -1,6 +1,6 @@
 import { randInt, clamp, makeRng } from './rng.js';
 import { overall, getNextPlayerId, resetPlayerIds } from './players.js';
-import { generateDraftClass } from './draft.js';
+import { generateDraftClass, getCombineMeasurables, getDraftArchetype, computeMockDraftBoard, COMBINE_WORKOUT_SLOTS_BASE, COMBINE_WORKOUT_POINTS } from './draft.js';
 import { scoutedOverallRange, scoutedOverall, scoutedPotential, potentialGrade, scoutUncertainty, getDraftPoints } from './scouting.js';
 import { regionFor, SCOUT_REGIONS, personalityNote, scoutBackstoryNote } from './backstory.js';
 
@@ -784,4 +784,123 @@ export function aiScoutTurn(league, team, rng) {
     }
     break;
   }
+}
+
+// ---- Pre-Draft Combine Phase ----
+// Called when the user enters offseason/combine (after the lottery).
+// By this point, initDraft has already moved all prospects from
+// league.scouting.prospects into league.draft.prospects, so we read from there.
+
+export function initCombinePhase(league) {
+  if (league.combine?.season === league.season) return; // idempotent
+  const prospects = league.draft?.prospects ?? [];
+  const seed = league.seed + league.season * 99_991;
+
+  const measurables = {};
+  const archetypes = {};
+  for (const p of prospects) {
+    measurables[p.id] = getCombineMeasurables(p, seed);
+    archetypes[p.id] = getDraftArchetype(p);
+  }
+
+  const mockDraft = computeMockDraftBoard(prospects, league.seed, league.season);
+
+  // Risers = prospects whose athleticism outpaces their board rank;
+  // fallers = the reverse. A 22-percentile delta is the threshold.
+  const n = Math.max(prospects.length, 1);
+  const mockRankByPid = Object.fromEntries(mockDraft.map((id, i) => [id, i]));
+  const byAth = [...prospects].sort(
+    (a, b) => (measurables[b.id]?.athleticComposite ?? 50) - (measurables[a.id]?.athleticComposite ?? 50)
+  );
+  const athRankByPid = Object.fromEntries(byAth.map((p, i) => [p.id, i]));
+
+  const risers = [];
+  const fallers = [];
+  for (const p of prospects) {
+    const boardPct = (mockRankByPid[p.id] ?? n) / n; // 0=top pick
+    const athPct   = (athRankByPid[p.id] ?? n) / n;  // 0=most athletic
+    const delta    = boardPct - athPct; // positive → athlete exceeds board rank
+    if (delta > 0.22) risers.push(p.id);
+    else if (delta < -0.22) fallers.push(p.id);
+  }
+
+  // Big Board Analyst gives 2 extra workout slots
+  const scouts = league.scouting?.scouts?.[league.userTeamId] ?? [];
+  const hasBigBoard = scouts.some((sc) => sc.type === 'bigBoard');
+
+  league.combine = {
+    season: league.season,
+    measurables,
+    archetypes,
+    mockDraft,
+    risers,
+    fallers,
+    workoutSlots: COMBINE_WORKOUT_SLOTS_BASE + (hasBigBoard ? 2 : 0),
+    workoutsDone: [],
+  };
+
+  // AI teams quietly gain a scouting boost from the public combine events
+  const rng = makeRng(league.seed + league.season * 77_777);
+  for (const team of league.teams) {
+    if (team.id !== league.userTeamId) _aiCombineBoost(league, team.id, rng);
+  }
+}
+
+function _aiCombineBoost(league, teamId, rng) {
+  const prospects = league.draft?.prospects ?? [];
+  const disc = prospects.filter((p) => isDiscovered(p, teamId, league));
+  const sorted = [...disc].sort(
+    (a, b) => scoutedOverall(b, league.season, teamId) - scoutedOverall(a, league.season, teamId)
+  );
+  for (let i = 0; i < Math.min(20, sorted.length); i++) {
+    addDraftPoints(sorted[i], teamId, i < 10 ? 25 : 15);
+  }
+}
+
+// Invite a prospect to a private pre-draft workout at the user's facility.
+// Yields more fog reduction than a public game watch and uses a limited slot.
+export function runCombineWorkout(league, teamId, prospectId) {
+  const c = league.combine;
+  const s = league.scouting;
+  if (!c || c.season !== league.season) return { ok: false, error: 'Combine is not active.' };
+  if (c.workoutSlots <= 0) return { ok: false, error: 'No workout slots remaining.' };
+  if (c.workoutsDone.includes(prospectId)) return { ok: false, error: 'Already worked this prospect out.' };
+
+  // Prospects live in league.draft.prospects after initDraft has run
+  const p = (league.draft?.prospects ?? []).find((x) => x.id === prospectId)
+          ?? (s?.prospects ?? []).find((x) => x.id === prospectId);
+  if (!p) return { ok: false, error: 'Prospect not found.' };
+  if (!isDiscovered(p, teamId, league))
+    return { ok: false, error: 'Discover this prospect first before inviting for a workout.' };
+
+  addDraftPoints(p, teamId, COMBINE_WORKOUT_POINTS);
+  c.workoutsDone.push(prospectId);
+  c.workoutSlots -= 1;
+
+  // Add to watchlist
+  if (!s.watchlists) s.watchlists = {};
+  if (!s.watchlists[teamId]) s.watchlists[teamId] = [];
+  if (!s.watchlists[teamId].includes(prospectId)) s.watchlists[teamId].push(prospectId);
+
+  // Generate workout report
+  const rng = makeRng(league.seed + league.season * 55_555 + Math.abs(prospectId) * 77);
+  const m = c.measurables?.[prospectId];
+  const pts = getDraftPoints(p, teamId);
+  const [lo, hi] = scoutedOverallRange(p, league.season, teamId);
+  const grade = potentialGrade(scoutedPotential(p, league.season, pts < DRAFT_POINTS_MAX, teamId));
+  const archetype = c.archetypes?.[prospectId] ?? p.pos;
+
+  let physNote = '';
+  if (m) {
+    if (m.athleticComposite >= 75)      physNote = `measured elite athleticism — ${m.verticalIn}" vertical, physically NBA-ready`;
+    else if (m.athleticComposite >= 55) physNote = `tested well physically — ${m.verticalIn}" vertical, ${Math.floor(m.wingspanIn / 12)}'${m.wingspanIn % 12}" wingspan`;
+    else if (m.athleticComposite <= 30) physNote = 'physical testing raised some concerns — will need to get stronger';
+    else                                physNote = `${Math.floor(m.heightIn / 12)}'${m.heightIn % 12}", ${Math.floor(m.wingspanIn / 12)}'${m.wingspanIn % 12}" wingspan, competed hard`;
+  }
+
+  const text = `Pre-draft workout — ${p.name} (${p.pos}, ${archetype}): ${physNote}. Projects ${lo}–${hi} OVR with ${grade} ceiling.`;
+  addReport(league, teamId, text, prospectId);
+  refreshBigBoard(league, teamId);
+
+  return { ok: true, text };
 }
