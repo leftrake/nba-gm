@@ -305,6 +305,229 @@ a.team-link:hover { color: var(--team-color-safe); text-decoration: underline; }
   max-height: 94vh;
 }
 
+/* ── OFFSEASON HUB ─────────────────────────────────────────────────────────── */
+.offseason-hub {
+  padding-bottom: var(--sp-8, 32px);
+}
+
+.offseason-hub-header {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--team-color-safe) 14%, var(--panel)), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.offseason-hub-title {
+  font-family: var(--font-display, 'Oswald', sans-serif);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--team-color-safe);
+}
+
+.offseason-hub-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.offseason-hub-record {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Step Stepper */
+.offseason-stepper {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 4px 0 20px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  scrollbar-width: thin;
+}
+
+.offseason-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.offseason-step-bubble {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  transition: box-shadow 140ms ease;
+  user-select: none;
+}
+
+.offseason-step--complete .offseason-step-bubble {
+  background: var(--green);
+  color: #000;
+  font-size: 15px;
+}
+
+.offseason-step--active .offseason-step-bubble {
+  background: var(--team-color-safe);
+  color: var(--team-color-text, #000);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--team-color-safe) 25%, transparent);
+}
+
+.offseason-step--upcoming .offseason-step-bubble {
+  background: var(--panel2);
+  border: 2px solid var(--border);
+  color: var(--muted);
+  font-size: 14px;
+  opacity: 0.55;
+}
+
+.offseason-step-name {
+  font-size: 10px;
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.offseason-step--complete .offseason-step-name { color: var(--green); }
+.offseason-step--active   .offseason-step-name { color: var(--team-color-safe); }
+.offseason-step--upcoming .offseason-step-name { color: var(--muted); opacity: 0.55; }
+
+.offseason-step-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 16px;
+  margin-top: 19px; /* aligns with center of the 38px bubble */
+  flex-shrink: 1;
+}
+
+.offseason-step-connector--done    { background: var(--green); }
+.offseason-step-connector--partial { background: linear-gradient(to right, var(--green), var(--border)); }
+.offseason-step-connector--pending { background: var(--border); }
+
+/* Completed step summary cards */
+.offseason-completed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.offseason-summary-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.offseason-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.offseason-summary-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.offseason-summary-content {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+/* Active step card */
+.offseason-active-card {
+  background: var(--panel);
+  border: 1px solid var(--team-color-safe);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--team-color-safe) 18%, transparent), 0 4px 16px rgba(0,0,0,0.35);
+}
+
+.offseason-active-header {
+  background: color-mix(in srgb, var(--team-color-safe) 12%, var(--panel));
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--team-color-safe) 22%, var(--border));
+}
+
+.offseason-active-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.offseason-active-title {
+  font-family: var(--font-display, 'Oswald', sans-serif);
+  font-size: 17px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--team-color-safe);
+}
+
+.offseason-active-badge {
+  margin-left: auto;
+  background: var(--team-color-safe);
+  color: var(--team-color-text, #000);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.offseason-active-body {
+  padding: 20px 24px;
+}
+
+/* Upcoming steps row */
+.offseason-upcoming-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.offseason-upcoming-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  opacity: 0.45;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+
 .confetti {
   position: absolute;
   inset: 0;

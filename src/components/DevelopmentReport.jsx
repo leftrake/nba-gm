@@ -24,7 +24,7 @@ function Delta({ d }) {
 // When onContinue is provided this renders as the second offseason phase's
 // full-screen gate; otherwise (the "Dev Report" nav tab, available after the
 // phase has passed) it renders as a plain panel.
-export default function DevelopmentReport({ league, openPlayer, onContinue }) {
+export default function DevelopmentReport({ league, openPlayer, onContinue, embedded }) {
   const report = league.devReport;
   if (!report?.entries?.length) {
     return (
@@ -152,6 +152,17 @@ export default function DevelopmentReport({ league, openPlayer, onContinue }) {
 
   if (!onContinue) {
     return <div className="panel">{content}</div>;
+  }
+
+  if (embedded) {
+    return (
+      <div>
+        {content}
+        <div className="controls" style={{ justifyContent: 'center', marginTop: 16 }}>
+          <button className="btn" onClick={onContinue}>Continue</button>
+        </div>
+      </div>
+    );
   }
 
   return (

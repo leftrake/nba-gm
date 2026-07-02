@@ -105,7 +105,9 @@ function CoachCard({ coach, fit, selected, tag, onSelect }) {
 // user re-signs their current head coach or hires one of two fresh
 // candidates (league.coachCandidates, generated in advanceOffseason).
 // AI teams make this call automatically.
-export default function CoachingDecisions({ league, onContinue }) {
+//
+// embedded=true renders without the modal-overlay wrapper (used by OffseasonHub).
+export default function CoachingDecisions({ league, onContinue, embedded }) {
   const team = getTeam(league, league.userTeamId);
   const current = team.coach;
   const candidates = league.coachCandidates || [];
@@ -124,61 +126,73 @@ export default function CoachingDecisions({ league, onContinue }) {
   const bestStyle = styleFits.reduce((best, curr) => curr.fit > best.fit ? curr : best);
   const bestStyleFitDesc = fitDesc(bestStyle.fit);
 
+  const continueBtn = (
+    <div className="controls" style={{ justifyContent: 'center', marginTop: 'var(--sp-4)' }}>
+      <button
+        className="btn"
+        onClick={() => {
+          const picked = options[choice].coach;
+          onContinue(choice === 0
+            ? { ...picked, seasonsWithTeam: picked.seasonsWithTeam + 1 }
+            : { ...picked, seasonsWithTeam: 0 });
+        }}
+      >
+        {choice === 0 ? `Re-sign ${current.name}` : `Hire ${options[choice].coach.name}`}
+      </button>
+    </div>
+  );
+
+  const content = (
+    <>
+      <h2>Coaching Decisions</h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-3)' }}>
+        Re-sign {current.name} or bring in a new head coach for next season.
+        Scheme fit affects in-game shot selection and pace — but talent dominates.
+      </p>
+
+      {/* Roster profile context */}
+      <div className="panel" style={{ marginBottom: 'var(--sp-4)', background: 'var(--bg-1)' }}>
+        <div style={{ fontWeight: 'var(--weight-bold)', marginBottom: 'var(--sp-1)' }}>Your roster profile</div>
+        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--sp-2)' }}>
+          Best-suited scheme:{' '}
+          <b style={{ color: bestStyleFitDesc.color }}>{STYLE_INFO[bestStyle.style].label}</b>
+          {' '}({bestStyleFitDesc.pct}% fit)
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
+          {styleFits.map(({ style, fit }) => {
+            const fd = fitDesc(fit);
+            return (
+              <div key={style} style={{ fontSize: 'var(--text-sm)' }}>
+                <span style={{ color: 'var(--text-muted)' }}>{STYLE_INFO[style].label}: </span>
+                <b style={{ color: fd.color }}>{fd.pct}%</b>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--sp-3)' }}>
+        {options.map(({ coach, tag }, i) => (
+          <CoachCard
+            key={i}
+            coach={coach}
+            fit={fits[i]}
+            tag={tag}
+            selected={choice === i}
+            onSelect={() => setChoice(i)}
+          />
+        ))}
+      </div>
+      {continueBtn}
+    </>
+  );
+
+  if (embedded) return <div>{content}</div>;
+
   return (
     <div className="modal-overlay">
       <div className="modal-card wide offseason-gate">
-        <h2>Coaching Decisions</h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-3)' }}>
-          Re-sign {current.name} or bring in a new head coach for next season.
-          Scheme fit affects in-game shot selection and pace — but talent dominates.
-        </p>
-
-        {/* Roster profile context */}
-        <div className="panel" style={{ marginBottom: 'var(--sp-4)', background: 'var(--bg-1)' }}>
-          <div style={{ fontWeight: 'var(--weight-bold)', marginBottom: 'var(--sp-1)' }}>Your roster profile</div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 'var(--sp-2)' }}>
-            Best-suited scheme:{' '}
-            <b style={{ color: bestStyleFitDesc.color }}>{STYLE_INFO[bestStyle.style].label}</b>
-            {' '}({bestStyleFitDesc.pct}% fit)
-          </div>
-          <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
-            {styleFits.map(({ style, fit }) => {
-              const fd = fitDesc(fit);
-              return (
-                <div key={style} style={{ fontSize: 'var(--text-sm)' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>{STYLE_INFO[style].label}: </span>
-                  <b style={{ color: fd.color }}>{fd.pct}%</b>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--sp-3)' }}>
-          {options.map(({ coach, tag }, i) => (
-            <CoachCard
-              key={i}
-              coach={coach}
-              fit={fits[i]}
-              tag={tag}
-              selected={choice === i}
-              onSelect={() => setChoice(i)}
-            />
-          ))}
-        </div>
-        <div className="controls" style={{ justifyContent: 'center', marginTop: 'var(--sp-4)' }}>
-          <button
-            className="btn"
-            onClick={() => {
-              const picked = options[choice].coach;
-              onContinue(choice === 0
-                ? { ...picked, seasonsWithTeam: picked.seasonsWithTeam + 1 }
-                : { ...picked, seasonsWithTeam: 0 });
-            }}
-          >
-            {choice === 0 ? `Re-sign ${current.name}` : `Hire ${options[choice].coach.name}`}
-          </button>
-        </div>
+        {content}
       </div>
     </div>
   );

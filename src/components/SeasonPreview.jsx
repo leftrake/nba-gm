@@ -32,15 +32,21 @@ function buildNarrative(league, userTeam) {
 // Final offseason phase: a snapshot of the roster, team, and front office
 // heading into the new season. "Start Season" calls startNewSeason() and
 // transitions league.phase to 'regular'.
-export default function SeasonPreview({ league, openPlayer, onStart }) {
+//
+// embedded=true renders without the modal-overlay wrapper (used by OffseasonHub).
+export default function SeasonPreview({ league, openPlayer, onStart, embedded }) {
   const userTeam = league.teams.find((t) => t.id === league.userTeamId);
   if (!userTeam) {
+    const fallback = (
+      <div>
+        <h2>Season Preview</h2>
+        <div className="controls"><button className="btn" onClick={onStart}>Start Season</button></div>
+      </div>
+    );
+    if (embedded) return fallback;
     return (
       <div className="modal-overlay">
-        <div className="modal-card offseason-gate">
-          <h2>Season Preview</h2>
-          <div className="controls"><button className="btn" onClick={onStart}>Start Season</button></div>
-        </div>
+        <div className="modal-card offseason-gate">{fallback}</div>
       </div>
     );
   }
@@ -56,52 +62,60 @@ export default function SeasonPreview({ league, openPlayer, onStart }) {
   const owner = userTeam.owner;
   const narrative = buildNarrative(league, userTeam);
 
+  const content = (
+    <>
+      <h2>{league.season} Season Preview</h2>
+      <p style={{ color: 'var(--muted)', marginBottom: 16 }}>{narrative}</p>
+
+      <div className="grid2" style={{ marginBottom: 16 }}>
+        <div className="panel">
+          <h3>Projected Standing</h3>
+          <p style={{ fontSize: 28, fontWeight: 600 }}>{seed}{ordinalSuffix(seed)} in the {userTeam.conf}</p>
+          <p style={{ color: 'var(--muted)' }}>Based on current roster strength vs. the rest of the league.</p>
+        </div>
+        <div className="panel">
+          <h3>Front Office</h3>
+          {owner ? (
+            <>
+              <p>{personalitySummary(owner)}</p>
+              <p>{ownerStance(owner)} · Seat status: <strong>{seatStatus(owner)}</strong></p>
+            </>
+          ) : <p style={{ color: 'var(--muted)' }}>No owner profile.</p>}
+          <p>Scouting budget for the year: <strong>{money(scoutingBudget(userTeam))}</strong></p>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h3>Projected Roster</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead><tr><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Overall</th></tr></thead>
+            <tbody>
+              {roster.map(({ p, ovr }) => (
+                <tr key={p.id}>
+                  <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                  <td>{p.pos}</td>
+                  <td className="num">{p.age}</td>
+                  <td className="num">{ovr}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="controls" style={{ justifyContent: 'center', marginTop: 16 }}>
+        <button className="btn" onClick={onStart}>Start Season</button>
+      </div>
+    </>
+  );
+
+  if (embedded) return <div>{content}</div>;
+
   return (
     <div className="modal-overlay">
       <div className="modal-card wide offseason-gate">
-        <h2>{league.season} Season Preview</h2>
-        <p style={{ color: 'var(--muted)', marginBottom: 16 }}>{narrative}</p>
-
-        <div className="grid2" style={{ marginBottom: 16 }}>
-          <div className="panel">
-            <h3>Projected Standing</h3>
-            <p style={{ fontSize: 28, fontWeight: 600 }}>{seed}{ordinalSuffix(seed)} in the {userTeam.conf}</p>
-            <p style={{ color: 'var(--muted)' }}>Based on current roster strength vs. the rest of the league.</p>
-          </div>
-          <div className="panel">
-            <h3>Front Office</h3>
-            {owner ? (
-              <>
-                <p>{personalitySummary(owner)}</p>
-                <p>{ownerStance(owner)} · Seat status: <strong>{seatStatus(owner)}</strong></p>
-              </>
-            ) : <p style={{ color: 'var(--muted)' }}>No owner profile.</p>}
-            <p>Scouting budget for the year: <strong>{money(scoutingBudget(userTeam))}</strong></p>
-          </div>
-        </div>
-
-        <div className="panel">
-          <h3>Projected Roster</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table>
-              <thead><tr><th>Player</th><th>Pos</th><th className="num">Age</th><th className="num">Overall</th></tr></thead>
-              <tbody>
-                {roster.map(({ p, ovr }) => (
-                  <tr key={p.id}>
-                    <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
-                    <td>{p.pos}</td>
-                    <td className="num">{p.age}</td>
-                    <td className="num">{ovr}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="controls" style={{ justifyContent: 'center', marginTop: 16 }}>
-          <button className="btn" onClick={onStart}>Start Season</button>
-        </div>
+        {content}
       </div>
     </div>
   );

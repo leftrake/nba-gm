@@ -10,7 +10,9 @@ const REVEAL_DELAY_MS = 1400;
 // by initDraft inside advanceOffseason, including the weighted lottery for
 // picks 1-4. This screen just reveals that order dramatically — envelope
 // style, pick 4 down to pick 1 — then shows the rest of round 1 instantly.
-export default function DraftLottery({ league, openTeam, onContinue }) {
+//
+// embedded=true renders without the modal-overlay wrapper (used by OffseasonHub).
+export default function DraftLottery({ league, openTeam, onContinue, embedded }) {
   const draft = league.draft;
   const order = draft?.order?.slice(0, 30) ?? [];
   const [revealed, setRevealed] = useState(0); // how many of picks 4..1 are shown
@@ -22,13 +24,17 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
   }, [revealed]);
 
   if (!draft || order.length < 30) {
+    const fallback = (
+      <div>
+        <h2>Draft Lottery</h2>
+        <p style={{ color: 'var(--muted)' }}>No draft order available yet.</p>
+        <div className="controls"><button className="btn" onClick={onContinue}>Continue</button></div>
+      </div>
+    );
+    if (embedded) return fallback;
     return (
       <div className="modal-overlay">
-        <div className="modal-card offseason-gate">
-          <h2>Draft Lottery</h2>
-          <p style={{ color: 'var(--muted)' }}>No draft order available yet.</p>
-          <div className="controls"><button className="btn" onClick={onContinue}>Continue</button></div>
-        </div>
+        <div className="modal-card offseason-gate">{fallback}</div>
       </div>
     );
   }
@@ -49,98 +55,106 @@ export default function DraftLottery({ league, openTeam, onContinue }) {
     return idx !== -1 ? order[idx] : originalTeamId;
   };
 
+  const content = (
+    <>
+      <h2>Draft Lottery — {draft.season}</h2>
+      <p style={{ color: 'var(--muted)', marginBottom: 12 }}>
+        The 14 lottery teams, weighted by record.{' '}
+        {userInLottery && <strong style={{ color: 'var(--team-color-safe)' }}>You're in the lottery this year.</strong>}
+      </p>
+
+      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+        <table>
+          <thead><tr><th>Team</th><th className="num">Record</th><th className="num">Odds</th><th>Pick</th></tr></thead>
+          <tbody>
+            {lotteryTeams.map((t, i) => {
+              const ownerId = round1OwnerOf(t.id);
+              const pickOwner = ownerId !== t.id ? getTeam(league, ownerId) : null;
+              return (
+                <tr key={t.id} style={t.id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
+                  <td><TeamLink team={t} openTeam={openTeam} /></td>
+                  <td className="num">{t.lastWins ?? '–'}-{t.lastWins != null ? 82 - t.lastWins : '–'}</td>
+                  <td className="num">{(LOTTERY_WEIGHTS[i] / 10).toFixed(1)}%</td>
+                  <td style={{ color: pickOwner ? 'var(--accent)' : 'var(--muted)', fontSize: 13 }}>
+                    {pickOwner ? <>→ <TeamLink team={pickOwner} openTeam={openTeam} /></> : 'Own'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style={{ marginBottom: 8 }}>The Envelopes</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+        {[3, 2, 1, 0].map((slotIdx, i) => {
+          const pickNo = slotIdx + 1;
+          const teamId = envelopes[slotIdx];
+          const isRevealed = revealed > i;
+          const team = teamId ? getTeam(league, teamId) : null;
+          const isUser = teamId === league.userTeamId;
+          const originalTeamId = originalOrder[slotIdx];
+          const viaTeam = isRevealed && originalTeamId !== teamId ? getTeam(league, originalTeamId) : null;
+          return (
+            <div
+              key={pickNo}
+              className="panel"
+              style={{ textAlign: 'center', padding: 16, ...(isUser && isRevealed ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)' } : {}) }}
+            >
+              <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Pick #{pickNo}</div>
+              {isRevealed && team ? (
+                <div style={{ fontWeight: 600 }}>
+                  <TeamLink team={team} openTeam={openTeam}>{team.city} {team.name}</TeamLink>
+                  {viaTeam && <div style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>via <TeamLink team={viaTeam} openTeam={openTeam} /></div>}
+                </div>
+              ) : (
+                <div style={{ fontSize: 28 }}>✉️</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {allRevealed && (
+        <>
+          <h3 style={{ marginBottom: 8 }}>Picks 5–30</h3>
+          <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+            <table>
+              <thead><tr><th className="num">Pick</th><th>Team</th></tr></thead>
+              <tbody>
+                {rest.map((id, i) => {
+                  const t = getTeam(league, id);
+                  const originalId = originalOrder[i + 4];
+                  const origTeam = originalId !== id ? getTeam(league, originalId) : null;
+                  return (
+                    <tr key={i} style={id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
+                      <td className="num">{i + 5}</td>
+                      <td>
+                        <TeamLink team={t} openTeam={openTeam} />
+                        {origTeam && <span style={{ color: 'var(--muted)', fontSize: 12 }}> via <TeamLink team={origTeam} openTeam={openTeam} /></span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <div className="controls" style={{ justifyContent: 'center' }}>
+        {!allRevealed && <button className="btn secondary" onClick={() => setRevealed(4)}>Skip Animation</button>}
+        <button className="btn" onClick={onContinue} disabled={!allRevealed}>Continue to Draft</button>
+      </div>
+    </>
+  );
+
+  if (embedded) return <div>{content}</div>;
+
   return (
     <div className="modal-overlay">
       <div className="modal-card wide offseason-gate">
-        <h2>Draft Lottery — {draft.season}</h2>
-        <p style={{ color: 'var(--muted)', marginBottom: 12 }}>
-          The 14 lottery teams, weighted by record.{' '}
-          {userInLottery && <strong style={{ color: 'var(--team-color-safe)' }}>You're in the lottery this year.</strong>}
-        </p>
-
-        <div style={{ overflowX: 'auto', marginBottom: 16 }}>
-          <table>
-            <thead><tr><th>Team</th><th className="num">Record</th><th className="num">Odds</th><th>Pick</th></tr></thead>
-            <tbody>
-              {lotteryTeams.map((t, i) => {
-                const ownerId = round1OwnerOf(t.id);
-                const pickOwner = ownerId !== t.id ? getTeam(league, ownerId) : null;
-                return (
-                  <tr key={t.id} style={t.id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
-                    <td><TeamLink team={t} openTeam={openTeam} /></td>
-                    <td className="num">{t.lastWins ?? '–'}-{t.lastWins != null ? 82 - t.lastWins : '–'}</td>
-                    <td className="num">{(LOTTERY_WEIGHTS[i] / 10).toFixed(1)}%</td>
-                    <td style={{ color: pickOwner ? 'var(--accent)' : 'var(--muted)', fontSize: 13 }}>
-                      {pickOwner ? <>→ <TeamLink team={pickOwner} openTeam={openTeam} /></> : 'Own'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <h3 style={{ marginBottom: 8 }}>The Envelopes</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-          {[3, 2, 1, 0].map((slotIdx, i) => {
-            const pickNo = slotIdx + 1;
-            const teamId = envelopes[slotIdx];
-            const isRevealed = revealed > i;
-            const team = teamId ? getTeam(league, teamId) : null;
-            const isUser = teamId === league.userTeamId;
-            const originalTeamId = originalOrder[slotIdx];
-            const viaTeam = isRevealed && originalTeamId !== teamId ? getTeam(league, originalTeamId) : null;
-            return (
-              <div
-                key={pickNo}
-                className="panel"
-                style={{ textAlign: 'center', padding: 16, ...(isUser && isRevealed ? { boxShadow: 'inset 0 0 0 2px var(--team-color-safe)' } : {}) }}
-              >
-                <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Pick #{pickNo}</div>
-                {isRevealed && team ? (
-                  <div style={{ fontWeight: 600 }}>
-                    <TeamLink team={team} openTeam={openTeam}>{team.city} {team.name}</TeamLink>
-                    {viaTeam && <div style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>via <TeamLink team={viaTeam} openTeam={openTeam} /></div>}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 28 }}>✉️</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {allRevealed && (
-          <>
-            <h3 style={{ marginBottom: 8 }}>Picks 5–30</h3>
-            <div style={{ overflowX: 'auto', marginBottom: 16 }}>
-              <table>
-                <thead><tr><th className="num">Pick</th><th>Team</th></tr></thead>
-                <tbody>
-                  {rest.map((id, i) => {
-                    const t = getTeam(league, id);
-                    const originalId = originalOrder[i + 4];
-                    const origTeam = originalId !== id ? getTeam(league, originalId) : null;
-                    return (
-                      <tr key={i} style={id === league.userTeamId ? { boxShadow: 'inset 3px 0 0 var(--team-color-safe)', background: 'var(--panel2)' } : undefined}>
-                        <td className="num">{i + 5}</td>
-                        <td>
-                          <TeamLink team={t} openTeam={openTeam} />
-                          {origTeam && <span style={{ color: 'var(--muted)', fontSize: 12 }}> via <TeamLink team={origTeam} openTeam={openTeam} /></span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        <div className="controls" style={{ justifyContent: 'center' }}>
-          {!allRevealed && <button className="btn secondary" onClick={() => setRevealed(4)}>Skip Animation</button>}
-          <button className="btn" onClick={onContinue} disabled={!allRevealed}>Continue to Draft</button>
-        </div>
+        {content}
       </div>
     </div>
   );

@@ -29,6 +29,7 @@ import AwardCeremony from './components/AwardCeremony.jsx';
 import FinalsMVP from './components/FinalsMVP.jsx';
 import DraftLottery from './components/DraftLottery.jsx';
 import SeasonPreview from './components/SeasonPreview.jsx';
+import OffseasonHub from './components/OffseasonHub.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
 import Settings from './components/Settings.jsx';
 import StyleGuide from './components/StyleGuide.jsx';
@@ -149,6 +150,14 @@ export default function App() {
       return next;
     });
   }, []);
+
+  // Auto-navigate to the offseason hub when entering any hub-managed phase.
+  // draft and freeagency are excluded — those have dedicated full screens.
+  useEffect(() => {
+    if (!league) return;
+    const HUB_PHASES = ['offseason/finals-mvp', 'offseason/development', 'offseason/coaching', 'offseason/lottery', 'offseason/preview'];
+    if (HUB_PHASES.includes(league.phase)) setScreen('dashboard');
+  }, [league?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (league) {
@@ -579,7 +588,7 @@ export default function App() {
             <button className="btn secondary" onClick={handleSimPlayoffRound}>Sim Playoff Round</button>
           </div>
         )}
-        {league.phase === 'offseason/draft' && (
+        {league.phase === 'offseason/draft' && screen !== 'dashboard' && (
           <div className="controls">
             {!onTheClock(league) ? (
               <button className="btn" onClick={() => { finishDraft(league); commit(); setScreen('freeagency'); }}>
@@ -634,7 +643,7 @@ export default function App() {
             )}
           </div>
         )}
-        {league.phase === 'offseason/freeagency' && (
+        {league.phase === 'offseason/freeagency' && screen !== 'dashboard' && (
           <div className="controls">
             <button className="btn" onClick={() => { simFreeAgencyDay(league); commit(); }}>
               {league.faDaysLeft > 1 ? `Next FA Round (${league.faDaysLeft} left)` : 'Finish Free Agency'}
@@ -643,7 +652,15 @@ export default function App() {
         )}
 
         <div className="page-fade" key={screen}>
-        {screen === 'dashboard' && (
+        {screen === 'dashboard' && (league.phase.startsWith('offseason/') ? (
+          <OffseasonHub
+            league={league}
+            commit={commit}
+            openPlayer={openPlayer}
+            openTeam={openTeam}
+            setScreen={setScreen}
+          />
+        ) : (
           <Dashboard
             league={league}
             leagueRef={leagueRef}
@@ -659,7 +676,7 @@ export default function App() {
             trackFeatured={trackFeatured}
             setLastResults={setLastResults}
           />
-        )}
+        ))}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
         {screen === 'roster' && <Roster league={league} commit={commit} teamId={rosterTeamId ?? league.userTeamId} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} />}
         {screen === 'futurecap' && <FuturePayroll league={league} commit={commit} openPlayer={openPlayer} onTradeFor={proposeTradeFor} setScreen={setScreen} />}
@@ -724,54 +741,7 @@ export default function App() {
             onContinue={() => { league.phase = 'play-in'; commit(); setScreen('playin'); }}
           />
         )}
-        {league.phase === 'offseason/finals-mvp' && (
-          <FinalsMVP
-            league={league}
-            openPlayer={openPlayer}
-            openTeam={openTeam}
-            onContinue={() => { advanceOffseason(league); commit(); }}
-          />
-        )}
-        {league.phase === 'offseason/development' && (
-          <DevelopmentReport
-            league={league}
-            openPlayer={openPlayer}
-            onContinue={() => { league.phase = 'offseason/coaching'; commit(); }}
-          />
-        )}
-        {league.phase === 'offseason/coaching' && (
-          <CoachingDecisions
-            league={league}
-            onContinue={(coach) => {
-              const team = getTeam(league, league.userTeamId);
-              if (team.coach && coach.name !== team.coach.name) {
-                bumpTurmoil(team, 2);
-                pushNews(league, {
-                  day: league.dayIndex, season: league.season, phase: league.phase,
-                  category: 'coaching', teamIds: [team.id],
-                  text: `${team.city} ${team.name} part ways with coach ${team.coach.name} and hire ${coach.name} as the new head coach.`,
-                });
-              }
-              team.coach = coach;
-              league.phase = 'offseason/lottery';
-              commit();
-            }}
-          />
-        )}
-        {league.phase === 'offseason/lottery' && (
-          <DraftLottery
-            league={league}
-            openTeam={openTeam}
-            onContinue={() => { league.phase = 'offseason/draft'; commit(); setScreen('draft'); }}
-          />
-        )}
-        {league.phase === 'offseason/preview' && (
-          <SeasonPreview
-            league={league}
-            openPlayer={openPlayer}
-            onStart={() => { startNewSeason(league); commit(); setScreen('dashboard'); }}
-          />
-        )}
+        {/* offseason/* phases are handled by OffseasonHub (rendered via the dashboard screen) */}
       </main>
       </div>
       {showWalkthrough && <Walkthrough league={league} onDone={() => setShowWalkthrough(false)} />}
