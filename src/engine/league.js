@@ -1,4 +1,4 @@
-import { TEAMS, SALARY_CAP, LUXURY_TAX, FIRST_APRON, APRON, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, TAXPAYER_MLE, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
+import { TEAMS, SALARY_CAP, LUXURY_TAX, FIRST_APRON, APRON, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, TAXPAYER_MLE, BAE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { initCup, updateCupGroupGame, determineCupBracket, simCupGame, cupComplete, CUP_GROUP_DAYS } from './cup.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
@@ -464,6 +464,9 @@ export function backfillPlayers(league) {
     if (team.market == null) team.market = TEAMS.find((t) => t.id === team.id)?.market || 'medium';
     // saves predating dead-money tracking from waived contracts
     if (!team.deadMoney) team.deadMoney = [];
+    // saves predating the Bi-Annual Exception
+    if (team.usedBAE === undefined) team.usedBAE = false;
+    if (team.lastBaeYear === undefined) team.lastBaeYear = null;
     if (!team.tpes) team.tpes = Array.isArray(team.tpe) ? [] : (team.tpe ? [{ amount: team.tpe.amount, season: league.season - 1 }] : []);
     delete team.tpe;
     // saves predating two-way contracts
@@ -1871,17 +1874,22 @@ export function simFreeAgencyDay(league) {
       const ask = askingPrice(target);
       let exception = null;
       // Teams above the first apron can only use the reduced taxpayer MLE
-      const teamMLE = payroll(team) >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
+      const teamPayrollNow = payroll(team);
+      const teamMLE = teamPayrollNow >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
+      const aiBaeAvail = !team.usedBAE && teamPayrollNow < LUXURY_TAX
+        && (team.lastBaeYear == null || team.lastBaeYear < league.season - 1);
       if (ask > room) {
         if (ask <= MIN_SALARY * 1.05) exception = 'minimum';
         else if (capRoom <= 0 && !team.usedMLE && ask <= teamMLE * 1.1) exception = 'mle';
+        else if (capRoom <= 0 && aiBaeAvail && ask <= BAE_AMOUNT * 1.1 && teamPayrollNow + ask <= APRON) exception = 'bae';
         else continue; // out of their price range
       }
       tried++;
-      const years = preferredYears(target);
+      const years = exception === 'bae' ? Math.min(preferredYears(target), 2) : preferredYears(target);
       let demand = offerDemand(league, team.id, target, years);
       if (demand === null) continue; // wants a bigger role than this roster offers
       if (exception === 'mle') demand = Math.min(demand, teamMLE);
+      if (exception === 'bae') demand = Math.min(demand, BAE_AMOUNT);
       if (!exception && demand > ask * stretch) continue; // demanding more than this office will pay
       if (!exception && demand > room) continue;
       if (exception === 'minimum' && demand > MIN_SALARY * 1.05) continue;
@@ -1907,6 +1915,7 @@ export function simFreeAgencyDay(league) {
             text: `URGENT: the ${team.city} ${team.name} sign restricted free agent ${target.name} to an offer sheet (${fmtM(demand)}/yr x ${years}yr). Match it on the Free Agency screen within ${roundsLeft} round${roundsLeft === 1 ? '' : 's'} or lose his rights.`,
           });
           if (exception === 'mle') team.usedMLE = true;
+          if (exception === 'bae') { team.usedBAE = true; team.lastBaeYear = league.season; }
           break;
         }
         const formerTeam = getTeam(league, target.formerTeamId);
@@ -1940,6 +1949,7 @@ export function simFreeAgencyDay(league) {
       }
       signFreeAgent(league, team.id, target.id, demand, years, optOpts);
       if (exception === 'mle') team.usedMLE = true;
+      if (exception === 'bae') { team.usedBAE = true; team.lastBaeYear = league.season; }
       break;
     }
   }
@@ -2000,7 +2010,16 @@ function finalizeFreeAgency(league) {
       salary = capRoom; years = 1;
     } else if (!team.usedMLE && ask <= teamMLE) {
       salary = Math.min(ask, teamMLE); years = preferredYears(p); team.usedMLE = true;
-    } else { salary = MIN_SALARY; years = 1; } // minimum exception: short, cheap deal
+    } else {
+      const faBaeAvail = !team.usedBAE && payroll(team) < LUXURY_TAX
+        && (team.lastBaeYear == null || team.lastBaeYear < league.season - 1);
+      if (faBaeAvail && ask <= BAE_AMOUNT) {
+        salary = Math.min(ask, BAE_AMOUNT); years = Math.min(preferredYears(p), 2);
+        team.usedBAE = true; team.lastBaeYear = league.season;
+      } else {
+        salary = MIN_SALARY; years = 1; // minimum exception: short, cheap deal
+      }
+    }
     signFreeAgent(league, team.id, p.id, salary, years);
   }
 }
@@ -2220,7 +2239,10 @@ export function extensionDemand(league, teamId, p, years) {
 // standing counter, which is always honored. Salary is clamped to the
 // window's rules (rookie max, +/-20% of current for veterans, market rate
 // for final-year), and a lowball offer (<85% of demand) insults the player.
-export function offerExtension(league, teamId, playerId, salary, years) {
+// opts: { playerOption, teamOption } — optional clause on the final year.
+//   A player option reduces demand (-7%); a team option raises it (+10%).
+//   Options are only valid on 2+ year extensions.
+export function offerExtension(league, teamId, playerId, salary, years, opts = {}) {
   if (league.phase !== 'regular') return { ok: false, error: 'Extensions can only be negotiated during the regular season.' };
   const team = getTeam(league, teamId);
   const p = team.roster.find((x) => x.id === playerId);
@@ -2229,6 +2251,8 @@ export function offerExtension(league, teamId, playerId, salary, years) {
   const type = extensionType(p);
   if (!type) return { ok: false, error: `${p.name} isn't extension-eligible right now.` };
   years = clamp(Math.round(years), 1, 4);
+  // Options only make sense on multi-year deals
+  const cleanOpts = years >= 2 ? opts : {};
   const range = extensionSalaryRange(p, type);
   salary = clamp(Math.round(salary / 100_000) * 100_000, range.min, range.max);
   p.extOfferMade = true;
@@ -2237,21 +2261,24 @@ export function offerExtension(league, teamId, playerId, salary, years) {
   if (!meetsCounter && talks && salary <= talks.best) {
     return { ok: false, error: `${p.name} already turned down ${fmtM(talks.best)}/yr — he'll only re-open talks for a better number.` };
   }
-  let demand = meetsCounter ? salary : extensionDemand(league, teamId, p, years);
-  if (demand === null) {
+  let baseDemand = meetsCounter ? salary : extensionDemand(league, teamId, p, years);
+  if (baseDemand === null) {
     const reason = roleBlocked(team, p)
       ? `${p.name} wants a featured role, and you already have two better players at ${p.pos} — he won't commit long-term.`
       : `${p.name} won't discuss an extension while the team is losing — win more games, or risk him testing the market.`;
     return { ok: true, decision: 'reject', reason };
   }
-  demand = clamp(demand, range.min, range.max);
+  const demand = clamp(Math.round((baseDemand * optionDemandMult(cleanOpts)) / 100_000) * 100_000, range.min, range.max);
   if (salary >= demand) {
     p.extension = { salary, years, type };
+    if (cleanOpts.playerOption) p.extension.playerOption = true;
+    if (cleanOpts.teamOption) p.extension.teamOption = true;
     delete p.extTalksFailed;
     delete league.extensionTalks[playerId];
     adjustMorale(p, 6);
-    pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}.` });
-    return { ok: true, decision: 'accept', reason: `${p.name} signs: ${fmtM(salary)}/yr x ${years}yr, starting next season.` };
+    const optClause = cleanOpts.playerOption ? ` (player option yr ${years})` : cleanOpts.teamOption ? ` (team option yr ${years})` : '';
+    pushNews(league, { day: league.dayIndex, category: 'signing', teamIds: [team.id], text: `${p.name} signs a ${years}-year, ${fmtM(salary)}/yr extension with the ${team.city} ${team.name}${optClause}.` });
+    return { ok: true, decision: 'accept', reason: `${p.name} signs: ${fmtM(salary)}/yr × ${years}yr${optClause}, starting next season.` };
   }
   if (salary < demand * 0.85) {
     adjustMorale(p, -3);
@@ -2262,12 +2289,19 @@ export function offerExtension(league, teamId, playerId, salary, years) {
   const entry = { best: Math.max(talks?.best ?? 0, salary) };
   let reason;
   const pref = preferredYears(p);
-  const counterSalary = clamp(extensionDemand(league, teamId, p, pref) ?? demand, range.min, range.max);
-  if (extensionDemand(league, teamId, p, pref) !== null) {
+  const baseCounter = extensionDemand(league, teamId, p, pref);
+  if (baseCounter !== null) {
+    const counterSalary = clamp(Math.round((baseCounter * optionDemandMult(cleanOpts)) / 100_000) * 100_000, range.min, range.max);
     entry.counter = { salary: counterSalary, years: pref };
-    reason = `${p.name} counters: ${fmtM(counterSalary)}/yr x ${pref}yr.`;
-  }
-  if (!reason) {
+    const wantsMoreMoney = salary < counterSalary * 0.97;
+    const wantsMoreYears = years < pref;
+    const gap = wantsMoreMoney && wantsMoreYears ? 'more money and a longer deal'
+      : wantsMoreMoney ? 'more money'
+      : wantsMoreYears ? `a longer commitment (${pref} years)`
+      : 'a better offer';
+    const optNote = cleanOpts?.teamOption ? ' — a team option raises the cost for reduced security.' : '';
+    reason = `${p.name}'s agent counters at ${fmtM(counterSalary)}/yr × ${pref}yr, asking for ${gap}.${optNote}`;
+  } else {
     reason = years < pref
       ? `${p.name} is looking for a longer commitment (${pref} years).`
       : `${p.name} is holding out for more money.`;
@@ -2320,19 +2354,37 @@ function aiExtensions(league, rng) {
 
 const fmtM = (n) => `$${(n / 1e6).toFixed(1)}M`;
 
-export function evaluateOffer(league, teamId, p, salary, years) {
+// opts: { playerOption, teamOption } shifts the effective demand.
+// A player option on the final year is attractive to the player (-7% demand);
+// a team option is a security risk for them (+10% demand).
+function optionDemandMult(opts) {
+  if (opts?.playerOption) return 0.93;
+  if (opts?.teamOption) return 1.10;
+  return 1.0;
+}
+
+export function evaluateOffer(league, teamId, p, salary, years, opts = {}) {
   const team = getTeam(league, teamId);
   if (roleBlocked(team, p)) {
     return { decision: 'reject', reason: `${p.name} wants a featured role, and the ${team.name} already have two better players at ${p.pos}.` };
   }
-  const demand = offerDemand(league, teamId, p, years);
+  const baseDemand = offerDemand(league, teamId, p, years);
+  const demand = clamp(Math.round((baseDemand * optionDemandMult(opts)) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
   if (salary >= demand) return { decision: 'accept' };
   if (salary >= demand * 0.8) {
     const pref = preferredYears(p);
-    const counterSalary = offerDemand(league, teamId, p, pref);
+    const baseCounter = offerDemand(league, teamId, p, pref);
+    const counterSalary = clamp(Math.round((baseCounter * optionDemandMult(opts)) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY);
+    const wantsMoreMoney = salary < counterSalary * 0.97;
+    const wantsMoreYears = years < pref;
+    const gap = wantsMoreMoney && wantsMoreYears ? 'more money and a longer deal'
+      : wantsMoreMoney ? 'more money'
+      : wantsMoreYears ? `a longer deal (${pref} years)`
+      : 'a better offer';
+    const optNote = opts?.teamOption ? ' — a team option reduces their security, so the price is higher.' : '';
     return {
       decision: 'counter',
-      reason: `${p.name} counters: ${fmtM(counterSalary)} x ${pref}yr.`,
+      reason: `${p.name}'s agent counters at ${fmtM(counterSalary)} × ${pref}yr, asking for ${gap}.${optNote}`,
       counter: { salary: counterSalary, years: pref },
     };
   }
@@ -2349,16 +2401,21 @@ export function evaluateOffer(league, teamId, p, salary, years) {
 // Which cap mechanism would cover a contract of this salary for this team,
 // or null if none does. 'cap-room' covers it outright; 'mle' is the
 // once-per-offseason mid-level exception (up to MLE_AMOUNT for teams below
-// the first apron, or TAXPAYER_MLE between the two aprons); teams at or above
-// the second apron lose MLE access entirely. 'minimum' is always available.
+// the first apron, or TAXPAYER_MLE between the two aprons); 'bae' is the
+// Bi-Annual Exception ($4.1M, non-taxpayer teams only, every other offseason);
+// teams at or above the second apron lose MLE and BAE access entirely.
+// 'minimum' is always available.
 export function signingException(league, teamId, salary) {
   const team = getTeam(league, teamId);
-  const capRoom = SALARY_CAP - payroll(team);
+  const teamPayroll = payroll(team);
+  const capRoom = SALARY_CAP - teamPayroll;
   if (salary <= capRoom) return 'cap-room';
   if (salary <= MIN_SALARY * 1.05) return 'minimum';
-  const teamPayroll = payroll(team);
   const teamMLE = teamPayroll >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
   if (capRoom <= 0 && !team.usedMLE && salary <= teamMLE && teamPayroll + salary <= APRON) return 'mle';
+  const baeAvail = !team.usedBAE && teamPayroll < LUXURY_TAX
+    && (team.lastBaeYear == null || team.lastBaeYear < league.season - 1);
+  if (capRoom <= 0 && baeAvail && salary <= BAE_AMOUNT && teamPayroll + salary <= APRON) return 'bae';
   return null;
 }
 
@@ -2384,15 +2441,21 @@ export function makeOffer(league, teamId, playerId, salary, years, opts = {}) {
     const room = SALARY_CAP - teamPayroll;
     const aboveSecondApron = teamPayroll >= APRON;
     const aboveFirstApron = teamPayroll >= FIRST_APRON;
+    const aboveLuxTax = teamPayroll >= LUXURY_TAX;
     const teamMLE = aboveFirstApron ? TAXPAYER_MLE : MLE_AMOUNT;
     const wouldCrossApron = !team.usedMLE && salary <= teamMLE && teamPayroll + salary > APRON;
     let mleNote;
-    if (aboveSecondApron) mleNote = 'you are above the second apron — the mid-level exception is not available';
+    if (aboveSecondApron) mleNote = 'you are above the second apron — the MLE and BAE are not available';
     else if (wouldCrossApron) mleNote = `this signing would push you past the second apron — the MLE cannot be used to cross that threshold`;
     else if (team.usedMLE) mleNote = "you've already used this offseason's mid-level exception";
-    else if (aboveFirstApron) mleNote = `you're above the first apron — only the taxpayer MLE (${fmtM(teamMLE)}) is available`;
+    else if (aboveFirstApron) mleNote = `you're above the first apron — only the taxpayer MLE (${fmtM(teamMLE)}) is available, and it doesn't cover this salary`;
     else mleNote = `the mid-level exception only covers up to ${fmtM(teamMLE)}`;
-    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}. Minimum contracts can always be offered.` };
+    const baeNote = !aboveLuxTax && salary > BAE_AMOUNT ? ` The Bi-Annual Exception only covers up to ${fmtM(BAE_AMOUNT)}.` : '';
+    return { ok: false, error: `Not enough cap room (${fmtM(Math.max(room, 0))} available), and ${mleNote}.${baeNote} Minimum contracts can always be offered.` };
+  }
+  // BAE is limited to 2-year contracts
+  if (exception === 'bae' && years > 2) {
+    return { ok: false, error: `The Bi-Annual Exception can only be used for contracts up to 2 years.` };
   }
   const nego = league.negotiations[playerId] || { offers: 0, round: league.faDaysLeft, counter: null };
   if (nego.round !== league.faDaysLeft) { nego.offers = 0; nego.round = league.faDaysLeft; }
@@ -2403,13 +2466,15 @@ export function makeOffer(league, teamId, playerId, salary, years, opts = {}) {
     return { ok: false, error: `${p.name}'s agent has stopped returning your calls until the next round.` };
   }
   nego.offers += 1;
-  const res = meetsCounter ? { decision: 'accept' } : evaluateOffer(league, teamId, p, salary, years);
+  const res = meetsCounter ? { decision: 'accept' } : evaluateOffer(league, teamId, p, salary, years, opts);
   if (res.decision === 'accept') {
     delete league.negotiations[playerId];
     const overBudget = exceedsOwnerBudget(team, salary);
     signFreeAgent(league, teamId, playerId, salary, years, opts);
     if (exception === 'mle') team.usedMLE = true;
-    let reason = `${p.name} accepts: ${fmtM(salary)} x ${years}yr${opts.playerOption ? ' (player option yr ' + years + ')' : opts.teamOption ? ' (team option yr ' + years + ')' : ''}!`;
+    if (exception === 'bae') { team.usedBAE = true; team.lastBaeYear = league.season; }
+    const optClause = opts.playerOption ? ` (player option yr ${years})` : opts.teamOption ? ` (team option yr ${years})` : '';
+    let reason = `${p.name} accepts: ${fmtM(salary)} × ${years}yr${optClause}!`;
     if (overBudget) {
       applyBudgetOverageEffect(team);
       reason += ` This signing exceeds your owner's budget — approval rating will drop.`;

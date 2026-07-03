@@ -4,7 +4,7 @@ import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { overall } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
 import { POSITIONS } from '../engine/lineup.js';
-import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX } from '../data/teams.js';
+import { SALARY_CAP, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, LUXURY_TAX, BAE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX } from '../data/teams.js';
 import { Ovr, Pot, PlayerLink } from './PlayerDisplay.jsx';
 import { money } from './formatters.js';
 import { GuideTooltip } from './onboarding.jsx';
@@ -31,7 +31,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
   const [negotiatingId, setNegotiatingId] = useState(null);
   const [salaryM, setSalaryM] = useState(5);
   const [years, setYears] = useState(2);
-  const [withPlayerOption, setWithPlayerOption] = useState(false);
+  const [contractOption, setContractOption] = useState('none'); // 'none' | 'player' | 'team'
   const [responses, setResponses] = useState({});
   const [message, setMessage] = useState(null);
   const [filters, setFilters] = useState(loadFilters);
@@ -52,6 +52,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     setNegotiatingId(p.id);
     setSalaryM(askingPrice(p, league.settings) / 1e6);
     setYears(2);
+    setContractOption('none');
   };
 
   const offer = (p, salM, yrs, opts = {}) => {
@@ -59,7 +60,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     if (res.ok && res.decision === 'accept') {
       setMessage({ type: 'ok', text: res.reason });
       setNegotiatingId(null);
-      setWithPlayerOption(false);
+      setContractOption('none');
     } else {
       setMessage(null);
     }
@@ -253,18 +254,29 @@ export default function FreeAgency({ league, commit, openPlayer }) {
         >
           <SectionHeader
             title="Free Agents"
-            subtitle={
-              <span>
-                Cap room: <b style={{ color: room > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{money(room)}</b>
-                {' · '}Roster: {team.roster.length}/{ROSTER_MAX}
-                {' · '}2-Way: {team.twoWay.length}/{TWO_WAY_MAX}
-                {room <= 0 && (
-                  <> · MLE: <b style={{ color: team.usedMLE ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                    {team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}
-                  </b></>
-                )}
-              </span>
-            }
+            subtitle={(() => {
+              const teamPayroll = team.roster.reduce((s, p) => s + (p.contract?.twoWay ? 0 : (p.contract?.salary || 0)), 0) + (team.deadMoney || []).reduce((s, d) => s + d.salary, 0);
+              const isNonTaxpayer = teamPayroll < LUXURY_TAX;
+              const baeOnCooldown = team.lastBaeYear != null && team.lastBaeYear >= league.season - 1;
+              const baeAvail = !team.usedBAE && isNonTaxpayer && !baeOnCooldown;
+              return (
+                <span>
+                  Cap room: <b style={{ color: room > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{money(room)}</b>
+                  {' · '}Roster: {team.roster.length}/{ROSTER_MAX}
+                  {' · '}2-Way: {team.twoWay.length}/{TWO_WAY_MAX}
+                  {room <= 0 && (
+                    <> · MLE: <b style={{ color: team.usedMLE ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                      {team.usedMLE ? 'used' : `available (up to ${money(MLE_AMOUNT)})`}
+                    </b></>
+                  )}
+                  {room <= 0 && isNonTaxpayer && (
+                    <> · BAE: <b style={{ color: baeAvail ? 'var(--color-success)' : 'var(--text-muted)' }}>
+                      {team.usedBAE ? 'used' : baeOnCooldown ? `on cooldown (used ${league.season - 1})` : `available (up to ${money(BAE_AMOUNT)}, 2yr max)`}
+                    </b></>
+                  )}
+                </span>
+              );
+            })()}
           />
         </GuideTooltip>
 
@@ -342,15 +354,25 @@ export default function FreeAgency({ league, commit, openPlayer }) {
                 </select>
               </label>
               {years >= 2 && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}
-                  title={`Player can opt out after year ${years} and become a free agent`}>
-                  <input type="checkbox" checked={withPlayerOption} onChange={(e) => setWithPlayerOption(e.target.checked)} />
-                  <span style={{ color: 'var(--text-muted)' }}>Player option yr {years}</span>
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Option yr {years}:</span>
+                  {['none', 'player', 'team'].map((opt) => (
+                    <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)', cursor: 'pointer' }}
+                      title={opt === 'player' ? `Player can opt out after year ${years} — reduces their demand` : opt === 'team' ? `Team can decline year ${years} — raises their demand` : 'Guaranteed contract'}>
+                      <input type="radio" name={`opt-${negotiatingPlayer.id}`} value={opt}
+                        checked={contractOption === opt} onChange={() => setContractOption(opt)} />
+                      <span style={{ color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                        {opt === 'none' ? 'None' : opt === 'player' ? 'Player' : 'Team'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               )}
               {(() => {
                 const left = OFFERS_PER_ROUND - offersUsed(negotiatingPlayer);
-                const opts = withPlayerOption && years >= 2 ? { playerOption: true } : {};
+                const opts = years >= 2 && contractOption !== 'none'
+                  ? contractOption === 'player' ? { playerOption: true } : { teamOption: true }
+                  : {};
                 return (
                   <>
                     <Button size="sm" variant="primary" disabled={left <= 0} onClick={() => offer(negotiatingPlayer, salaryM, years, opts)}>
@@ -365,6 +387,7 @@ export default function FreeAgency({ league, commit, openPlayer }) {
               {(() => {
                 const exc = signingException(league, team.id, Math.round(salaryM * 10) * 100_000);
                 if (exc === 'mle') return <Badge variant="warning">Uses mid-level exception</Badge>;
+                if (exc === 'bae') return <Badge variant="warning">Uses bi-annual exception (2yr max)</Badge>;
                 if (exc === 'minimum') return <Badge variant="info">Uses minimum-salary exception</Badge>;
                 if (!exc) return <Badge variant="danger">Not enough cap room or exceptions</Badge>;
                 return null;

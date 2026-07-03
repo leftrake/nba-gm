@@ -12,7 +12,7 @@
 // extensionType() resolves which window (if any) applies; 'rookie' takes
 // priority over 'final' when a rookie-scale deal is in its last year.
 
-import { SALARY_CAP, MIN_SALARY, MAX_SALARY } from '../data/teams.js';
+import { SALARY_CAP, MIN_SALARY, MAX_SALARY, SUPERMAX_SALARY } from '../data/teams.js';
 import { clamp } from './rng.js';
 
 export function extensionType(p) {
@@ -43,17 +43,30 @@ export function rookieMax(p) {
   return Math.round((SALARY_CAP * (elite ? 0.30 : 0.25)) / 100_000) * 100_000;
 }
 
+// Designated Player Extension (supermax): a franchise cornerstone who earned
+// All-NBA, All-Star, MVP, or a Defensive award in any of the last 3 seasons
+// qualifies for 35% of the cap — above the normal max contract ceiling.
+export function isSupermaxEligible(p, currentSeason) {
+  if (!p.awards || !p.awards.length) return false;
+  const cutoff = currentSeason - 3;
+  return p.awards.some((a) =>
+    a.season >= cutoff && /MVP|All-NBA|All-Defensive|All-Star/.test(a.award)
+  );
+}
+
 // Salary bounds an extension offer can land in, by type.
-export function extensionSalaryRange(p, type) {
-  if (type === 'rookie') return { min: MIN_SALARY, max: rookieMax(p) };
+// Pass designated=true for a Designated Player Extension (supermax cap).
+export function extensionSalaryRange(p, type, designated = false) {
+  const hardMax = designated ? SUPERMAX_SALARY : MAX_SALARY;
+  if (type === 'rookie') return { min: MIN_SALARY, max: designated ? SUPERMAX_SALARY : rookieMax(p) };
   if (type === 'veteran') {
     const cur = p.contract.salary;
     return {
-      min: clamp(Math.round((cur * 0.8) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY),
-      max: clamp(Math.round((cur * 1.2) / 100_000) * 100_000, MIN_SALARY, MAX_SALARY),
+      min: clamp(Math.round((cur * 0.8) / 100_000) * 100_000, MIN_SALARY, hardMax),
+      max: clamp(Math.round((cur * 1.2) / 100_000) * 100_000, MIN_SALARY, hardMax),
     };
   }
-  return { min: MIN_SALARY, max: MAX_SALARY }; // 'final': market rate
+  return { min: MIN_SALARY, max: hardMax }; // 'final': market rate (or supermax)
 }
 
 // Human-readable stakes for the roster screen — what happens if this window

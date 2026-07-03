@@ -53,3 +53,7 @@ export const TAXPAYER_MLE = 5_200_000;
 export const TWO_WAY_MAX = 2;
 export const TWO_WAY_SALARY = 600_000;
 export const TWO_WAY_MAX_EXP = 4;
+// Bi-Annual Exception: ~$4.1M, usable every other offseason by non-taxpayer teams.
+export const BAE_AMOUNT = 4_100_000;
+// Designated Player Extension (supermax): 35% of the salary cap, for award-winning franchise cornerstones.
+export const SUPERMAX_SALARY = Math.round(SALARY_CAP * 0.35 / 100_000) * 100_000;

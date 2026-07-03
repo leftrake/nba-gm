@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, deadMoneyTotal, releasePlayer, stretchRelease, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay, TRADE_DEADLINE_DAY } from '../engine/league.js';
-import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax } from '../engine/extensions.js';
+import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax, isSupermaxEligible } from '../engine/extensions.js';
 import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { ARCHETYPE_LABELS } from '../engine/archetypes.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { teamGameLog, keyFindings, recentForm, homeAwaySplit, clutchRecord, strengthOfSchedule } from '../engine/analytics.js';
 import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
-import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX } from '../data/teams.js';
+import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX, SUPERMAX_SALARY } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, PlayerLink } from './PlayerDisplay.jsx';
 import { TeamLink, StrategyTag, turmoilLabel, turmoilColor } from './TeamDisplay.jsx';
@@ -108,6 +108,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   const [extendingId, setExtendingId] = useState(null);
   const [extSalaryM, setExtSalaryM] = useState(5);
   const [extYears, setExtYears] = useState(3);
+  const [extOption, setExtOption] = useState('none'); // 'none' | 'player' | 'team'
   const [extResponses, setExtResponses] = useState({});
   const [extMessage, setExtMessage] = useState(null);
 
@@ -201,8 +202,10 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     if (extendingId === p.id) { setExtendingId(null); return; }
     const counter = extTalks[p.id]?.counter;
     const type = extensionType(p);
-    const range = extensionSalaryRange(p, type);
+    const supermax = isSupermaxEligible(p, league.season);
+    const range = extensionSalaryRange(p, type, supermax);
     setExtendingId(p.id);
+    setExtOption('none');
     const defaultSalary = counter ? counter.salary : type === 'rookie' ? range.max : askingPrice(p);
     setExtSalaryM(clampM(defaultSalary, range) / 1e6);
     setExtYears(counter ? counter.years : type === 'rookie' ? 4 : 3);
@@ -210,12 +213,13 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
 
   const clampM = (salary, range) => Math.min(Math.max(salary, range.min), range.max);
 
-  const offerExt = (p, salM, yrs) => {
-    const res = offerExtension(league, teamId, p.id, Math.round(salM * 10) * 100_000, yrs);
+  const offerExt = (p, salM, yrs, opts = {}) => {
+    const res = offerExtension(league, teamId, p.id, Math.round(salM * 10) * 100_000, yrs, opts);
     setExtResponses((r) => ({ ...r, [p.id]: res }));
     if (res.ok && res.decision === 'accept') {
       setExtMessage(res.reason);
       setExtendingId(null);
+      setExtOption('none');
     } else {
       setExtMessage(null);
     }
@@ -746,6 +750,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                 <tbody>
                   {rosterRows.map((p, i) => {
                     const extType = extensionType(p);
+                    const supermax = isUser && extType && isSupermaxEligible(p, league.season);
                     const isStarter = isUser && starterIds.has(p.id);
                     return (
                       <React.Fragment key={p.id}>
@@ -766,7 +771,7 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                           <td className="num">{p.contract?.years ?? '–'}</td>
                           <td>
                             {p.extension ? (
-                              <span className="ui-badge ui-badge--success" title={`Extension: ${money(p.extension.salary)}/yr × ${p.extension.years}`}>EXT ✓</span>
+                              <span className="ui-badge ui-badge--success" title={`Extension: ${money(p.extension.salary)}/yr × ${p.extension.years}${p.extension.playerOption ? ' (PO)' : p.extension.teamOption ? ' (TO)' : ''}`}>EXT ✓</span>
                             ) : extType === 'rookie' ? (
                               <span className="ui-badge ui-badge--danger" title={`Rookie extension window — max ${money(rookieMax(p))}/yr. ${extensionWindowLabel('rookie')}`}>RFX ELIGIBLE</span>
                             ) : extType === 'final' ? (
@@ -774,11 +779,20 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                             ) : extType === 'veteran' ? (
                               <span className="ui-badge ui-badge--default" title={extensionWindowLabel('veteran')}>EXT</span>
                             ) : null}
+                            {supermax && !p.extension && (
+                              <span className="ui-badge ui-badge--warning" style={{ marginLeft: 4 }} title={`Designated Player Extension eligible — can offer up to ${money(SUPERMAX_SALARY)}/yr (35% of cap)`}>SUPERMAX</span>
+                            )}
                             {p.contract?.playerOption && (
                               <span className="ui-badge ui-badge--info" style={{ marginLeft: 4 }} title={`Player option in year ${p.contract.years} — ${p.name} can opt out at the end of this contract`}>PO</span>
                             )}
                             {p.contract?.teamOption && (
                               <span className="ui-badge ui-badge--default" style={{ marginLeft: 4 }} title={`Team option in year ${p.contract.years} — you can decline and release ${p.name} with no dead money`}>TO</span>
+                            )}
+                            {p.extension?.playerOption && (
+                              <span className="ui-badge ui-badge--info" style={{ marginLeft: 4 }} title={`Extension includes a player option in year ${p.extension.years}`}>EXT PO</span>
+                            )}
+                            {p.extension?.teamOption && (
+                              <span className="ui-badge ui-badge--default" style={{ marginLeft: 4 }} title={`Extension includes a team option in year ${p.extension.years}`}>EXT TO</span>
                             )}
                           </td>
                           {isUser && (
@@ -827,14 +841,23 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                           )}
                         </tr>
                         {extendingId === p.id && canExtend && (() => {
-                          const range = extensionSalaryRange(p, extType);
+                          const isDesignated = isSupermaxEligible(p, league.season);
+                          const range = extensionSalaryRange(p, extType, isDesignated);
+                          const extOpts = extYears >= 2 && extOption !== 'none'
+                            ? extOption === 'player' ? { playerOption: true } : { teamOption: true }
+                            : {};
                           return (
                             <tr>
-                              <td colSpan={isUser ? 8 : 7} style={{ background: 'var(--surface-0)' }}>
+                              <td colSpan={isUser ? 9 : 8} style={{ background: 'var(--surface-0)' }}>
                                 <div style={{ padding: 'var(--sp-1) var(--sp-2)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
                                   {extensionWindowLabel(extType)}
                                   {extType === 'rookie' && <> Rookie max: {money(rookieMax(p))}/yr.</>}
-                                  {extType === 'veteran' && <> Range: {money(range.min)}–{money(range.max)}/yr.</>}
+                                  {extType === 'veteran' && !isDesignated && <> Range: {money(range.min)}–{money(range.max)}/yr.</>}
+                                  {isDesignated && (
+                                    <span style={{ color: 'var(--color-warning)', marginLeft: 'var(--sp-2)' }}>
+                                      SUPERMAX eligible — can offer up to {money(SUPERMAX_SALARY)}/yr (35% of cap)
+                                    </span>
+                                  )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap', padding: 'var(--sp-1) var(--sp-2)' }}>
                                   <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Market: {money(askingPrice(p))}/yr</span>
@@ -848,11 +871,26 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                                       {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
                                     </select>
                                   </label>
-                                  <button className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => offerExt(p, extSalaryM, extYears)}>Offer Extension</button>
+                                  {extYears >= 2 && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                                      <span style={{ color: 'var(--text-muted)' }}>Option yr {extYears}:</span>
+                                      {['none', 'player', 'team'].map((opt) => (
+                                        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                                          title={opt === 'player' ? `Player can opt out — reduces their demand` : opt === 'team' ? `Team can decline yr ${extYears} — raises their demand` : 'Fully guaranteed'}>
+                                          <input type="radio" name={`ext-opt-${p.id}`} value={opt}
+                                            checked={extOption === opt} onChange={() => setExtOption(opt)} />
+                                          <span style={{ color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                                            {opt === 'none' ? 'None' : opt === 'player' ? 'Player' : 'Team'}
+                                          </span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <button className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => offerExt(p, extSalaryM, extYears, extOpts)}>Offer Extension</button>
                                   {extTalks[p.id]?.counter && (
                                     <span style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)' }}>
                                       Counter: {money(extTalks[p.id].counter.salary)}/yr × {extTalks[p.id].counter.years}yr{' '}
-                                      <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => offerExt(p, extTalks[p.id].counter.salary / 1e6, extTalks[p.id].counter.years)}>Accept</button>
+                                      <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => offerExt(p, extTalks[p.id].counter.salary / 1e6, extTalks[p.id].counter.years, extOpts)}>Accept</button>
                                     </span>
                                   )}
                                 </div>
