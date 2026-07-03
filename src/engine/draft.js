@@ -1,6 +1,6 @@
-import { ROSTER_MAX, MIN_SALARY } from '../data/teams.js';
+import { ROSTER_MAX, MIN_SALARY, TWO_WAY_MAX, TWO_WAY_SALARY } from '../data/teams.js';
 import { makeRng, randInt, gauss, clamp } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract, recordTransaction, ensureUniqueJerseys } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, overall, recordContract, recordTransaction, ensureUniqueJerseys, emptyStats } from './players.js';
 import { pushNews } from './save.js';
 import { draftNewsFlavor } from './backstory.js';
 import { ensureDraftPicks, removeDraftedPicks, addFuturePicks, FUTURE_DRAFTS } from './draftPicks.js';
@@ -232,10 +232,21 @@ export function makeDraftPick(league, prospectId) {
     team.roster.push(p);
     ensureUniqueJerseys(team);
     recordTransaction(p, { season: d.season, type: 'draft', team: team.id, text: `Drafted by the ${team.city} ${team.name} with pick #${pick}.` });
+  } else if ((team.twoWay || []).length < TWO_WAY_MAX) {
+    // No roster spot but a two-way slot is open — stash him in the G League
+    p.contract = { salary: TWO_WAY_SALARY, years: 1, twoWay: true };
+    recordContract(p, league.season, team.id, p.contract);
+    if (!p.gLeagueStats) p.gLeagueStats = emptyStats();
+    if (!p.gLeagueCareerStats) p.gLeagueCareerStats = [];
+    team.twoWay.push(p);
+    ensureUniqueJerseys(team);
+    const gText = `The ${team.name} draft ${p.name} and assign him to the G League on a two-way contract.`;
+    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: gText });
+    recordTransaction(p, { season: d.season, type: 'draft', team: team.id, text: `Drafted by the ${team.city} ${team.name} with pick #${pick}; assigned to the G League on a two-way contract.` });
   } else {
-    // no roster spot — the pick goes unsigned and hits free agency
+    // No roster spot and no two-way slots — enters free agency
     league.freeAgents.push(p);
-    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `The ${team.name} draft ${p.name} but have no roster spot; he heads to free agency.` });
+    pushNews(league, { day: 0, category: 'draft', teamIds: [team.id], text: `The ${team.name} draft ${p.name} but have no roster spot or two-way slots; he enters free agency.` });
     recordTransaction(p, { season: d.season, type: 'draft', team: team.id, text: `Drafted by the ${team.city} ${team.name} with pick #${pick}; no roster spot, entered free agency.` });
   }
   d.results.push({ pick, round: pick <= 30 ? 1 : 2, teamId, playerId: p.id, playerName: p.name, pos: p.pos });
