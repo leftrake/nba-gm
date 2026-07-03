@@ -62,7 +62,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     season: 2026,
     userTeamId,
     teams,
-    schedule: makeSchedule(teams, rng),
+    schedule: makeSchedule(teams, rng, 2026),
     dayIndex: 0,
     resultsByDay: [],
     phase: fantasy ? 'fantasydraft' : 'regular',
@@ -284,7 +284,7 @@ function buildMatchups(teams) {
   return games;
 }
 
-export function makeSchedule(teams, rng) {
+export function makeSchedule(teams, rng, season) {
   const pool = buildMatchups(teams);
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -295,8 +295,7 @@ export function makeSchedule(teams, rng) {
   for (const g of pool) { remainingCount[g.home]++; remainingCount[g.away]++; }
 
   const playedDays = Object.fromEntries(teams.map((t) => [t.id, new Set()]));
-  // Back-to-backs are allowed, three games in three days are not,
-  // and no team plays more than 4 games in any 7-day span.
+  // No 3 games in 3 consecutive nights; no more than 4 in any 7-day span.
   const canPlay = (id, d) => {
     const days = playedDays[id];
     if (days.has(d)) return false;
@@ -306,6 +305,13 @@ export function makeSchedule(teams, rng) {
     return recent < 4;
   };
 
+  // Heavier slates on Thu/Fri/Sat/Sun, lighter Mon/Wed — matches real NBA cadence.
+  // Average ≈ 1.07 so the schedule finishes comfortably within SEASON_DAYS.
+  // Indexed Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6.
+  const DOW_MULT = [1.19, 0.59, 0.96, 0.72, 1.19, 1.30, 1.55];
+  const startDow = new Date((season ?? 2026) - 1, 9, 21).getDay();
+  const MAX_PER_DAY = Math.floor(teams.length / 2); // 15
+
   const schedule = [];
   let remaining = pool;
   for (let d = 0; remaining.length > 0; d++) {
@@ -314,18 +320,30 @@ export function makeSchedule(teams, rng) {
       schedule.push([]);
       continue;
     }
-    // Pace the league so games run out right around SEASON_DAYS; teams with
-    // the most games left get scheduled first so nobody falls behind.
-    const target = d < SEASON_DAYS
-      ? Math.ceil(remaining.length / (SEASON_DAYS - d)) + 1
-      : teams.length / 2;
-    // Soft penalty keeps back-to-backs occasional rather than routine
+
+    // Special slates: Opening Night (2 showcase games) and Christmas (5 games).
+    // Otherwise use a day-of-week weighted target so Saturdays are bigger than Mondays.
+    let target;
+    if (d === 0) {
+      target = 2;
+    } else if (d === CHRISTMAS_DAY) {
+      target = 5;
+    } else if (d < SEASON_DAYS) {
+      const dow = (startDow + d) % 7;
+      const rate = remaining.length / (SEASON_DAYS - d);
+      target = Math.min(MAX_PER_DAY, Math.max(2, Math.round(rate * DOW_MULT[dow])));
+    } else {
+      target = MAX_PER_DAY;
+    }
+
+    // Teams with the most games left get priority; no back-to-back penalty so
+    // Mild B2B penalty to keep the rate near real-NBA levels (~14 per team/season).
     const scored = remaining
       .map((g) => ({
         g,
         score: remainingCount[g.home] + remainingCount[g.away]
-          - (playedDays[g.home].has(d - 1) ? 4 : 0)
-          - (playedDays[g.away].has(d - 1) ? 4 : 0)
+          - (playedDays[g.home].has(d - 1) ? 2 : 0)
+          - (playedDays[g.away].has(d - 1) ? 2 : 0)
           + rng() * 2,
       }))
       .sort((a, b) => b.score - a.score);
@@ -2754,7 +2772,7 @@ export function startNewSeason(league) {
   }
   league.negotiations = {};
   league.extensionTalks = {};
-  league.schedule = makeSchedule(league.teams, rng);
+  league.schedule = makeSchedule(league.teams, rng, league.season);
   league.dayIndex = 0;
   league.resultsByDay = [];
   league.phase = 'regular';
