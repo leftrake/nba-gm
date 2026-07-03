@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, deadMoneyTotal, releasePlayer, stretchRelease, standings, dateForDay, askingPrice, offerExtension, callUpTwoWay, sendDownTwoWay, convertTwoWayToStandard, releaseTwoWay, TRADE_DEADLINE_DAY } from '../engine/league.js';
 import { extensionType, extensionSalaryRange, extensionWindowLabel, rookieMax, isSupermaxEligible } from '../engine/extensions.js';
-import { overall, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
+import { overall, salaryFor, supportedMinutes, posLabel, TRAINING_FOCUS_OPTIONS } from '../engine/players.js';
 import { ARCHETYPE_LABELS } from '../engine/archetypes.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { teamGameLog, keyFindings, recentForm, homeAwaySplit, clutchRecord, strengthOfSchedule } from '../engine/analytics.js';
 import { getTeamPicks, pickLabel, pickDraftSlot, pickSlotColor } from '../engine/draftPicks.js';
-import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX, SUPERMAX_SALARY } from '../data/teams.js';
+import { SALARY_CAP, LUXURY_TAX, FIRST_APRON, APRON, MIN_SALARY, MLE_AMOUNT, TAXPAYER_MLE, BAE_AMOUNT, TWO_WAY_MAX, ROSTER_MAX, SUPERMAX_SALARY } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, PlayerLink } from './PlayerDisplay.jsx';
 import { TeamLink, StrategyTag, turmoilLabel, turmoilColor } from './TeamDisplay.jsx';
@@ -111,6 +111,9 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
   const [extOption, setExtOption] = useState('none'); // 'none' | 'player' | 'team'
   const [extResponses, setExtResponses] = useState({});
   const [extMessage, setExtMessage] = useState(null);
+  const [convertingId, setConvertingId] = useState(null);
+  const [convertSalaryM, setConvertSalaryM] = useState(2);
+  const [convertYears, setConvertYears] = useState(2);
 
   const team = getTeam(league, teamId);
   const isUser = teamId === league.userTeamId;
@@ -235,6 +238,30 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
     else if (res && res.ok === false) setTwoWayMessage({ type: 'err', text: res.error });
     else setTwoWayMessage(null);
     commit();
+  };
+
+  const openConvertPanel = (p) => {
+    if (convertingId === p.id) { setConvertingId(null); return; }
+    const defaultSalary = salaryFor(overall(p), p.age);
+    setConvertSalaryM(Math.round(defaultSalary / 1e5) / 10);
+    setConvertYears(2);
+    setConvertingId(p.id);
+    setTwoWayMessage(null);
+  };
+
+  const convertCapStatus = (proposedSalary) => {
+    const cur = pay;
+    const capRoom = SALARY_CAP - cur;
+    const newPay = cur + proposedSalary;
+    const teamMLE = cur >= FIRST_APRON ? TAXPAYER_MLE : MLE_AMOUNT;
+    const baeOk = !team.usedBAE && cur < LUXURY_TAX && proposedSalary <= BAE_AMOUNT && newPay <= APRON;
+    let exception;
+    if (capRoom >= proposedSalary) exception = 'room';
+    else if (proposedSalary <= MIN_SALARY * 1.01) exception = 'minimum';
+    else if (!team.usedMLE && proposedSalary <= teamMLE) exception = cur >= FIRST_APRON ? 'taxpayer-mle' : 'mle';
+    else if (baeOk) exception = 'bae';
+    else exception = null;
+    return { exception, currentPayroll: cur, newPayroll: newPay, capRoom, teamMLE };
   };
 
   const seenOvr = (p) => {
@@ -965,46 +992,121 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
                     <tbody>
                       {twoWayPlayers.map((p) => {
                         const calledUp = team.roster.includes(p);
+                        const showConvert = convertingId === p.id;
+                        const proposedSalary = Math.round(convertSalaryM * 1e6 / 1e5) * 1e5;
+                        const capSt = showConvert ? convertCapStatus(proposedSalary) : null;
+                        const marketSalary = salaryFor(overall(p), p.age);
                         return (
-                          <tr key={p.id} className="clickable" onClick={() => openPlayer?.(p)}>
-                            <td><OvrArc value={overall(p)} /></td>
-                            <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
-                            <td>{posLabel(p)}</td>
-                            <td className="num">{p.age}</td>
-                            <td>
-                              <span className={`ui-badge ${calledUp ? 'ui-badge--success' : 'ui-badge--default'}`}>
-                                {calledUp ? 'Active' : 'Reserve'}
-                              </span>
-                              {!calledUp && p.gLeagueStats?.gp > 0 && (
-                                <span style={{ marginLeft: 'var(--sp-2)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-                                  G League: {fmtPerGame(p.gLeagueStats, 'pts')}/{fmtPerGame(p.gLeagueStats, 'reb')}/{fmtPerGame(p.gLeagueStats, 'ast')} in {p.gLeagueStats.gp}G
+                          <React.Fragment key={p.id}>
+                            <tr className="clickable" onClick={() => openPlayer?.(p)}>
+                              <td><OvrArc value={overall(p)} /></td>
+                              <td><PlayerLink p={p} openPlayer={openPlayer} /><InjuryTag p={p} /></td>
+                              <td>{posLabel(p)}</td>
+                              <td className="num">{p.age}</td>
+                              <td>
+                                <span className={`ui-badge ${calledUp ? 'ui-badge--success' : 'ui-badge--default'}`}>
+                                  {calledUp ? 'Active' : 'Reserve'}
                                 </span>
-                              )}
-                            </td>
-                            <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                              {calledUp ? (
-                                <button className="ui-btn ui-btn--sm ui-btn--secondary" style={{ marginRight: 'var(--sp-1)' }} onClick={() => runTwoWay(sendDownTwoWay, p)}>Send Down</button>
-                              ) : (
+                                {!calledUp && p.gLeagueStats?.gp > 0 && (
+                                  <span style={{ marginLeft: 'var(--sp-2)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                                    G League: {fmtPerGame(p.gLeagueStats, 'pts')}/{fmtPerGame(p.gLeagueStats, 'reb')}/{fmtPerGame(p.gLeagueStats, 'ast')} in {p.gLeagueStats.gp}G
+                                  </span>
+                                )}
+                              </td>
+                              <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                                {calledUp ? (
+                                  <button className="ui-btn ui-btn--sm ui-btn--secondary" style={{ marginRight: 'var(--sp-1)' }} onClick={() => runTwoWay(sendDownTwoWay, p)}>Send Down</button>
+                                ) : (
+                                  <button
+                                    className="ui-btn ui-btn--sm ui-btn--secondary"
+                                    style={{ marginRight: 'var(--sp-1)' }}
+                                    disabled={team.roster.length >= ROSTER_MAX}
+                                    title={team.roster.length >= ROSTER_MAX ? `Roster full (${ROSTER_MAX})` : ''}
+                                    onClick={() => runTwoWay(callUpTwoWay, p)}
+                                  >Call Up</button>
+                                )}
                                 <button
-                                  className="ui-btn ui-btn--sm ui-btn--secondary"
+                                  className={`ui-btn ui-btn--sm ${showConvert ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
                                   style={{ marginRight: 'var(--sp-1)' }}
-                                  disabled={team.roster.length >= ROSTER_MAX}
-                                  title={team.roster.length >= ROSTER_MAX ? `Roster full (${ROSTER_MAX})` : ''}
-                                  onClick={() => runTwoWay(callUpTwoWay, p)}
-                                >Call Up</button>
-                              )}
-                              <button
-                                className="ui-btn ui-btn--sm ui-btn--secondary"
-                                style={{ marginRight: 'var(--sp-1)' }}
-                                disabled={!calledUp && team.roster.length >= ROSTER_MAX}
-                                onClick={() => runTwoWay((l, t, id) => convertTwoWayToStandard(l, t, id), p)}
-                              >Convert</button>
-                              <button
-                                className="ui-btn ui-btn--sm ui-btn--danger"
-                                onClick={() => { if (confirm(`Release ${p.name} from his two-way contract?`)) runTwoWay(releaseTwoWay, p); }}
-                              >Release</button>
-                            </td>
-                          </tr>
+                                  disabled={!calledUp && team.roster.length >= ROSTER_MAX}
+                                  title={!calledUp && team.roster.length >= ROSTER_MAX ? `Roster full (${ROSTER_MAX}). Call up first or waive someone.` : ''}
+                                  onClick={() => openConvertPanel(p)}
+                                >{showConvert ? 'Cancel' : 'Convert…'}</button>
+                                <button
+                                  className="ui-btn ui-btn--sm ui-btn--danger"
+                                  onClick={() => { if (confirm(`Release ${p.name} from his two-way contract?`)) runTwoWay(releaseTwoWay, p); }}
+                                >Release</button>
+                              </td>
+                            </tr>
+                            {showConvert && (() => {
+                              const exLabel = {
+                                room: 'Cap room',
+                                minimum: 'Minimum exception',
+                                mle: 'Mid-Level Exception',
+                                'taxpayer-mle': 'Taxpayer MLE',
+                                bae: 'Bi-Annual Exception',
+                              }[capSt.exception] ?? null;
+                              const overApron = capSt.newPayroll > APRON;
+                              const noException = capSt.exception === null;
+                              const maxSalaryM = Math.ceil(Math.max(marketSalary * 1.5, capSt.teamMLE ?? MLE_AMOUNT) / 1e5) / 10;
+                              return (
+                                <tr>
+                                  <td colSpan={6} style={{ background: 'var(--surface-0)', padding: 'var(--sp-2) var(--sp-3)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
+                                      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                                        Market rate: {money(marketSalary)}/yr
+                                      </span>
+                                      <label style={{ fontSize: 'var(--text-sm)' }}>
+                                        Salary ($M):{' '}
+                                        <input
+                                          type="number"
+                                          min={MIN_SALARY / 1e6}
+                                          max={maxSalaryM}
+                                          step={0.1}
+                                          value={convertSalaryM}
+                                          onChange={(e) => setConvertSalaryM(Number(e.target.value))}
+                                          style={{ width: 72 }}
+                                        />
+                                      </label>
+                                      <label style={{ fontSize: 'var(--text-sm)' }}>
+                                        Years:{' '}
+                                        <select value={convertYears} onChange={(e) => setConvertYears(Number(e.target.value))}>
+                                          {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                      </label>
+                                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                                        Payroll: {money(capSt.currentPayroll)} → <span style={{ color: overApron ? 'var(--color-danger)' : capSt.newPayroll > SALARY_CAP ? 'var(--color-warning)' : 'var(--color-success)', fontWeight: 'var(--weight-semibold)' }}>{money(capSt.newPayroll)}</span>
+                                        {' '}/ cap {money(SALARY_CAP)}
+                                      </span>
+                                      {exLabel && (
+                                        <span className="ui-badge ui-badge--default" style={{ fontSize: 'var(--text-xs)' }}>{exLabel}</span>
+                                      )}
+                                      {noException && (
+                                        <span style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)' }}>
+                                          No exception available — lower the salary or waive a player first.
+                                        </span>
+                                      )}
+                                      {overApron && !noException && (
+                                        <span style={{ color: 'var(--color-warning)', fontSize: 'var(--text-sm)' }}>
+                                          Over the hard cap — reduce the salary to stay under {money(APRON)}.
+                                        </span>
+                                      )}
+                                      <button
+                                        className="ui-btn ui-btn--sm ui-btn--primary"
+                                        disabled={noException || overApron}
+                                        onClick={() => {
+                                          const res = convertTwoWayToStandard(league, teamId, p.id, proposedSalary, convertYears);
+                                          if (res && res.ok === false) { setTwoWayMessage({ type: 'err', text: res.error }); }
+                                          else { setTwoWayMessage(null); setConvertingId(null); }
+                                          commit();
+                                        }}
+                                      >Confirm Convert</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })()}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
