@@ -9,20 +9,56 @@ import { mkdirSync } from 'node:fs';
 const BASE_URL = process.env.NBA_GM_URL || 'http://localhost:5173/nba-gm/';
 const SHOT_DIR = process.env.NBA_GM_SHOTS || '/tmp/nba-gm-shots';
 
-// Modals that can pop up mid-sim and block clicks: tutorial walkthrough,
-// coach-talk, milestone alert, call-up prompt, injury alert. None of them
-// share a CSS class, so fall back to the modal's *last* button — that's
-// deliberately the no-op/secondary choice in every alert modal in
-// src/components/shared.jsx — when no known label matches.
+// Pre-marks the walkthrough and all known guide tooltips as done in
+// localStorage so they never render and can't intercept pointer events.
+// Call this once right after page.goto() and again after any navigation
+// that might reset state (though in practice one call is enough).
+export async function suppressOnboarding(page) {
+  await page.evaluate(() => {
+    localStorage.setItem('nba-gm-walkthrough-done', 'true');
+    // Pre-mark every guide tooltip key the app currently uses so none
+    // of the first-encounter popovers fire and block clicks.
+    const keys = [
+      'two_way', 'dead_money', 'roster_ext', 'cap_bar', 'scouting',
+      'trade', 'morale', 'draft', 'free_agency', 'owner', 'coach',
+      'allstar', 'awards', 'legacy', 'injuries', 'extensions',
+    ];
+    const seen = {};
+    keys.forEach((k) => { seen[`tt_${k}`] = true; });
+    localStorage.setItem('nba-gm-tooltips', JSON.stringify(seen));
+  });
+}
+
+// Dismisses any overlay that can block clicks: walkthrough card, guide
+// tooltip popovers, and the four blocking interrupt modals (injury alert,
+// coach-talk, milestone, call-up prompt). Runs up to 10 passes so stacked
+// modals all clear.
 export async function dismissOverlay(page) {
-  for (let i = 0; i < 8; i++) {
-    const overlay = page.locator('.ui-modal-overlay, .walkthrough-overlay, .tour-tooltip');
-    if (!(await overlay.count())) return;
+  for (let i = 0; i < 10; i++) {
+    // Walkthrough card ("Skip tour" / "Start Managing")
+    const skipTour = page.locator('.walkthrough-skip, button:has-text("Skip tour"), button:has-text("Start Managing")').first();
+    if (await skipTour.isVisible().catch(() => false)) {
+      await skipTour.click({ force: true, timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    // Guide tooltip close buttons
+    const tooltipClose = page.locator('.guide-tooltip-close').first();
+    if (await tooltipClose.isVisible().catch(() => false)) {
+      await tooltipClose.click({ force: true, timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      continue;
+    }
+
+    // Blocking interrupt modals (ui-modal-overlay)
+    const overlay = page.locator('.ui-modal-overlay').first();
+    if (!(await overlay.isVisible().catch(() => false))) return;
     const known = page.locator(
       'button:has-text("Got It"), button:has-text("Close"), button:has-text("OK"), button:has-text("Nice!"), ' +
       'button:has-text("Dismiss"), button:has-text("Let the coach handle it"), button:has-text("Leave him down"), .ui-modal-close'
     ).first();
-    if (await known.count()) {
+    if (await known.isVisible().catch(() => false)) {
       await known.click({ timeout: 2000 }).catch(() => {});
     } else {
       const lastBtn = overlay.locator('button').last();
@@ -33,16 +69,19 @@ export async function dismissOverlay(page) {
   }
 }
 
-// Lands on the team-picker, starts a new game, and kills the onboarding
-// walkthrough so it doesn't block later clicks.
+// Lands on the team-picker, starts a new game, and suppresses all
+// onboarding so nothing blocks later clicks.
 export async function startNewGame(page, teamNameRegex = /Lakers/) {
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  // Mark walkthrough/tooltips done before clicking Start so the app
+  // never mounts them — much more reliable than racing to dismiss them.
+  await suppressOnboarding(page);
   await page.getByRole('button', { name: teamNameRegex }).click();
   await page.waitForTimeout(300);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.waitForTimeout(1000);
-  const skip = page.getByText('Skip tutorial');
-  if (await skip.count()) await skip.click();
+  // Suppress again in case React re-read localStorage before our write landed.
+  await suppressOnboarding(page);
   await dismissOverlay(page);
 }
 
