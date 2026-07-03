@@ -5,7 +5,7 @@ import {
   PROJECTION_YEARS, FIRST_APRON, APRON, projectedSalary, isExpiringIn, projectedDeadMoney,
   isRfaCandidate, projectedPayroll, projectedCapSpace, payrollStatus,
 } from '../engine/capProjection.js';
-import { getTeamPicks, pickLabel, projectedSlot } from '../engine/draftPicks.js';
+import { getTeamPicks, pickLabel, projectedSlot, pickSlotColor } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { personalitySummary, ownerStance, seatStatus, isRosterFrozen, directiveStatus, respondToExtension } from '../engine/owner.js';
 import { SPECIALTY_INFO, STYLE_INFO, coachSalary } from '../engine/coach.js';
@@ -162,9 +162,17 @@ export default function FuturePayroll({ league, commit, openPlayer, onTradeFor, 
 
   const picksBySeason = years.map((so) => {
     const draftSeason = league.season + 1 + so;
-    const pick = getTeamPicks(league, team.id).find((p) => p.round === 1 && p.season === draftSeason);
-    if (!pick) return null;
-    return { pick, slot: projectedSlot(league, pick.originalTeamId, so) };
+    const owned = getTeamPicks(league, team.id);
+    const first = owned.find((p) => p.round === 1 && p.season === draftSeason);
+    const second = owned.find((p) => p.round === 2 && p.season === draftSeason);
+    const tradedFirst = !first && league.draftPicks?.find(
+      (p) => p.round === 1 && p.season === draftSeason && p.originalTeamId === team.id,
+    );
+    return {
+      first: first ? { pick: first, slot: projectedSlot(league, first.originalTeamId, so) } : null,
+      second: second ? { pick: second, slot: projectedSlot(league, second.originalTeamId, so) } : null,
+      tradedFirstTo: tradedFirst ? tradedFirst.teamId : null,
+    };
   });
 
   return (
@@ -259,12 +267,34 @@ export default function FuturePayroll({ league, commit, openPlayer, onTradeFor, 
                 })}
               </tr>
               <tr style={{ borderTop: '2px solid var(--border)' }}>
-                <td>Projected 1st-Round Pick</td>
+                <td>1st-Round Pick</td>
                 {years.map((so) => {
-                  const info = picksBySeason[so];
+                  const { first, tradedFirstTo } = picksBySeason[so];
+                  if (first) {
+                    const traded = first.pick.originalTeamId !== team.id;
+                    return (
+                      <td key={so} className="num" title={traded ? `Acquired from ${first.pick.originalTeamId}` : undefined}>
+                        <span style={traded ? { color: 'var(--color-primary)' } : undefined}>{pickLabel(first.pick)}</span>
+                        {' '}<span style={{ color: pickSlotColor(first.slot) }}>#{first.slot}</span>
+                      </td>
+                    );
+                  }
+                  if (tradedFirstTo) {
+                    return <td key={so} className="num" style={{ color: 'var(--text-muted)' }} title={`Traded to ${tradedFirstTo}`}>traded ({tradedFirstTo})</td>;
+                  }
+                  return <td key={so} className="num" style={{ color: 'var(--text-muted)' }}>–</td>;
+                })}
+              </tr>
+              <tr>
+                <td>2nd-Round Pick</td>
+                {years.map((so) => {
+                  const { second } = picksBySeason[so];
+                  if (!second) return <td key={so} className="num" style={{ color: 'var(--text-muted)' }}>traded</td>;
+                  const traded = second.pick.originalTeamId !== team.id;
                   return (
-                    <td key={so} className="num">
-                      {info ? <span title={`${info.pick.season} draft`}>{pickLabel(info.pick)} — proj. #{info.slot}</span> : '–'}
+                    <td key={so} className="num" title={traded ? `Acquired from ${second.pick.originalTeamId}` : undefined}>
+                      <span style={traded ? { color: 'var(--color-primary)' } : undefined}>{pickLabel(second.pick)}</span>
+                      {' '}<span style={{ color: pickSlotColor(second.slot) }}>~#{30 + second.slot}</span>
                     </td>
                   );
                 })}

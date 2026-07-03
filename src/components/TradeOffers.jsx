@@ -1,7 +1,7 @@
 import React from 'react';
 import { getTeam } from '../engine/league.js';
 import { acceptTradeOffer, declineTradeOffer } from '../engine/tradeOffers.js';
-import { pickLabel } from '../engine/draftPicks.js';
+import { pickLabel, pickDraftSlot, pickSlotColor } from '../engine/draftPicks.js';
 import { Ovr, Pot, PlayerLink } from './PlayerDisplay.jsx';
 import { TeamBadge } from './TeamDisplay.jsx';
 import { money } from './formatters.js';
@@ -65,12 +65,28 @@ export default function TradeOffers({ league, commit, openPlayer, onCounter }) {
               <div>
                 <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)', marginBottom: 'var(--sp-1)' }}>You send</p>
                 <OfferSide league={league} players={give} fogged={false} openPlayer={openPlayer} />
-                {givePicks.map((pick) => <div key={pick.id} className="tag" style={{ marginTop: 4 }}>{pickLabel(pick)}</div>)}
+                {givePicks.map((pick) => {
+                  const slot = pickDraftSlot(league, pick);
+                  return (
+                    <div key={pick.id} className="tag" style={{ marginTop: 4 }}>
+                      {pickLabel(pick)}
+                      {' '}<span style={{ color: pickSlotColor(slot) }}>proj. {pick.round === 1 ? `#${slot}` : `~#${30 + slot}`}</span>
+                    </div>
+                  );
+                })}
               </div>
               <div>
                 <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)', marginBottom: 'var(--sp-1)' }}>You receive</p>
                 <OfferSide league={league} players={get} fogged openPlayer={openPlayer} />
-                {getPicks.map((pick) => <div key={pick.id} className="tag" style={{ marginTop: 4 }}>{pickLabel(pick)}</div>)}
+                {getPicks.map((pick) => {
+                  const slot = pickDraftSlot(league, pick);
+                  return (
+                    <div key={pick.id} className="tag" style={{ marginTop: 4 }}>
+                      {pickLabel(pick)}
+                      {' '}<span style={{ color: pickSlotColor(slot) }}>proj. {pick.round === 1 ? `#${slot}` : `~#${30 + slot}`}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-3)', flexWrap: 'wrap' }}>

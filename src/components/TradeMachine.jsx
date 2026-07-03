@@ -3,7 +3,7 @@ import { getTeam, payroll, tradesLocked } from '../engine/league.js';
 import { overall } from '../engine/players.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { tradeValue, validateMultiTrade, aiEvaluateMultiTrade, executeMultiTrade, resolveMultiTradeLegs } from '../engine/trade.js';
-import { getTeamPicks, pickValue, pickLabel } from '../engine/draftPicks.js';
+import { getTeamPicks, pickValue, pickLabel, pickDraftSlot, pickSlotColor } from '../engine/draftPicks.js';
 import { applyShoppedPenalty } from '../engine/morale.js';
 import { teamNeeds } from '../engine/strategy.js';
 import { ownerSignoffRequired, ownerBlocksTrade, ownerStance } from '../engine/owner.js';
@@ -212,7 +212,12 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
                 return (
                   <tr key={pick.id} className="clickable" onClick={() => toggleAsset(team.id, 'picks', pick.id)}>
                     <td><input type="checkbox" readOnly checked={checked} /></td>
-                    <td>{pickLabel(pick)}</td>
+                    <td>
+                      {pickLabel(pick)}
+                      {' '}<span style={{ color: pickSlotColor(pickDraftSlot(league, pick)), fontSize: 'var(--text-sm)' }}>
+                        proj. {pick.round === 1 ? `#${pickDraftSlot(league, pick)}` : `~#${30 + pickDraftSlot(league, pick)}`}
+                      </span>
+                    </td>
                     <td className="num"><StarRating value={pickValue(league, pick, destTeam(pick.id, 'picks')?.strategy)} /></td>
                     {teamIds.length > 2 && (
                       <td onClick={(e) => e.stopPropagation()}>
@@ -262,9 +267,15 @@ function TeamPanel({ league, team, teamIds, legs, sends, toggleAsset, setDest, c
                 })}
                 {leg.inPicks.map((pick) => {
                   const owner = legs.find((l) => l.outPicks.includes(pick))?.team;
+                  const slot = pickDraftSlot(league, pick);
                   return (
                     <tr key={pick.id} className="trade-asset-enter">
-                      <td colSpan={6}>{pickLabel(pick)}</td>
+                      <td colSpan={6}>
+                        {pickLabel(pick)}
+                        {' '}<span style={{ color: pickSlotColor(slot), fontSize: 'var(--text-sm)' }}>
+                          proj. {pick.round === 1 ? `#${slot}` : `~#${30 + slot}`}
+                        </span>
+                      </td>
                       <td className="num"><StarRating value={pickValue(league, pick, team.strategy)} /></td>
                       <td>{owner?.name}</td>
                     </tr>

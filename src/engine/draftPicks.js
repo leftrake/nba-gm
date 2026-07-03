@@ -61,6 +61,17 @@ export function pickLabel(pick) {
   return label;
 }
 
+// Convenience wrapper: projected slot for a pick relative to the upcoming draft.
+export function pickDraftSlot(league, pick) {
+  const yearsOut = Math.max(0, pick.season - (league.season + 1));
+  return projectedSlot(league, pick.originalTeamId, yearsOut);
+}
+
+// CSS color for a draft slot — green for top-5, yellow for lottery, muted for non-lottery.
+export function pickSlotColor(slot) {
+  return slot <= 5 ? 'var(--green)' : slot <= 14 ? 'var(--yellow)' : 'var(--text-muted)';
+}
+
 // Where the original team's pick projects to land in its draft, based on
 // in-progress record (or last season's, before the new season tips off).
 // Slot 1 = worst record (best pick), slot 30 = best record.

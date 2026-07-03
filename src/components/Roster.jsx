@@ -6,7 +6,7 @@ import { ARCHETYPE_LABELS } from '../engine/archetypes.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, normalizeLineup, lineupErrors, lineupWarnings, playerFit, isInjured } from '../engine/lineup.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { teamGameLog, keyFindings, recentForm, homeAwaySplit, clutchRecord, strengthOfSchedule } from '../engine/analytics.js';
-import { getTeamPicks, pickLabel } from '../engine/draftPicks.js';
+import { getTeamPicks, pickLabel, pickDraftSlot, pickSlotColor } from '../engine/draftPicks.js';
 import { SALARY_CAP, LUXURY_TAX, TWO_WAY_MAX, ROSTER_MAX, SUPERMAX_SALARY } from '../data/teams.js';
 import { safeAccent, textOnColor } from '../engine/colorUtils.js';
 import { Ovr, Pot, Sta, Cond, Morale, InjuryTag, OvrArc, PlayerLink } from './PlayerDisplay.jsx';
@@ -1023,7 +1023,18 @@ export default function Roster({ league, commit, teamId, openTeam, openPlayer, o
               if (!picks.length) return <p style={{ color: 'var(--text-muted)' }}>No picks owned.</p>;
               return (
                 <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-                  {picks.map((pick) => <span key={pick.id} className="ui-badge ui-badge--default">{pickLabel(pick)}</span>)}
+                  {picks.map((pick) => {
+                    const slot = pickDraftSlot(league, pick);
+                    const slotColor = pickSlotColor(slot);
+                    const projStr = pick.round === 1 ? `#${slot}` : `~#${30 + slot}`;
+                    const traded = pick.originalTeamId !== pick.teamId;
+                    return (
+                      <span key={pick.id} className="ui-badge ui-badge--default" style={traded ? { borderColor: 'var(--color-primary)', borderWidth: 1, borderStyle: 'solid' } : undefined} title={traded ? `Originally from ${pick.originalTeamId}` : undefined}>
+                        {pickLabel(pick)}
+                        <span style={{ color: slotColor, marginLeft: 5 }}>proj. {projStr}</span>
+                      </span>
+                    );
+                  })}
                 </div>
               );
             })()}
