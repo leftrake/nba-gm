@@ -80,15 +80,41 @@ export function pickSlotColor(slot) {
 // as the rebuild bears fruit), while a contender's win% is more likely to
 // regress as its roster ages — so the pick's value drifts accordingly the
 // further out it is.
+//
+// Ranking is always relative — all 30 teams are sorted by their projected
+// score and the original team's position in that order is returned, so two
+// teams can never independently arrive at the same slot.
 export function projectedSlot(league, originalTeamId, yearsOut = 0) {
-  const team = getTeam(league, originalTeamId);
-  const gp = team.wins + team.losses;
-  let winPct = gp > 0 ? team.wins / gp : (team.lastWins ?? 41) / 82;
-  if (yearsOut > 0) {
-    const drift = team.strategy === 'rebuilding' ? 0.04 : team.strategy === 'contending' ? -0.04 : 0;
-    winPct = clamp(winPct + drift * yearsOut, 0.1, 0.9);
-  }
-  return clamp(Math.round(1 + winPct * 29), 1, 30);
+  const scores = league.teams.map((t) => {
+    const gp = t.wins + t.losses;
+    let winPct = gp > 0 ? t.wins / gp : (t.lastWins ?? 41) / 82;
+
+    if (yearsOut > 0) {
+      const drift = t.strategy === 'rebuilding' ? 0.04 : t.strategy === 'contending' ? -0.04 : 0;
+      winPct = clamp(winPct + drift * yearsOut, 0.1, 0.9);
+    }
+
+    // For the current draft year, blend in recent form so the projection
+    // tracks the live power ranking rather than win% alone.
+    let score = winPct;
+    if (yearsOut === 0) {
+      const log = [];
+      for (const day of league.resultsByDay || []) {
+        const r = day?.find((x) => x.home === t.id || x.away === t.id);
+        if (r) log.push(r.home === t.id ? r.homePts > r.awayPts : r.awayPts > r.homePts);
+      }
+      const last10 = log.slice(-10);
+      const recentForm = last10.length ? last10.filter(Boolean).length / last10.length : winPct;
+      score = winPct * 0.75 + recentForm * 0.25;
+    }
+
+    return { id: t.id, score };
+  });
+
+  // Sort worst-to-best: slot 1 = worst (best draft pick), slot 30 = best.
+  scores.sort((a, b) => a.score - b.score);
+  const rank = scores.findIndex((t) => t.id === originalTeamId);
+  return clamp(rank + 1, 1, 30);
 }
 
 // Trade value of a future pick: a 1st projects to a prospect somewhere
