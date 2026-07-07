@@ -21,7 +21,13 @@ const check = (name, cond, detail = '') => {
 check('day-0 prorated minimum equals the full minimum', proratedMinSalary(league) === MIN_SALARY, `${proratedMinSalary(league)}`);
 
 // sim half a season
-while (league.dayIndex < 90) simDay(league);
+while (league.dayIndex < 90) {
+  if (league.phase === 'cup') {
+    let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+    league.phase = 'regular';
+  }
+  simDay(league);
+}
 
 const prorated = proratedMinSalary(league);
 check('mid-season minimum is prorated below the full minimum', prorated < MIN_SALARY && prorated > 0, `${(prorated / 1e6).toFixed(2)}M at day ${league.dayIndex}`);

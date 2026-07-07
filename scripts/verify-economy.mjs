@@ -1,6 +1,7 @@
 // Economy verification harness: sims 3 full seasons headless, twice.
 //   Run A — all-AI league: is the natural economy stable (avg payroll
-//           within ~5% of the cap, stars retained, FA cleared in round 1)?
+//           within ~15% of the cap — teams live over the cap via exceptions,
+//           like the real NBA — stars retained, FA cleared in round 1)?
 //   Run B — greedy user: can the user sign more than one quality starter
 //           per offseason without first clearing salary?
 // Run with: node scripts/verify-economy.mjs [seed]
@@ -103,8 +104,10 @@ console.log('\n================ RUN A: all-AI league ================');
     console.log(`quality FAs after all 5 rounds: ${qualityFAs(league)} (pool size ${league.freeAgents.length})`);
     avgs.push(payrollReport(league, `payrolls entering ${league.season}`));
   }
-  const ok = avgs.every((a) => Math.abs(a / SALARY_CAP - 1) <= 0.05);
-  console.log(`\nRUN A verdict — avg payroll within 5% of cap all 3 seasons: ${ok ? 'PASS' : 'FAIL'}`);
+  // Same band as test-suite.mjs: the cap-exception system means teams live
+  // over the cap (below the tax/apron), so equilibrium sits above SALARY_CAP.
+  const ok = avgs.every((a) => Math.abs(a / SALARY_CAP - 1) <= 0.15);
+  console.log(`\nRUN A verdict — avg payroll within 15% of cap all 3 seasons: ${ok ? 'PASS' : 'FAIL'}`);
 }
 
 // ---------------- Run B: greedy user ----------------

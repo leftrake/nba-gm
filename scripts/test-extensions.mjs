@@ -7,6 +7,7 @@ import {
   offerExtension, extensionDemand, extensionEligible, askingPrice,
 } from '../src/engine/league.js';
 import { simCupGame, cupComplete } from '../src/engine/cup.js';
+import { extensionType, extensionSalaryRange } from '../src/engine/extensions.js';
 import { overall } from '../src/engine/players.js';
 
 const seed = Number(process.argv[2]) || 42;
@@ -20,11 +21,17 @@ const check = (name, cond, detail = '') => {
 
 // --- user flow guards before the season ---
 const user = getTeam(league, 'BOS');
-const ineligible = user.roster.find((p) => p.contract.years > 1);
-check('ineligible player (years > 1) is refused', offerExtension(league, 'BOS', ineligible.id, 30e6, 3).ok === false);
+const ineligible = user.roster.find((p) => !extensionEligible(p));
+check('ineligible player is refused', offerExtension(league, 'BOS', ineligible.id, 30e6, 3).ok === false);
 
 // --- sim past all AI review days (40–99) ---
-while (league.dayIndex < 110) simDay(league);
+while (league.dayIndex < 110) {
+  if (league.phase === 'cup') {
+    let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+    league.phase = 'regular';
+  }
+  simDay(league);
+}
 
 const aiPlayers = league.teams.filter((t) => t.id !== 'BOS').flatMap((t) => t.roster);
 const extended = aiPlayers.filter((p) => p.extension);
@@ -32,15 +39,29 @@ const flagged = aiPlayers.filter((p) => p.extTalksFailed);
 const eligibleStill = aiPlayers.filter((p) => extensionEligible(p) && !p.extTalksFailed);
 console.log(`AI mid-season: ${extended.length} extended, ${flagged.length} passed on, ${eligibleStill.length} undecided (refusals/tax/age)`);
 check('AI teams extended players mid-season', extended.length >= 30, `${extended.length}`);
+// Quality players should be retained at a clearly higher rate than fringe
+// players (resignChance is OVR-tiered, but deliberately allows movement —
+// see "Increase player movement by making resignChance condition-aware").
 const extQuality = aiPlayers.filter((p) => p.extension && overall(p) >= 70).length;
 const flaggedQuality = flagged.filter((p) => overall(p) >= 70).length;
-check('quality players mostly extended', extQuality >= flaggedQuality * 2, `${extQuality} extended vs ${flaggedQuality} passed on`);
+const qualityRate = extQuality / Math.max(1, extQuality + flaggedQuality);
+const fringeRate = (extended.length - extQuality) / Math.max(1, extended.length - extQuality + flagged.length - flaggedQuality);
+check('quality players extended at a higher rate than fringe', qualityRate > fringeRate,
+  `${(qualityRate * 100).toFixed(0)}% (${extQuality}/${extQuality + flaggedQuality}) vs ${(fringeRate * 100).toFixed(0)}%`);
 check('no user player auto-extended', user.roster.every((p) => !p.extension && !p.extTalksFailed));
 check('extension news appeared', league.news.some((n) => n.text.includes('extension')));
 
 // --- user offer flow mid-season ---
-const target = user.roster.find((p) =>
-  extensionEligible(p) && overall(p) >= 55 && extensionDemand(league, 'BOS', p, 3) !== null);
+// The target's demand must sit inside his window's salary range: if demand
+// clamps to the window ceiling, a 10%-shy offer clamps to the same number
+// and is (correctly) accepted rather than countered.
+const target = user.roster.find((p) => {
+  if (!extensionEligible(p) || overall(p) < 55) return false;
+  const d = extensionDemand(league, 'BOS', p, 3);
+  if (d === null) return false;
+  const r = extensionSalaryRange(p, extensionType(p));
+  return d >= r.min / 0.8 && d <= r.max;
+});
 if (!target) {
   console.log('NOTE: no negotiable expiring player on user roster this seed; skipping offer-flow checks');
 } else {

@@ -28,7 +28,13 @@ releasePlayer(league, 'BOS', earlyCut.id);
 check('pre-deadline waive is not tagged as a buyout', !buyoutEligible(earlyCut), `waivedDuringSeason=${earlyCut.waivedDuringSeason}`);
 
 // sim past the trade deadline
-while (league.dayIndex <= TRADE_DEADLINE_DAY) simDay(league);
+while (league.dayIndex <= TRADE_DEADLINE_DAY) {
+  if (league.phase === 'cup') {
+    let g = 0; while (!cupComplete(league) && g++ < 10) simCupGame(league);
+    league.phase = 'regular';
+  }
+  simDay(league);
+}
 check('past the trade deadline', league.dayIndex > TRADE_DEADLINE_DAY, `day ${league.dayIndex}`);
 
 // post-deadline waive of a good player: tagged as a buyout, signable for the
