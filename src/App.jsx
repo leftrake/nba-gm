@@ -27,6 +27,7 @@ import DevelopmentReport from './components/DevelopmentReport.jsx';
 import AwardCeremony from './components/AwardCeremony.jsx';
 import OffseasonHub from './components/OffseasonHub.jsx';
 import PlayerCard from './components/PlayerCard.jsx';
+import ShopPlayerModal from './components/ShopPlayer.jsx';
 import Settings from './components/Settings.jsx';
 import StyleGuide from './components/StyleGuide.jsx';
 import GameModal from './components/BoxScore.jsx';
@@ -75,6 +76,7 @@ export default function App() {
   const [rosterTeamId, setRosterTeamId] = useState(null);
   const [viewPlayer, setViewPlayer] = useState(null);
   const [viewGame, setViewGame] = useState(null); // { game, title }
+  const [shopTarget, setShopTarget] = useState(null); // user player being shopped around the league
   const [theme, setTheme] = useState(loadTheme);
   const [accentColor, setAccentColor] = useState(loadAccent);
   const [saveError, setSaveError] = useState(null);
@@ -104,6 +106,9 @@ export default function App() {
 
   const openPlayer = useCallback((p) => setViewPlayer(p), []);
   const closePlayer = useCallback(() => setViewPlayer(null), []);
+  // Shop replaces the player card (rather than stacking on it); player links
+  // inside the shop results reopen the card on top.
+  const openShop = useCallback((p) => { setViewPlayer(null); setShopTarget(p); }, []);
   const openGame = useCallback((game, title) => setViewGame({ game, title }), []);
 
   // Hand an incoming trade offer to the Trade Machine, pre-filled so the
@@ -192,6 +197,7 @@ export default function App() {
     setRosterTeamId(null);
     setViewPlayer(null);
     setViewGame(null);
+    setShopTarget(null);
     setScreen('dashboard');
   };
 
@@ -205,6 +211,7 @@ export default function App() {
       setRosterTeamId(null);
       setViewPlayer(null);
       setViewGame(null);
+      setShopTarget(null);
       setPendingTeamId(null);
       setFantasyMode(false);
       setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' });
@@ -706,7 +713,17 @@ export default function App() {
         {screen === 'styleguide' && <StyleGuide />}
         </div>
         {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
-        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} commit={commit} />}
+        {shopTarget && (
+          <ShopPlayerModal
+            league={league}
+            player={shopTarget}
+            onClose={() => setShopTarget(null)}
+            commit={commit}
+            openPlayer={openPlayer}
+            onOpenInMachine={(offer) => { setShopTarget(null); openTradeOffer(offer); }}
+          />
+        )}
+        {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} onShop={openShop} commit={commit} />}
         <InjuryAlertModal
           alert={injuryAlert}
           onClose={() => setInjuryAlert(null)}

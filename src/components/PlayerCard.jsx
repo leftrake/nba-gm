@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { askingPrice, getTeam } from '../engine/league.js';
+import { askingPrice, getTeam, tradesLocked } from '../engine/league.js';
 import { durabilityNote, ratingRow, posLabel, similarPlayers, overall, formatHeight, TRAINING_FOCUS_OPTIONS, DEV_ARC_LABELS } from '../engine/players.js';
 import { ARCHETYPE_LABELS } from '../engine/archetypes.js';
 import { injuryTimeline } from '../engine/injuries.js';
@@ -317,7 +317,7 @@ function RetiredMemorial({ league, p, onClose, openTeam }) {
 
 const TABS = [['stats', 'Stats'], ['milestones', 'Milestones'], ['history', 'History']];
 
-export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor, commit }) {
+export default function PlayerCard({ league, player: p, onClose, openTeam, openPlayer, onTradeFor, onShop, commit }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -378,6 +378,9 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
           <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'flex-start', flexShrink: 0 }}>
             {team && onTradeFor && !isTwoWay && (
               <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => onTradeFor(p)}>Trade</button>
+            )}
+            {team?.id === league.userTeamId && onShop && !isTwoWay && p.contract && !tradesLocked(league) && (
+              <button className="ui-btn ui-btn--sm ui-btn--secondary" onClick={() => onShop(p)} title="Ask around the league what they'd give up for him">Shop</button>
             )}
             {fogged && commit && (() => {
               const isWatching = league.scouting?.proWatchList?.includes(p.id);

@@ -23,9 +23,10 @@
 //    the user is already stacked at, unless they're an upgrade.
 
 import { overall } from './players.js';
-import { getTeam } from './league.js';
+import { getTeam, tradesLocked } from './league.js';
 import { tradeValue, validateTrade, aiEvaluateTrade, executeTrade } from './trade.js';
 import { getTeamPicks, pickValue, pickLabel, violatesStepien } from './draftPicks.js';
+import { applyShoppedPenalty } from './morale.js';
 import { pushNews } from './save.js';
 
 export const OFFER_LIFETIME_DAYS = 5;
@@ -355,6 +356,90 @@ export function maybeGenerateTradeOffer(league, rng) {
     });
     return;
   }
+}
+
+// ---------- Shopping a player ----------
+
+const SHOP_MAX_OFFERS = 3;
+const SHOP_PLAYER_POOL = 8; // deepest roster players each AI considers sending
+const SHOP_PICK_POOL = 3;   // most valuable picks each AI considers sending
+
+// The richest package `team` would actually agree to send for the user's
+// `player`: up to two players plus up to two picks, maximizing neutral value
+// to the user among combos this front office accepts. Acceptance runs
+// through the exact same aiEvaluateTrade the Trade Machine uses, so a
+// package found here still goes through if the user proposes it there.
+function bestShopPackage(league, user, team, player) {
+  if (team.strategy === 'rebuilding' && !rebuilderWouldChase(player)) return null;
+  const pool = team.roster
+    .filter((p) => p.contract && !p.contract.twoWay)
+    .sort((a, b) => tradeValue(b) - tradeValue(a))
+    .slice(0, SHOP_PLAYER_POOL);
+  const picks = getTeamPicks(league, team.id)
+    .sort((a, b) => pickValue(league, b) - pickValue(league, a))
+    .slice(0, SHOP_PICK_POOL);
+
+  const playerSets = [[]];
+  for (let i = 0; i < pool.length; i++) {
+    playerSets.push([pool[i]]);
+    for (let j = i + 1; j < pool.length; j++) playerSets.push([pool[i], pool[j]]);
+  }
+  const pickSets = [[]];
+  for (let i = 0; i < picks.length; i++) {
+    pickSets.push([picks[i]]);
+    for (let j = i + 1; j < picks.length; j++) pickSets.push([picks[i], picks[j]]);
+  }
+
+  let best = null;
+  for (const ps of playerSets) {
+    for (const ks of pickSets) {
+      if (!ps.length && !ks.length) continue;
+      const pIds = ps.map((p) => p.id);
+      const kIds = ks.map((k) => k.id);
+      const value = packageValue(league, team, pIds, kIds);
+      if (best && value <= best.value) continue;
+      if (!validateTrade(league, user.id, [player.id], team.id, pIds, [], kIds).ok) continue;
+      if (!aiEvaluateTrade(league, team.id, [player], ps, [], ks).accept) continue;
+      best = { pIds, kIds, value };
+    }
+  }
+  if (!best) return null;
+  return {
+    id: `shop-${player.id}-${team.id}-${league.dayIndex}`,
+    fromTeamId: team.id,
+    give: [player.id], get: best.pIds, givePicks: [], getPicks: best.kIds,
+    value: best.value,
+    why: teamFitReason(team, player),
+  };
+}
+
+// User-initiated market check: "what would the league give me for X?" Every
+// AI team assembles its best acceptable package and the strongest few come
+// back as ready-to-complete offers. Nothing is persisted — the results are
+// soundings the user can hand to the Trade Machine, not standing offers.
+// Making calls around the league isn't quiet, though: the player takes the
+// standard "shopped" morale hit and the rumor reaches the news feed.
+export function shopPlayer(league, playerId) {
+  if (!league.userTeamId) return { offers: [] }; // headless leagues (sim scripts) have no user team
+  if (tradesLocked(league)) return { offers: [], locked: true };
+  const user = getTeam(league, league.userTeamId);
+  const player = user?.roster.find((p) => p.id === playerId);
+  if (!player || !player.contract || player.contract.twoWay) return { offers: [] };
+
+  const offers = [];
+  for (const team of league.teams) {
+    if (team.id === user.id) continue;
+    const offer = bestShopPackage(league, user, team, player);
+    if (offer) offers.push(offer);
+  }
+  offers.sort((a, b) => b.value - a.value);
+
+  applyShoppedPenalty([player]);
+  pushNews(league, {
+    day: league.dayIndex, category: 'trade', teamIds: [user.id],
+    text: `📞 League sources: the ${user.name} have been gauging the trade market for ${player.name}.`,
+  });
+  return { offers: offers.slice(0, SHOP_MAX_OFFERS), targetValue: tradeValue(player) };
 }
 
 // Re-validates (a roster move since the offer arrived could have made it
