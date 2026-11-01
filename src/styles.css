@@ -208,7 +208,7 @@ body {
   width: 100%;
   background: none;
   border: 1px solid transparent;
-  color: var(--color-danger);
+  color: var(--text-muted);
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -218,7 +218,9 @@ body {
   transition: color var(--transition-base), background var(--transition-base);
 }
 
-.sidebar-new-game:hover { background: var(--color-danger-soft); }
+/* Neutral, not danger-red: this returns to the save-slot picker and
+   deletes nothing — only the picker's own Delete button is destructive. */
+.sidebar-new-game:hover { background: var(--surface-2); color: var(--text-primary); }
 
 .app-main {
   flex: 1;

@@ -93,7 +93,10 @@ export default function App() {
   }, []);
   const [activeSlot, setActiveSlot] = useState(activeSlotInit);
   const [pendingSlot, setPendingSlot] = useState(null); // slot chosen for new game creation
-  const [slotRevision, setSlotRevision] = useState(0); // increments to refresh slot picker after delete
+  // The slot picker reads localStorage during render, so after a delete it
+  // just needs a re-render to pick the change up — only the setter is used.
+  const [, bumpSlotRevision] = useState(0);
+  const [slotError, setSlotError] = useState(null); // why a slot wouldn't load
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
@@ -206,16 +209,19 @@ export default function App() {
   const loadSlotN = (n) => {
     try {
       const raw = localStorage.getItem(slotKey(n));
-      if (!raw) return;
+      if (!raw) { setSlotError('That save slot is empty.'); return; }
       const check = checkSave(JSON.parse(raw));
-      if (check.error) return;
+      if (check.error) { setSlotError(check.error); return; }
+      setSlotError(null);
       backfillPlayers(check.league);
       setActiveSlot(n);
       localStorage.setItem(ACTIVE_SLOT_KEY, String(n));
       setLeagueState(check.league);
       resetUIState();
       setScreen('dashboard');
-    } catch {}
+    } catch {
+      setSlotError('That save is corrupted and could not be read. You can delete the slot, or import a save file from Settings after starting a new game.');
+    }
   };
 
   const deleteSlot = (n) => {
@@ -225,7 +231,8 @@ export default function App() {
       setLeagueState(null);
       resetUIState();
     }
-    setSlotRevision((r) => r + 1);
+    setSlotError(null);
+    bumpSlotRevision((r) => r + 1);
   };
 
   const handleResetTutorial = () => {
@@ -259,7 +266,7 @@ export default function App() {
 
     // ── Slot picker ──────────────────────────────────────────────────────────
     if (pendingSlot === null) {
-      const summaries = Array.from({ length: SLOT_COUNT + slotRevision * 0 }, (_, n) => slotSummary(n));
+      const summaries = Array.from({ length: SLOT_COUNT }, (_, n) => slotSummary(n));
       return (
         <div className="app">
           <main>
@@ -267,6 +274,11 @@ export default function App() {
             {initialSave.warning && (
               <p style={{ color: 'var(--red)', marginTop: 12, maxWidth: 560, marginInline: 'auto' }}>
                 ⚠️ {initialSave.warning}
+              </p>
+            )}
+            {slotError && (
+              <p style={{ color: 'var(--red)', marginTop: 12, maxWidth: 560, marginInline: 'auto' }}>
+                ⚠️ {slotError}
               </p>
             )}
             <div style={{ maxWidth: 680, marginInline: 'auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 24 }}>

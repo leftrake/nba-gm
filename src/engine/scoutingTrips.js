@@ -718,6 +718,26 @@ export function removeTradeBookmark(league, playerId) {
   s.tradeBookmarks = s.tradeBookmarks.filter((id) => id !== playerId);
 }
 
+// Bookmarked players retire, and long franchises compact retired players out
+// of the save entirely (pruneRetiredPlayers), so without this the bookmark
+// arrays only ever grow — the watchlist panel filters the dead ids out of the
+// display, but they stay in the save forever. Called from backfillPlayers on
+// load. Deliberately leaves proWatchList alone: that list is the scouting
+// system's own, with paired state in proWatching/proReports.
+export function pruneBookmarks(league) {
+  const s = league.scouting;
+  if (!s) return;
+  const live = new Set();
+  for (const team of league.teams) {
+    for (const p of team.roster) live.add(p.id);
+    for (const p of team.twoWay ?? []) live.add(p.id);
+  }
+  for (const p of league.freeAgents ?? []) live.add(p.id);
+  for (const key of ['faBookmarks', 'tradeBookmarks']) {
+    if (Array.isArray(s[key])) s[key] = s[key].filter((id) => live.has(id));
+  }
+}
+
 // ---- AI scout hiring ----
 
 const REBUILD_PREFS = ['regional', 'regional', 'sleeper', 'rangeSpecialist'];

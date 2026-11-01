@@ -29,7 +29,7 @@ import {
   evaluateHallOfFame, detectDynasties, updateGmLegacy, updateCrossSaveLegacy, pruneRetiredPlayers,
 } from './legacy.js';
 import { askingPriceMult, extensionDemandMult, maybeRevealBackstory } from './backstory.js';
-import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting } from './scoutingTrips.js';
+import { initScoutingPhase, initSeasonScouting, initDraftBoard, tickProScouting, pruneBookmarks } from './scoutingTrips.js';
 import { computeQualitySeasons, TRAIT_NEWS_REVEAL_TIERS, traitFromPotential } from './devTraits.js';
 import { generateCoach, devBonus, coachSalary } from './coach.js';
 import { checkPlayerCareerHighs, checkPtsThresholds, recordFirstChampionship } from './milestones.js';
@@ -622,6 +622,7 @@ export function backfillPlayers(league) {
   // outside the record book top-10 and not in the HOF (their stats are already
   // captured in the stored derived record book). Also prune stale pace flags.
   pruneRetiredPlayers(league);
+  pruneBookmarks(league); // after pruneRetiredPlayers — it decides what's still live
   for (const s of Object.keys(league.recordPaceFlags || {})) {
     if (Number(s) < (league.season ?? 0)) delete league.recordPaceFlags[s];
   }

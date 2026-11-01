@@ -1,6 +1,6 @@
 import React from 'react';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus, askingPrice } from '../engine/league.js';
-import { PRO_SCOUT_GAMES_FULL } from '../engine/scoutingTrips.js';
+import { PRO_SCOUT_GAMES_FULL, removeFaBookmark, removeTradeBookmark } from '../engine/scoutingTrips.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { OvrArc, PlayerLink } from './PlayerDisplay.jsx';
@@ -239,7 +239,24 @@ function findInLeague(league, playerId) {
   return null;
 }
 
-function WatchlistSection({ league, openPlayer, openTeam, setScreen }) {
+// Un-star straight from the panel — otherwise clearing a target means
+// going back to the screen it was set from.
+function UnwatchButton({ onClick }) {
+  return (
+    <td style={{ width: 24, textAlign: 'right' }}>
+      <button
+        className="ui-btn ui-btn--sm ui-btn--secondary"
+        title="Remove from watchlist"
+        onClick={onClick}
+        style={{ padding: '0 5px', lineHeight: 1.4, color: 'var(--text-muted)' }}
+      >
+        ✕
+      </button>
+    </td>
+  );
+}
+
+function WatchlistSection({ league, commit, openPlayer, openTeam, setScreen }) {
   const proWatch = league.scouting?.proWatchList ?? [];
   const faBookmarks = league.scouting?.faBookmarks ?? [];
   const tradeBookmarks = league.scouting?.tradeBookmarks ?? [];
@@ -305,6 +322,7 @@ function WatchlistSection({ league, openPlayer, openTeam, setScreen }) {
                       <td className="num" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
                         {money(askingPrice(p, league.settings))}
                       </td>
+                      <UnwatchButton onClick={() => { removeFaBookmark(league, p.id); commit(); }} />
                     </tr>
                   ))}
                 </tbody>
@@ -325,6 +343,7 @@ function WatchlistSection({ league, openPlayer, openTeam, setScreen }) {
                         <TeamLink team={team} openTeam={openTeam}>{team.id}</TeamLink>
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>{p.pos} · Age {p.age}</td>
+                      <UnwatchButton onClick={() => { removeTradeBookmark(league, p.id); commit(); }} />
                     </tr>
                   ))}
                 </tbody>
@@ -400,7 +419,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
 
       <TradeOffers league={league} commit={commit} openPlayer={openPlayer} onCounter={onCounterTradeOffer} />
 
-      <WatchlistSection league={league} openPlayer={openPlayer} openTeam={openTeam} setScreen={setScreen} />
+      <WatchlistSection league={league} commit={commit} openPlayer={openPlayer} openTeam={openTeam} setScreen={setScreen} />
 
       {/* Standings + Team Overview side-by-side */}
       <Divider />
