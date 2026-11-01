@@ -36,7 +36,16 @@ fatigue).
 specific systems — run the relevant one directly with `node` when touching
 that area: `test-extensions.mjs` (contract extensions), `test-midseason-fa.mjs`
 (in-season free agency), `verify-economy.mjs` (payroll equilibrium),
-`sim-talent-pipeline.mjs` (long-run age/talent drift over 10 seasons).
+`sim-talent-pipeline.mjs` (long-run age/talent drift over 10 seasons),
+`test-buyout-market.mjs` (buyout market).
+
+`scripts/build-state.mjs` is not a check but a state builder: it sims a
+league headlessly to any point (`--to days:N | games:N | phase:NAME |
+seasons:N`) and writes the result as a save file. Use it instead of simming
+through the UI — a state that takes minutes to reach in headless Chromium
+builds here in well under a second, and
+`.claude/skills/run-nba-gm/driver.mjs`'s `loadState()` injects the result so
+the app opens directly on it.
 
 These regression scripts are written for the current equilibrium, not
 infallible ground truth — a failure can mean either a real bug or a test
@@ -150,10 +159,17 @@ league-wide before the season ever begins), entered instead of the normal
 flow at new-game creation.
 
 Each phase has its own sim/advance button in `App.jsx` and its own advance
-function in `league.js` or `draft.js` (`advanceOffseason` walks the
-`offseason/*` sub-phases in order and calls `initDraft`; `finishDraft` opens
-`offseason/freeagency`). RNG for each sim step is derived from `league.seed`
-plus phase-specific offsets, so a league is reproducible from its seed.
+function in `league.js` or `draft.js`. Note that `advanceOffseason` is a
+one-shot, not a walker: called from `offseason/finals-mvp` it does the whole
+summer (archive stats, develop, retire, `initDraft`), bumps `league.season`
+and lands on `offseason/development` — calling it again re-runs all of that
+and advances another year. The chain from there
+(`development → coaching → lottery → combine → draft`) lives in
+`components/OffseasonHub.jsx`, not the engine, so anything driving the
+offseason headlessly has to mirror that component (as
+`scripts/build-state.mjs` does). `finishDraft` opens `offseason/freeagency`.
+RNG for each sim step is derived from `league.seed` plus phase-specific
+offsets, so a league is reproducible from its seed.
 
 ## Notes
 

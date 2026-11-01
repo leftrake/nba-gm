@@ -5,6 +5,7 @@
 // start one itself.
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 const BASE_URL = process.env.NBA_GM_URL || 'http://localhost:5173/nba-gm/';
 const SHOT_DIR = process.env.NBA_GM_SHOTS || '/tmp/nba-gm-shots';
@@ -51,10 +52,18 @@ export async function dismissOverlay(page) {
       continue;
     }
 
-    // Blocking interrupt modals (ui-modal-overlay)
-    const overlay = page.locator('.ui-modal-overlay').first();
+    // Blocking interrupt modals (ui-modal-overlay). `.last()`, not `.first()`:
+    // when two alerts stack, the newer one renders later in the DOM and sits
+    // on top, so the bottom overlay's buttons are there but unclickable.
+    const overlay = page.locator('.ui-modal-overlay').last();
     if (!(await overlay.isVisible().catch(() => false))) return;
-    const known = page.locator(
+    // Scoped to the overlay, not the page: `:has-text()` is a case-insensitive
+    // substring match, so page-wide these labels also hit ordinary screen
+    // buttons ("OK" inside "Look", say). Those sit earlier in the DOM than the
+    // modal, so `.first()` picked one, the click bounced off the overlay, and
+    // the real Dismiss button was never reached — the sim then hung on the
+    // next injury alert.
+    const known = overlay.locator(
       'button:has-text("Got It"), button:has-text("Close"), button:has-text("OK"), button:has-text("Nice!"), ' +
       'button:has-text("Dismiss"), button:has-text("Let the coach handle it"), button:has-text("Leave him down"), .ui-modal-close'
     ).first();
@@ -76,12 +85,49 @@ export async function startNewGame(page, teamNameRegex = /Lakers/) {
   // Mark walkthrough/tooltips done before clicking Start so the app
   // never mounts them — much more reliable than racing to dismiss them.
   await suppressOnboarding(page);
+  // The start screen opens on the save-slot picker, not the team list:
+  // step through it first. An empty slot offers "New Franchise", a filled
+  // one "New" (alongside Continue/Delete) — a fresh context has all three
+  // empty, but reuse of a profile with saves hits the latter.
+  const slotBtn = page.getByRole('button', { name: /^(New Franchise|New)$/ }).first();
+  if (await slotBtn.isVisible().catch(() => false)) {
+    await slotBtn.click();
+    await page.waitForTimeout(300);
+  }
   await page.getByRole('button', { name: teamNameRegex }).click();
   await page.waitForTimeout(300);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.waitForTimeout(1000);
   // Suppress again in case React re-read localStorage before our write landed.
   await suppressOnboarding(page);
+  await dismissOverlay(page);
+}
+
+// Drops the app straight into a prebuilt state instead of simming there.
+// Build the save with `node scripts/build-state.mjs --to games:58 --out FILE`
+// (sub-second) and load it here — simming the same stretch through the
+// browser takes minutes and has to survive every injury/milestone modal on
+// the way. Use startNewGame() only when the thing under test IS the new-game
+// flow; otherwise this is the way in.
+//
+//   await loadState(page, '/tmp/nba-gm-state.json');
+//   await gotoNav(page, 'Stats');
+//
+// Writes to save slot 0, whose localStorage key is the original
+// 'nba-gm-save' (the slot feature deliberately kept it for back-compat), so
+// this works with or without the multi-slot start screen.
+export async function loadState(page, file, { slot = 0 } = {}) {
+  const raw = await readFile(file, 'utf8');
+  const key = slot === 0 ? 'nba-gm-save' : `nba-gm-save-${slot}`;
+  // Must be on the page's origin before localStorage is writable.
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(([k, json, n]) => {
+    localStorage.setItem(k, json);
+    localStorage.setItem('nba-gm-active-slot', String(n));
+  }, [key, raw, slot]);
+  await suppressOnboarding(page);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
   await dismissOverlay(page);
 }
 

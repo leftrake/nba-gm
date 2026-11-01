@@ -24,8 +24,38 @@ Start the app's dev server from the repo root first:
 
 ```bash
 npm run dev > /tmp/nba-gm-dev.log 2>&1 &
-until curl -sf http://localhost:5173 >/dev/null; do sleep 1; done
+until curl -sf http://localhost:5173/nba-gm/ >/dev/null; do sleep 1; done
 ```
+
+(The `/nba-gm/` path matters — `vite.config.js` sets `base: '/nba-gm/'` for GitHub Pages, so the bare origin 404s and a `curl -sf` wait-loop on it never finishes.)
+
+## Don't sim in the browser
+
+Simming through the UI is ~1000x slower than simming in Node, and every
+injury/milestone/coach-talk modal along the way is one more thing to trip
+over. Reaching 58 games in headless Chromium took ~15 minutes; the same
+state built in Node takes **0.5 seconds**.
+
+So build the state headlessly, then hand the browser a finished save:
+
+```bash
+node scripts/build-state.mjs --to games:58 --out /tmp/nba-gm-state.json
+```
+
+```js
+import { loadState, gotoNav } from './driver.mjs';
+await loadState(page, '/tmp/nba-gm-state.json');   // app opens on that state
+await gotoNav(page, 'Stats');
+```
+
+That round trip — build, inject, navigate, screenshot — is ~4 seconds total.
+`--to` takes `days:N`, `games:N`, `phase:NAME` (`cup`, `play-in`, `playoffs`,
+`offseason/draft`, `offseason/freeagency`, …) or `seasons:N`; see the header
+of `scripts/build-state.mjs`.
+
+Use the browser only for what only it can do: rendering, layout, overlays,
+and click-path behavior. Use `startNewGame()` when the new-game flow itself
+is what's under test.
 
 Then drive it:
 
@@ -43,11 +73,11 @@ For anything beyond this one path — a different screen, a specific interaction
 
 ```js
 import { chromium } from 'playwright';
-import { startNewGame, simWeeks, gotoNav, gotoTab } from './driver.mjs';
+import { loadState, startNewGame, simWeeks, gotoNav, gotoTab } from './driver.mjs';
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await startNewGame(page);          // team-picker -> Start -> skip tutorial
+await startNewGame(page);          // slot picker -> team-picker -> Start -> skip tutorial
 await simWeeks(page, 1);
 await gotoNav(page, 'Standings');  // sidebar screens
 await gotoTab(page, 'Team Stats'); // in-page tab bars (Stats screen, Roster, etc.)
@@ -62,6 +92,8 @@ Stop the dev server when done: `pkill -f vite`.
 No automated assertions here by design — this is a visual/console-error smoke driver, not a test suite. Look at the screenshots and check the script's exit code / printed console errors. For actual regression testing of game logic, use the repo's headless sim scripts instead (`npm test`, `npm run test:stats`, etc. — see root `CLAUDE.md`).
 
 ## Gotchas
+
+- **The start screen is the save-slot picker, not the team list.** Three slots, each either empty ("New Franchise") or filled ("Continue" / "New" / "Delete"). `startNewGame()` steps through it, but any custom flow has to click into a slot before the team cards exist. Getting back to it from in-game is the sidebar's "Save Slots" button (`.sidebar-new-game`).
 
 - **Modals block every click mid-sim.** Tutorial walkthrough, coach-talk, milestone alert, call-up prompt, and injury alert modals all pop up unpredictably while simming. None share a CSS class, so `dismissOverlay()` falls back to clicking the modal's *last* button when no known label matches — that's deliberately the no-op/secondary choice in every alert modal in `src/components/shared.jsx`.
 - **"Sim Week" disables mid-animation**, taking roughly 1-2s of real time per week; `simWeeks()` polls `isEnabled()` rather than a fixed sleep, since the wait varies with how many alerts fire that week.
