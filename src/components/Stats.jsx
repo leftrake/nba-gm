@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { leaderMinGp, LEADER_MIN_GP, liveAwardRaces, pg } from '../engine/awards.js';
+import { leaderMinGp, LEADER_MIN_GP, liveAwardRaces, pg, valueScore } from '../engine/awards.js';
 import {
   perGame, fgPct, tpPct, ftPct, tsPct, possessions,
   teamStatTotals, pointsAllowed, allPlayerStatRows, leaderRows,
+  per36, usageRate, careerTotals,
 } from '../engine/stats.js';
 import { PlayerLink } from './PlayerDisplay.jsx';
 import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
@@ -10,28 +11,35 @@ import { Card } from './ui/Card.jsx';
 import { Tabs } from './ui/Tabs.jsx';
 
 const PCT_COLS = new Set(['fgPct', 'tpPct', 'ftPct', 'tsPct']);
+const RATE_COLS = new Set(['usg', 'val']); // pre-computed rate stats, always show as x.x
 
 const PLAYER_COLS = [
   ['pts', 'PTS'], ['reb', 'REB'], ['oreb', 'OREB'], ['dreb', 'DREB'], ['ast', 'AST'],
   ['stl', 'STL'], ['blk', 'BLK'], ['tov', 'TOV'], ['pf', 'PF'], ['min', 'MIN'], ['pm', '+/-'],
   ['fgPct', 'FG%'], ['tpPct', '3P%'], ['ftPct', 'FT%'], ['tsPct', 'TS%'],
+  ['usg', 'USG%'], ['val', 'VAL'],
 ];
 
 const STAT_ICONS = {
   pts: '🏀', reb: '🔁', oreb: '🔁', dreb: '🔁', ast: '🤝', stl: '🥷', blk: '🚫',
   tov: '🔄', pf: '🟨', min: '⏱', pm: '⚖️', fgPct: '🎯', tpPct: '🏹', ftPct: '🆓', tsPct: '🔥',
+  usg: '📊', val: '⭐',
 };
 
-function colValue(s, key, perGameMode) {
+// displayMode: 'totals' | 'perGame' | 'per36'
+function colValue(s, key, displayMode) {
   if (key === 'fgPct') return fgPct(s) * 100;
   if (key === 'tpPct') return tpPct(s) * 100;
   if (key === 'ftPct') return ftPct(s) * 100;
   if (key === 'tsPct') return tsPct(s) * 100;
-  return perGameMode ? perGame(s, key) : (s[key] || 0);
+  if (RATE_COLS.has(key)) return s[key] || 0;
+  if (displayMode === 'per36') return per36(s, key);
+  if (displayMode === 'perGame') return perGame(s, key);
+  return s[key] || 0;
 }
 
-function fmtCol(v, key, perGameMode) {
-  if (PCT_COLS.has(key) || perGameMode) {
+function fmtCol(v, key, displayMode) {
+  if (PCT_COLS.has(key) || RATE_COLS.has(key) || displayMode !== 'totals') {
     const r = Math.round(v * 10) / 10;
     return (r === 0 ? 0 : r).toFixed(1);
   }
@@ -60,15 +68,19 @@ function useSort(initialKey) {
 function PlayerStatsTab({ league, openPlayer, openTeam }) {
   const [teamFilter, setTeamFilter] = useState('all');
   const [minGp, setMinGp] = useState(10);
-  const [perGameMode, setPerGameMode] = useState(true);
+  const [displayMode, setDisplayMode] = useState('perGame');
   const [sortState, onSort] = useSort('pts');
   const [sortKey, sortDir] = sortState;
 
-  let rows = allPlayerStatRows(league, Math.max(0, Number(minGp) || 0));
+  const teamTotalsMap = Object.fromEntries(league.teams.map((t) => [t.id, teamStatTotals(t)]));
+  let rows = allPlayerStatRows(league, Math.max(0, Number(minGp) || 0)).map((r) => ({
+    ...r,
+    stats: { ...r.stats, usg: usageRate(r.stats, teamTotalsMap[r.team.id]), val: valueScore(r.stats) },
+  }));
   if (teamFilter !== 'all') rows = rows.filter((r) => r.team.id === teamFilter);
   rows = [...rows].sort((a, b) => {
-    const av = colValue(a.stats, sortKey, perGameMode);
-    const bv = colValue(b.stats, sortKey, perGameMode);
+    const av = colValue(a.stats, sortKey, displayMode);
+    const bv = colValue(b.stats, sortKey, displayMode);
     return sortDir === 'desc' ? bv - av : av - bv;
   });
 
@@ -90,8 +102,9 @@ function PlayerStatsTab({ league, openPlayer, openTeam }) {
             onChange={(e) => setMinGp(e.target.value)} />
         </label>
         <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
-          <button className={`ui-btn ui-btn--sm ${perGameMode ? 'ui-btn--primary' : 'ui-btn--secondary'}`} onClick={() => setPerGameMode(true)}>Per Game</button>
-          <button className={`ui-btn ui-btn--sm ${!perGameMode ? 'ui-btn--primary' : 'ui-btn--secondary'}`} onClick={() => setPerGameMode(false)}>Totals</button>
+          {[['perGame', 'Per Game'], ['per36', 'Per 36'], ['totals', 'Totals']].map(([mode, label]) => (
+            <button key={mode} className={`ui-btn ui-btn--sm ${displayMode === mode ? 'ui-btn--primary' : 'ui-btn--secondary'}`} onClick={() => setDisplayMode(mode)}>{label}</button>
+          ))}
         </div>
       </div>
       {rows.length === 0 ? (
@@ -122,7 +135,7 @@ function PlayerStatsTab({ league, openPlayer, openTeam }) {
                       key={key}
                       style={key === sortKey ? { color: 'var(--color-primary)', fontWeight: 'var(--weight-bold)', fontFamily: 'var(--font-tabular)' } : undefined}
                     >
-                      {fmtCol(colValue(stats, key, perGameMode), key, perGameMode)}
+                      {fmtCol(colValue(stats, key, displayMode), key, displayMode)}
                     </td>
                   ))}
                 </tr>
@@ -367,11 +380,80 @@ function AwardRacesTab({ league, openPlayer, openTeam }) {
   );
 }
 
+const CAREER_CATS = [
+  ['Points', 'PPG', (s) => perGame(s, 'pts')],
+  ['Rebounds', 'RPG', (s) => perGame(s, 'reb')],
+  ['Assists', 'APG', (s) => perGame(s, 'ast')],
+  ['Steals', 'SPG', (s) => perGame(s, 'stl')],
+  ['Blocks', 'BPG', (s) => perGame(s, 'blk')],
+  ['True Shooting %', 'TS%', (s) => tsPct(s) * 100],
+];
+
+const CAREER_MIN_GP = 50;
+
+function CareerLeadersTab({ league, openPlayer, openTeam }) {
+  const allRows = league.teams.flatMap((t) =>
+    t.roster.map((p) => ({ p, team: t, career: careerTotals(p) }))
+  ).filter((r) => r.career.gp >= CAREER_MIN_GP);
+
+  return (
+    <div>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--sp-4)', fontSize: 'var(--text-sm)' }}>
+        Active players · minimum {CAREER_MIN_GP} career games played.
+      </p>
+      <div className="grid2">
+        {CAREER_CATS.map(([label, unit, valueFn]) => {
+          const catRows = [...allRows]
+            .map((r) => ({ ...r, value: valueFn(r.career) }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+          return (
+            <Card key={label} noPad>
+              <div style={{ padding: 'var(--sp-4) var(--sp-4) var(--sp-2)' }}>
+                <span className="ui-section-title">{label}</span>
+              </div>
+              {catRows.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', padding: '0 var(--sp-4) var(--sp-4)' }}>No qualifying players yet.</p>
+              ) : (
+                <div className="ui-table-wrap">
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 28 }}>#</th>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th className="num">GP</th>
+                        <th className="num">{unit}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {catRows.map((r, i) => (
+                        <tr key={r.p.id} style={r.team.id === league.userTeamId ? { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 var(--team-color-safe)' } : {}}>
+                          <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                          <td><PlayerLink p={r.p} openPlayer={openPlayer} /></td>
+                          <td><TeamLink team={r.team} openTeam={openTeam}>{r.team.id}</TeamLink></td>
+                          <td className="num">{r.career.gp}</td>
+                          <td className="num">{r.value.toFixed(1)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { key: 'races', label: 'Award Races' },
   { key: 'players', label: 'Player Stats' },
   { key: 'teams', label: 'Team Stats' },
   { key: 'leaders', label: 'League Leaders' },
+  { key: 'career', label: 'Career Leaders' },
 ];
 
 export default function Stats({ league, openPlayer, openTeam }) {
@@ -383,6 +465,7 @@ export default function Stats({ league, openPlayer, openTeam }) {
       {tab === 'players' && <PlayerStatsTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
       {tab === 'teams' && <TeamStatsTab league={league} openTeam={openTeam} />}
       {tab === 'leaders' && <LeagueLeadersTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
+      {tab === 'career' && <CareerLeadersTab league={league} openPlayer={openPlayer} openTeam={openTeam} />}
     </div>
   );
 }

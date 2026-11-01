@@ -692,6 +692,32 @@ export function watchPlayer(league, teamId, playerId) {
   return gameWatchProspect(league, teamId, playerId);
 }
 
+export function markFaBookmark(league, playerId) {
+  const s = league.scouting;
+  if (!s) return;
+  if (!s.faBookmarks) s.faBookmarks = [];
+  if (!s.faBookmarks.includes(playerId)) s.faBookmarks.push(playerId);
+}
+
+export function removeFaBookmark(league, playerId) {
+  const s = league.scouting;
+  if (!s?.faBookmarks) return;
+  s.faBookmarks = s.faBookmarks.filter((id) => id !== playerId);
+}
+
+export function markTradeBookmark(league, playerId) {
+  const s = league.scouting;
+  if (!s) return;
+  if (!s.tradeBookmarks) s.tradeBookmarks = [];
+  if (!s.tradeBookmarks.includes(playerId)) s.tradeBookmarks.push(playerId);
+}
+
+export function removeTradeBookmark(league, playerId) {
+  const s = league.scouting;
+  if (!s?.tradeBookmarks) return;
+  s.tradeBookmarks = s.tradeBookmarks.filter((id) => id !== playerId);
+}
+
 // ---- AI scout hiring ----
 
 const REBUILD_PREFS = ['regional', 'regional', 'sleeper', 'rangeSpecialist'];

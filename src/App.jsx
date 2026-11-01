@@ -35,21 +35,21 @@ import Walkthrough from './components/Walkthrough.jsx';
 import { isWalkthroughDone, markWalkthroughDone, resetTutorial } from './components/onboarding.jsx';
 import { InjuryAlertModal, CoachTalkModal, MilestoneAlertModal, CallUpPromptModal } from './components/GameAlerts.jsx';
 import { safeAccent, textOnColor } from './engine/colorUtils.js';
-import { checkSave } from './engine/save.js';
+import { checkSave, SLOT_COUNT, ACTIVE_SLOT_KEY, slotKey, slotSummary } from './engine/save.js';
 import { readCrossSaveLegacy } from './engine/legacy.js';
 import { maybeCoachConversation, resolveCoachTalk } from './engine/coachTalk.js';
 import { checkMilestoneAlerts } from './engine/milestoneAlerts.js';
 import { resolveCallUpPrompt } from './engine/callUps.js';
 import { loadTheme, loadAccent, applyTheme, THEME_KEY, ACCENT_KEY } from './theme.js';
 
-const SAVE_KEY = 'nba-gm-save';
+const activeSlotInit = Math.max(0, Math.min(SLOT_COUNT - 1, Number(localStorage.getItem(ACTIVE_SLOT_KEY)) || 0));
 
 // Returns { league, warning }. An unreadable or incompatible save loads as
 // null with a warning, and stays in localStorage untouched until the user
 // starts a new game over it.
 function loadSave() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(slotKey(activeSlotInit));
     if (!raw) return { league: null, warning: null };
     const check = checkSave(JSON.parse(raw));
     if (check.error) return { league: null, warning: check.error };
@@ -91,6 +91,9 @@ export default function App() {
     setAccentColor(hex);
     try { localStorage.setItem(ACCENT_KEY, hex); } catch {}
   }, []);
+  const [activeSlot, setActiveSlot] = useState(activeSlotInit);
+  const [pendingSlot, setPendingSlot] = useState(null); // slot chosen for new game creation
+  const [slotRevision, setSlotRevision] = useState(0); // increments to refresh slot picker after delete
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
@@ -162,7 +165,7 @@ export default function App() {
   useEffect(() => {
     if (league) {
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(league));
+        localStorage.setItem(slotKey(activeSlot), JSON.stringify(league));
         if (saveError) setSaveError(null); // a later write succeeded — e.g. quota freed up
       } catch (e) {
         // Most likely QuotaExceededError: the save stops persisting from here on, but
@@ -174,12 +177,55 @@ export default function App() {
       }
     }
     // saveError is deliberately not a dependency — it's set here as a result, not a trigger.
-  }, [league]);
+  }, [league, activeSlot]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const newGame = (teamId, fantasyDraft, diff) => {
+  const newGame = (teamId, fantasyDraft, diff, slot = activeSlot) => {
+    setActiveSlot(slot);
+    localStorage.setItem(ACTIVE_SLOT_KEY, String(slot));
     setLeagueState(createLeague(teamId, Date.now(), { fantasyDraft, difficulty: diff }));
+    setPendingTeamId(null);
+    setPendingSlot(null);
     setScreen(fantasyDraft ? 'fantasydraft' : 'dashboard');
     if (!isWalkthroughDone()) setShowWalkthrough(true);
+  };
+
+  const resetUIState = () => {
+    setLastResults([]);
+    setFeaturedGame(null);
+    setPlayoffDay(null);
+    setRosterTeamId(null);
+    setViewPlayer(null);
+    setViewGame(null);
+    setShopTarget(null);
+    setPendingTeamId(null);
+    setPendingSlot(null);
+    setFantasyMode(false);
+    setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' });
+  };
+
+  const loadSlotN = (n) => {
+    try {
+      const raw = localStorage.getItem(slotKey(n));
+      if (!raw) return;
+      const check = checkSave(JSON.parse(raw));
+      if (check.error) return;
+      backfillPlayers(check.league);
+      setActiveSlot(n);
+      localStorage.setItem(ACTIVE_SLOT_KEY, String(n));
+      setLeagueState(check.league);
+      resetUIState();
+      setScreen('dashboard');
+    } catch {}
+  };
+
+  const deleteSlot = (n) => {
+    if (!confirm('Delete this save? This cannot be undone.')) return;
+    localStorage.removeItem(slotKey(n));
+    if (n === activeSlot) {
+      setLeagueState(null);
+      resetUIState();
+    }
+    setSlotRevision((r) => r + 1);
   };
 
   const handleResetTutorial = () => {
@@ -191,74 +237,96 @@ export default function App() {
   const importLeague = (imported) => {
     backfillPlayers(imported);
     setLeagueState(imported);
-    setLastResults([]);
-    setFeaturedGame(null);
-    setPlayoffDay(null);
-    setRosterTeamId(null);
-    setViewPlayer(null);
-    setViewGame(null);
-    setShopTarget(null);
+    resetUIState();
     setScreen('dashboard');
   };
 
   const resetGame = () => {
-    if (confirm('Start over? Your current save will be deleted.')) {
-      localStorage.removeItem(SAVE_KEY);
-      setLeagueState(null);
-      setLastResults([]);
-      setFeaturedGame(null);
-      setPlayoffDay(null);
-      setRosterTeamId(null);
-      setViewPlayer(null);
-      setViewGame(null);
-      setShopTarget(null);
-      setPendingTeamId(null);
-      setFantasyMode(false);
-      setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' });
-    }
+    setLeagueState(null);
+    resetUIState();
   };
 
   if (!league) {
     const pastLegacies = readCrossSaveLegacy();
+    const header = (
+      <div className="center">
+        <h1 style={{ fontSize: 28 }}>🏀 NBA GM</h1>
+        <p style={{ color: 'var(--muted)', marginTop: 8 }}>
+          Pick your franchise. Run the front office. Win a ring.
+        </p>
+      </div>
+    );
+
+    // ── Slot picker ──────────────────────────────────────────────────────────
+    if (pendingSlot === null) {
+      const summaries = Array.from({ length: SLOT_COUNT + slotRevision * 0 }, (_, n) => slotSummary(n));
+      return (
+        <div className="app">
+          <main>
+            {header}
+            {initialSave.warning && (
+              <p style={{ color: 'var(--red)', marginTop: 12, maxWidth: 560, marginInline: 'auto' }}>
+                ⚠️ {initialSave.warning}
+              </p>
+            )}
+            <div style={{ maxWidth: 680, marginInline: 'auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 24 }}>
+              {summaries.map((sum, n) => (
+                <div key={n} className="panel" style={{ textAlign: 'center', cursor: sum ? 'default' : 'pointer', minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }} onClick={sum ? undefined : () => setPendingSlot(n)}>
+                  {sum ? (
+                    <>
+                      <div style={{ fontWeight: 600, fontSize: 15 }}>{sum.teamCity} {sum.teamName}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 13 }}>Season {sum.season} · {sum.wins}–{sum.losses}</div>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 4 }}>
+                        <button className="btn" onClick={() => loadSlotN(n)}>Continue</button>
+                        <button className="btn secondary" onClick={() => setPendingSlot(n)}>New</button>
+                        <button className="btn secondary" style={{ color: 'var(--red)' }} onClick={() => deleteSlot(n)}>Delete</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ color: 'var(--muted)', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Slot {n + 1}</div>
+                      <button className="btn secondary">New Franchise</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            {pastLegacies.length > 0 && (
+              <div className="panel" style={{ maxWidth: 560, marginInline: 'auto', marginTop: 24, textAlign: 'left' }}>
+                <h2>Your Legacy So Far</h2>
+                <p style={{ color: 'var(--muted)' }}>
+                  {pastLegacies.length} franchise{pastLegacies.length === 1 ? '' : 's'} managed ·{' '}
+                  {pastLegacies.reduce((s, l) => s + l.championships, 0)} championship{pastLegacies.reduce((s, l) => s + l.championships, 0) === 1 ? '' : 's'} ·{' '}
+                  {pastLegacies.reduce((s, l) => s + l.hallOfFamers.length, 0)} Hall of Famer{pastLegacies.reduce((s, l) => s + l.hallOfFamers.length, 0) === 1 ? '' : 's'} drafted
+                </p>
+                <table>
+                  <thead><tr><th>Team</th><th className="num">Seasons</th><th className="num">Titles</th><th>Best Season</th></tr></thead>
+                  <tbody>
+                    {pastLegacies.map((l) => (
+                      <tr key={l.saveId}>
+                        <td>{l.teamName}</td>
+                        <td className="num">{l.seasons}</td>
+                        <td className="num">{l.championships}</td>
+                        <td>{l.bestSeasonRecord ? `${l.bestSeasonRecord.wins}-${l.bestSeasonRecord.losses} (${l.bestSeasonRecord.season})` : '–'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ── New franchise flow (slot selected) ───────────────────────────────────
     return (
       <div className="app">
         <main>
-          <div className="center">
-            <h1 style={{ fontSize: 28 }}>🏀 NBA GM</h1>
-            <p style={{ color: 'var(--muted)', marginTop: 8 }}>
-              Pick your franchise. Run the front office. Win a ring.
-            </p>
-            {initialSave.warning && (
-              <p style={{ color: 'var(--red)', marginTop: 12, maxWidth: 560, marginInline: 'auto' }}>
-                ⚠️ {initialSave.warning} Picking a team below starts a new game over
-                it. If you have an exported backup, you can import it from Settings
-                after starting a new game.
-              </p>
-            )}
+          {header}
+          <div style={{ maxWidth: 520, marginInline: 'auto', marginBottom: 8, textAlign: 'left' }}>
+            <button className="btn secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => { setPendingTeamId(null); setPendingSlot(null); setDifficulty({ scoutingFog: 'normal', tradeTightness: 'normal', faWillingness: 'normal' }); setFantasyMode(false); }}>← Saves</button>
           </div>
-          {pastLegacies.length > 0 && (
-            <div className="panel" style={{ maxWidth: 560, marginInline: 'auto', marginBottom: 16, textAlign: 'left' }}>
-              <h2>Your Legacy So Far</h2>
-              <p style={{ color: 'var(--muted)' }}>
-                {pastLegacies.length} franchise{pastLegacies.length === 1 ? '' : 's'} managed ·{' '}
-                {pastLegacies.reduce((s, l) => s + l.championships, 0)} championship{pastLegacies.reduce((s, l) => s + l.championships, 0) === 1 ? '' : 's'} ·{' '}
-                {pastLegacies.reduce((s, l) => s + l.hallOfFamers.length, 0)} Hall of Famer{pastLegacies.reduce((s, l) => s + l.hallOfFamers.length, 0) === 1 ? '' : 's'} drafted
-              </p>
-              <table>
-                <thead><tr><th>Team</th><th className="num">Seasons</th><th className="num">Titles</th><th>Best Season</th></tr></thead>
-                <tbody>
-                  {pastLegacies.map((l) => (
-                    <tr key={l.saveId}>
-                      <td>{l.teamName}</td>
-                      <td className="num">{l.seasons}</td>
-                      <td className="num">{l.championships}</td>
-                      <td>{l.bestSeasonRecord ? `${l.bestSeasonRecord.wins}-${l.bestSeasonRecord.losses} (${l.bestSeasonRecord.season})` : '–'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
           {!pendingTeamId ? (
             <div className="team-picker">
               {TEAMS.map((t) => (
@@ -355,7 +423,7 @@ export default function App() {
                 </label>
 
                 <div className="controls">
-                  <button className="btn" onClick={() => newGame(pendingTeamId, fantasyMode, difficulty)}>Start</button>
+                  <button className="btn" onClick={() => newGame(pendingTeamId, fantasyMode, difficulty, pendingSlot)}>Start</button>
                 </div>
               </div>
             );
@@ -548,7 +616,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <button className="sidebar-new-game" onClick={resetGame}>New Game</button>
+          <button className="sidebar-new-game" onClick={resetGame}>Save Slots</button>
         </div>
       </aside>
       <div className="app-main">

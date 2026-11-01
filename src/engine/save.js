@@ -98,6 +98,31 @@ export function pushNews(league, item) {
   }
 }
 
+export const SLOT_COUNT = 3;
+export const ACTIVE_SLOT_KEY = 'nba-gm-active-slot';
+// Slot 0 reuses the original key so existing saves load without migration.
+export const slotKey = (n) => (n === 0 ? 'nba-gm-save' : `nba-gm-save-${n}`);
+
+// Fast peek at a slot's save for the slot-picker UI — no validation or backfill.
+export function slotSummary(n) {
+  try {
+    const raw = localStorage.getItem(slotKey(n));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.teams)) return null;
+    const team = data.teams.find((t) => t.id === data.userTeamId);
+    return {
+      teamCity: team?.city ?? '?',
+      teamName: team?.name ?? '?',
+      season: data.season ?? 1,
+      wins: team?.wins ?? 0,
+      losses: team?.losses ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Validate parsed save data (from localStorage or an imported file).
 // Returns { league } when usable, otherwise { error } with a user-facing
 // message. Stamps the normalized version on success.

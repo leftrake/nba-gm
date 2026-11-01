@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { getTeam, payroll, makeOffer, askingPrice, midSeasonSignable, buyoutEligible, proratedMinSalary, signMidSeasonFA, signingException, matchOfferSheet, signToTwoWay, twoWayEligible, TRADE_DEADLINE_DAY } from '../engine/league.js';
+import { markFaBookmark, removeFaBookmark } from '../engine/scoutingTrips.js';
 import { scoutedOverall, isHidden } from '../engine/scouting.js';
 import { overall } from '../engine/players.js';
 import { traitSortValue } from '../engine/devTraits.js';
@@ -171,6 +172,19 @@ export default function FreeAgency({ league, commit, openPlayer }) {
     { key: 'age', label: `Age${arrow('age')}`, numeric: true, sortable: true },
     { key: 'asking', label: `Asking${arrow('asking')}`, numeric: true, sortable: true,
       render: (row) => money(askingPrice(row._p, league.settings)) },
+    { key: 'bookmark', label: '', render: (row) => {
+      const isBookmarked = league.scouting?.faBookmarks?.includes(row._p.id);
+      return (
+        <button
+          className={`ui-btn ui-btn--sm ui-btn--secondary${isBookmarked ? ' active' : ''}`}
+          title={isBookmarked ? 'Remove from watchlist' : 'Add to watchlist'}
+          onClick={() => { if (isBookmarked) removeFaBookmark(league, row._p.id); else markFaBookmark(league, row._p.id); commit(); }}
+          style={{ minWidth: 28, padding: '2px 6px' }}
+        >
+          {isBookmarked ? '★' : '☆'}
+        </button>
+      );
+    }},
     { key: 'twoway', label: '', render: (row) => {
       if (!twoWayEligible(row._p) || row._p.restrictedFA) return null;
       return (

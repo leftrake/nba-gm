@@ -6,7 +6,7 @@ import { injuryTimeline } from '../engine/injuries.js';
 import { groupAwards, leaderMinGp } from '../engine/awards.js';
 import { positionalPercentiles } from '../engine/stats.js';
 import { scoutRange, isHidden } from '../engine/scouting.js';
-import { markProWatch, removeProWatch } from '../engine/scoutingTrips.js';
+import { markProWatch, removeProWatch, markTradeBookmark, removeTradeBookmark } from '../engine/scoutingTrips.js';
 import { personalityNote, scoutBackstoryNote, rookieBlurb } from '../engine/backstory.js';
 import { getMilestones, milestoneIcon } from '../engine/milestones.js';
 import { recordsHeldBy, POS_NAMES } from '../engine/legacy.js';
@@ -391,6 +391,18 @@ export default function PlayerCard({ league, player: p, onClose, openTeam, openP
                   onClick={() => { if (isWatching) removeProWatch(league, p.id); else markProWatch(league, p.id); commit(); }}
                 >
                   {isWatching ? `Watching (${games} days)` : 'Watch'}
+                </button>
+              );
+            })()}
+            {team && team.id !== league.userTeamId && commit && (() => {
+              const isTarget = league.scouting?.tradeBookmarks?.includes(p.id);
+              return (
+                <button
+                  className={`ui-btn ui-btn--sm ui-btn--secondary${isTarget ? ' active' : ''}`}
+                  title={isTarget ? 'Remove from trade targets' : 'Add to trade targets watchlist'}
+                  onClick={() => { if (isTarget) removeTradeBookmark(league, p.id); else markTradeBookmark(league, p.id); commit(); }}
+                >
+                  {isTarget ? '★ Target' : '☆ Target'}
                 </button>
               );
             })()}

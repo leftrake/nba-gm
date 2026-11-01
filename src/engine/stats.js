@@ -117,3 +117,30 @@ export function positionalPercentiles(league, player, minGp = 10) {
     return { key, label, value, percentile: percentileRank(value, pool), sampleSize: pool.length };
   });
 }
+
+export const per36 = (s, k) => (s.min ? (s[k] || 0) / s.min * 36 : 0);
+
+// Share of team possessions used while a player is on court.
+// USG = 100 * playerPoss / (teamPoss * playerMin / (teamMin / 5))
+export function usageRate(playerStats, teamTotals) {
+  if (!playerStats.min || !teamTotals.min) return 0;
+  const playerPoss = playerStats.fga + 0.44 * playerStats.fta + playerStats.tov;
+  const teamPoss = teamTotals.fga + 0.44 * teamTotals.fta + teamTotals.tov;
+  if (!teamPoss) return 0;
+  const minRatio = playerStats.min / (teamTotals.min / 5);
+  return minRatio > 0 ? (playerPoss / (teamPoss * minRatio)) * 100 : 0;
+}
+
+// Sum of all past-season careerStats plus the current season — for career leaderboards.
+export function careerTotals(p) {
+  const KEYS = ['pts','reb','oreb','dreb','ast','stl','blk','tov','pf','min','fgm','fga','tpm','tpa','ftm','fta','pm'];
+  const out = { gp: 0 };
+  for (const k of KEYS) out[k] = 0;
+  for (const s of (p.careerStats || [])) {
+    out.gp += s.gp || 0;
+    for (const k of KEYS) out[k] += s[k] || 0;
+  }
+  out.gp += p.stats.gp || 0;
+  for (const k of KEYS) out[k] += p.stats[k] || 0;
+  return out;
+}

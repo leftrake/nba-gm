@@ -1,5 +1,6 @@
 import React from 'react';
-import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus } from '../engine/league.js';
+import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus, askingPrice } from '../engine/league.js';
+import { PRO_SCOUT_GAMES_FULL } from '../engine/scoutingTrips.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
 import { overall } from '../engine/players.js';
 import { OvrArc, PlayerLink } from './PlayerDisplay.jsx';
@@ -227,6 +228,115 @@ function StandingsSection({ league, team, openTeam }) {
   );
 }
 
+// ── Watchlist panel ───────────────────────────────────────────────────────────
+function findInLeague(league, playerId) {
+  for (const team of league.teams) {
+    const p = team.roster.find((x) => x.id === playerId);
+    if (p) return { p, team };
+  }
+  const fa = league.freeAgents.find((x) => x.id === playerId);
+  if (fa) return { p: fa, team: null };
+  return null;
+}
+
+function WatchlistSection({ league, openPlayer, openTeam, setScreen }) {
+  const proWatch = league.scouting?.proWatchList ?? [];
+  const faBookmarks = league.scouting?.faBookmarks ?? [];
+  const tradeBookmarks = league.scouting?.tradeBookmarks ?? [];
+
+  const proEntries = proWatch.map((id) => findInLeague(league, id)).filter(Boolean);
+  const faEntries = faBookmarks
+    .map((id) => league.freeAgents.find((p) => p.id === id))
+    .filter(Boolean);
+  const tradeEntries = tradeBookmarks
+    .map((id) => findInLeague(league, id))
+    .filter((e) => e?.team);
+
+  if (!proEntries.length && !faEntries.length && !tradeEntries.length) return null;
+
+  return (
+    <>
+      <Divider />
+      <Section
+        title="Watchlist"
+        action={
+          <a className="team-link" style={{ color: 'var(--team-color-safe)', fontSize: 'var(--text-sm)' }} onClick={() => setScreen('scouting')}>
+            Film room ▸
+          </a>
+        }
+        spacing="sm"
+      >
+        {proEntries.length > 0 && (
+          <>
+            <SectionHeader title="Film Room" />
+            <div className="ui-table-wrap">
+              <table className="ui-table">
+                <tbody>
+                  {proEntries.map(({ p, team }) => {
+                    const games = league.scouting?.proWatching?.[p.id] ?? 0;
+                    const pct = Math.min(100, Math.round((games / PRO_SCOUT_GAMES_FULL) * 100));
+                    return (
+                      <tr key={p.id}>
+                        <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                          {team ? <TeamLink team={team} openTeam={openTeam}>{team.id}</TeamLink> : 'FA'}
+                        </td>
+                        <td className="num" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                          {games}d · {pct}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {faEntries.length > 0 && (
+          <div style={{ marginTop: proEntries.length ? 'var(--sp-3)' : 0 }}>
+            <SectionHeader title="FA Targets" />
+            <div className="ui-table-wrap">
+              <table className="ui-table">
+                <tbody>
+                  {faEntries.map((p) => (
+                    <tr key={p.id}>
+                      <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>{p.pos} · Age {p.age}</td>
+                      <td className="num" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                        {money(askingPrice(p, league.settings))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {tradeEntries.length > 0 && (
+          <div style={{ marginTop: (proEntries.length || faEntries.length) ? 'var(--sp-3)' : 0 }}>
+            <SectionHeader title="Trade Targets" />
+            <div className="ui-table-wrap">
+              <table className="ui-table">
+                <tbody>
+                  {tradeEntries.map(({ p, team }) => (
+                    <tr key={p.id}>
+                      <td><PlayerLink p={p} openPlayer={openPlayer} /></td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                        <TeamLink team={team} openTeam={openTeam}>{team.id}</TeamLink>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>{p.pos} · Age {p.age}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard({ league, leagueRef, commit, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews, onCounterTradeOffer, setScreen, trackFeatured, setLastResults }) {
   const team = getTeam(league, league.userTeamId);
@@ -289,6 +399,8 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
       />
 
       <TradeOffers league={league} commit={commit} openPlayer={openPlayer} onCounter={onCounterTradeOffer} />
+
+      <WatchlistSection league={league} openPlayer={openPlayer} openTeam={openTeam} setScreen={setScreen} />
 
       {/* Standings + Team Overview side-by-side */}
       <Divider />

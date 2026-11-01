@@ -19,9 +19,6 @@ just delete it — git history keeps the record).
 
 ## New features
 
-- Multiple save slots (or at minimum auto-archive the old save to a backup key on New Game) — currently one localStorage key and New Game deletes it.
-- Watchlist panel: surface the existing scouting pro-watch list as a dashboard panel and extend watch/bookmark to free agents and trade targets.
-- Advanced stats: per-36, usage rate, and surface an all-in-one value metric (awards.js valueScore) on the Stats screen; career per-game leaderboards in the record book.
 - In-season tactical input: a once-per-season "ask the coach to adjust the team identity" conversation (reuse the coach-talk modal) so the user has a lever on coach style between hires.
 - Achievements built on cross-save legacy tracking ("win a title with a small-market team", "draft a HOFer at pick 20+", etc.).
 - Assistant staff hires alongside the head coach: trainer (injury recovery) and scouting director (fog reduction) as owner-budget sinks.
