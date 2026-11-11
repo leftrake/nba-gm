@@ -929,11 +929,17 @@ export function simDay(league) {
     checkGameHighs(league, r, home, away);
     checkPlayerCareerHighs(league, r, home, away);
     const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft }));
+    // Injuries are rolled from the finished box score, not during the
+    // possession loop, so there is no moment in the game they belong to —
+    // hence the empty q/t. The player id is carried so anything rendering
+    // the game can identify him without parsing the name; when it matters
+    // enough to show a player going down on a specific play, the roll has to
+    // move inside simGame, which changes the rng stream.
     for (const p of hurtHome) {
-      r.events.push({ q: '', t: '', text: `🩹 ${p.name} (${home.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+      r.events.push({ q: '', t: '', k: 'injury', p: p.id, text: `🩹 ${p.name} (${home.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
     }
     for (const p of hurtAway) {
-      r.events.push({ q: '', t: '', text: `🩹 ${p.name} (${away.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+      r.events.push({ q: '', t: '', k: 'injury', p: p.id, text: `🩹 ${p.name} (${away.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
     }
     const homeWon = r.homePts > r.awayPts;
     if (homeWon) { home.wins++; away.losses++; }

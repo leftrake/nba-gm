@@ -69,15 +69,32 @@ The hard split is **engine vs. UI**:
     formulas, and the global player-ID counter.
   - `sim.js` — single-game simulation (possession-by-possession), box scores,
     and play-by-play event generation. Each play carries both the display
-    text and a structured form of it, flat on the play object: `k` (kind:
-    shot/ft/reb/tov/stl/blk/foul), `p` (actor player id), plus `z` (shot
-    zone, see `shotZones.js`), `m` (made), `pts`, `a` (assister), `o`
-    (offensive rebound), `v` (the player fouled/blocked). `simGame` also
-    returns `lineups` — the five a side at each stint boundary, 16 per game.
-    Use the ids, never the names: player names are not unique. Event and
-    lineup generation must never read the game RNG, so that adding to them
-    can't perturb seeded sim results — see the note above `addPlay`, and
-    verify by diffing seeded output before and after any change.
+    text and a structured form of it, flat on the play object, enough to
+    render the game rather than only read it:
+    - `k` — kind: shot / ft / reb / tov / stl / blk / foul
+    - `p` — actor player id. Use ids, never names: names are not unique.
+    - `n` — possession number, so plays group into possessions
+    - `sec` — seconds left in the period, fractional. Strictly decreasing
+      and unique per play, unlike the displayed `t`, where every play in a
+      possession shares the possession's midpoint.
+    - shots add `z` (zone), `x`/`y` (court feet, origin at the rim —
+      `zoneCoords` in `shotZones.js`), `m` (made), `pts`, `a` (assister)
+    - `o` on rebounds (offensive), `v` on fouls/blocks (the player fouled
+      or blocked)
+
+    `simGame` also returns `lineups`: the five a side, logged at each stint
+    boundary and again whenever `replaceFouledOut` changes it, so it is
+    exact at every play rather than approximate (~18 entries per game).
+
+    In-game injuries are the one thing with no position in time — they're
+    rolled from the finished box score in `league.js`, not the possession
+    loop, so their events carry `k`/`p` but empty `q`/`t`.
+
+    Event, coordinate and lineup generation must never read the game RNG,
+    so that adding to them can't perturb seeded sim results — see the note
+    above `addPlay`. Verify by diffing seeded output before and after any
+    change: pass an explicit rng (`simGame`'s default is `makeRng()`, which
+    seeds from `Date.now()` and is not reproducible).
   - `lineup.js` — rotation/minutes assignment (`autoLineup`, an optimal
     bitmask DP) and lineup-quality warnings.
   - `trade.js` / `tradeOffers.js` — trade value, cap validation, AI

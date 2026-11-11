@@ -1,6 +1,6 @@
 import { rand, gauss, clamp } from './rng.js';
 import { overall, supportedMinutes, WINGSPAN_POS_AVG } from './players.js';
-import { ZONE_STAT_COLS, shotHash, pickZone } from './shotZones.js';
+import { ZONE_STAT_COLS, shotHash, pickZone, zoneCoords } from './shotZones.js';
 import { moraleRatingMod } from './morale.js';
 import { clutchMod } from './backstory.js';
 import { POSITIONS, TOTAL_MINUTES, autoLineup, lineupErrors, playerFit, isInjured, minutesCap } from './lineup.js';
@@ -582,7 +582,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       const assister = maybeAssist(off, shooter, type, rng);
       const astText = assister ? ` (${assister.name} ${assister.line.ast} AST)` : '';
       emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts,
-        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...(assister ? { a: assister.line.playerId } : null) });
+        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(assister ? { a: assister.line.playerId } : null) });
       if (fouled) {
         const fouler = chargeFoul(def, rng);
         if (fouler) {
@@ -616,7 +616,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     // = 0.363 * 0.38 ≈ 13.8% per inside attempt, closer to the real ~5% of FGA.
     const blockP = type === 'ins' ? 0.38 : type === 'mid' ? 0.08 : 0.02;
     emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`, undefined, 0,
-      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts });
+      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts, ...zoneCoords(shotH, zone.id) });
     if (rng() < blockP) {
       const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng);
       blocker.line.blk += 1;
@@ -673,6 +673,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   const events = [];
   const playByPlay = [];
   const lineups = [];
+  let possIndex = 0; // running possession number, stamped on every play as `n`
   const qFouls = { home: 0, away: 0 }; // team fouls per quarter, cosmetic only
   let period = 0; // 0-3 = Q1-Q4, 4+ = overtimes
   // `meta` is the structured form of what the text already says: who did it,
@@ -771,6 +772,21 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     const halfStep = pairStep / 2;
     const foulBump = (gp) => ++qFouls[gp.team];
     const bonusAt = ot ? 4 : 5;
+    // replaceFouledOut swaps players mid-stint (sixth foul, or a cooldown), so
+    // the stint-start lineup stops being true the moment it fires. Logging the
+    // new five whenever it actually changes keeps `lineups` exact rather than
+    // approximate — which is the difference between being able to draw the
+    // right ten players and not.
+    const noteSubs = (next, prev, remMin, side) => {
+      if (next === prev) return next; // replaceFouledOut returns the same ctx when nobody is out
+      lineups.push({
+        q: periodLabel(period),
+        t: fmtClock(remMin),
+        home: (side === 'home' ? next : h).five.map((gp) => gp.line.playerId),
+        away: (side === 'away' ? next : a).five.map((gp) => gp.line.playerId),
+      });
+      return next;
+    };
     for (let k = 0; k < possEach; k++) {
       const rem = remStart - pairStep * (k + 1); // end of pair — unchanged game logic
       const clutch = period >= 3 && rem <= 2.05;
@@ -779,30 +795,47 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
       // possScore accumulates pts scored in the current possession so the emit
       // closures can show the live score; reset between home and away possessions.
       let possScore = 0;
+      // Every play in a possession shares one displayed clock reading (the
+      // possession's midpoint), which is fine to read but useless to animate
+      // against. `sec` spreads them across the possession's own slice of the
+      // clock instead: strictly decreasing, never colliding, and never
+      // crossing into the next possession, since (i+1)/(i+2) approaches but
+      // never reaches the full span. The displayed `t` is left alone.
+      let possPlays = 0;
+      const spread = (startMin) => {
+        const f = (possPlays + 1) / (possPlays + 2);
+        possPlays += 1;
+        return Math.max(0, (startMin - halfStep * f) * 60);
+      };
       const emitH = (text, side = 'home', delta = 0, meta = null) => {
         possScore += delta;
         addPlay(text, fmtClock(remH), undefined, side,
-          possScore > 0 ? { home: homeScore.pts + possScore, away: awayScore.pts } : null, meta);
+          possScore > 0 ? { home: homeScore.pts + possScore, away: awayScore.pts } : null,
+          { n: possIndex, sec: +spread(remH + halfStep).toFixed(2), ...meta });
       };
       const emitA = (text, side = 'away', delta = 0, meta = null) => {
         possScore += delta;
         addPlay(text, fmtClock(remA), undefined, side,
-          possScore > 0 ? { home: homeScore.pts, away: awayScore.pts + possScore } : null, meta);
+          possScore > 0 ? { home: homeScore.pts, away: awayScore.pts + possScore } : null,
+          { n: possIndex, sec: +spread(remA + halfStep).toFixed(2), ...meta });
       };
+      possIndex += 1;
       const hp = playPossession(h, a, true, rng, clutch, emitH, foulBump, bonusAt);
       homeScore.pts += hp;
       for (const gp of h.five) gp.line.pm += hp;
       for (const gp of a.five) gp.line.pm -= hp;
       track(0, hp, rem);
-      a = replaceFouledOut(a, awayPlayers, rng);
+      a = noteSubs(replaceFouledOut(a, awayPlayers, rng), a, remH, 'away');
       possScore = 0; // reset for away possession
+      possPlays = 0; // ...and its own slice of the clock
+      possIndex += 1;
       const ap = playPossession(a, h, false, rng, clutch, emitA, foulBump, bonusAt);
       awayScore.pts += ap;
       for (const gp of a.five) gp.line.pm += ap;
       for (const gp of h.five) gp.line.pm -= ap;
       track(1, ap, rem);
-      h = replaceFouledOut(h, homePlayers, rng);
-      a = replaceFouledOut(a, awayPlayers, rng);
+      h = noteSubs(replaceFouledOut(h, homePlayers, rng), h, remA, 'home');
+      a = noteSubs(replaceFouledOut(a, awayPlayers, rng), a, remA, 'away');
     }
   };
 
