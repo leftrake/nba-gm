@@ -68,7 +68,16 @@ The hard split is **engine vs. UI**:
   - `players.js` — player generation, `overall()`, development curve, salary
     formulas, and the global player-ID counter.
   - `sim.js` — single-game simulation (possession-by-possession), box scores,
-    and play-by-play event generation.
+    and play-by-play event generation. Each play carries both the display
+    text and a structured form of it, flat on the play object: `k` (kind:
+    shot/ft/reb/tov/stl/blk/foul), `p` (actor player id), plus `z` (shot
+    zone, see `shotZones.js`), `m` (made), `pts`, `a` (assister), `o`
+    (offensive rebound), `v` (the player fouled/blocked). `simGame` also
+    returns `lineups` — the five a side at each stint boundary, 16 per game.
+    Use the ids, never the names: player names are not unique. Event and
+    lineup generation must never read the game RNG, so that adding to them
+    can't perturb seeded sim results — see the note above `addPlay`, and
+    verify by diffing seeded output before and after any change.
   - `lineup.js` — rotation/minutes assignment (`autoLineup`, an optimal
     bitmask DP) and lineup-quality warnings.
   - `trade.js` / `tradeOffers.js` — trade value, cap validation, AI

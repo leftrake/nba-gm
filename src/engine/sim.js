@@ -412,7 +412,8 @@ function offenseRebounds(off, def, rng, emit = () => {}) {
     gp.line.reb += 1;
     if (offensive) gp.line.oreb += 1;
     else gp.line.dreb += 1;
-    emit(`${gp.name} REBOUND (Off:${gp.line.oreb} Def:${gp.line.dreb})`, gp.team);
+    emit(`${gp.name} REBOUND (Off:${gp.line.oreb} Def:${gp.line.dreb})`, gp.team, 0,
+      { k: 'reb', p: gp.line.playerId, o: offensive ? 1 : 0 });
   }
   return offensive;
 }
@@ -429,10 +430,12 @@ function shootFreeThrows(shooter, n, rng, emit = () => {}) {
     if (rng() < ftPct) {
       shooter.line.ftm += 1; made += 1;
       shooter.line.pts += 1;
-      emit(`${shooter.name} Free Throw ${i + 1} of ${n} (${shooter.line.pts} PTS)`, undefined, 1);
+      emit(`${shooter.name} Free Throw ${i + 1} of ${n} (${shooter.line.pts} PTS)`, undefined, 1,
+        { k: 'ft', p: shooter.line.playerId, m: 1 });
     } else {
       lastMissed = i === n - 1;
-      emit(`${shooter.name} Free Throw ${i + 1} of ${n} MISS`);
+      emit(`${shooter.name} Free Throw ${i + 1} of ${n} MISS`, undefined, 0,
+        { k: 'ft', p: shooter.line.playerId, m: 0 });
     }
   }
   return { made, lastMissed };
@@ -487,14 +490,18 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
     loser.line.tov += 1;
     if (rng() < 0.12) {
       addFoul(loser); // offensive foul: a charge on the ball-handler, not a steal
-      emit(`${loser.name} Offensive Foul (${loser.line.tov} TO)`);
+      emit(`${loser.name} Offensive Foul (${loser.line.tov} TO)`, undefined, 0,
+        { k: 'tov', p: loser.line.playerId, f: 1 });
     } else if (rng() < 0.58) {
       const stealer = weightedPick(def.five, (g) => Math.pow(g.steal, 2) * (1 + g.speed / 300), rng);
       stealer.line.stl += 1;
-      emit(`${loser.name} Turnover (${loser.line.tov} TO)`);
-      emit(`${stealer.name} STEAL (${stealer.line.stl} STL)`, stealer.team);
+      emit(`${loser.name} Turnover (${loser.line.tov} TO)`, undefined, 0,
+        { k: 'tov', p: loser.line.playerId });
+      emit(`${stealer.name} STEAL (${stealer.line.stl} STL)`, stealer.team, 0,
+        { k: 'stl', p: stealer.line.playerId });
     } else {
-      emit(`${loser.name} Turnover (${loser.line.tov} TO)`);
+      emit(`${loser.name} Turnover (${loser.line.tov} TO)`, undefined, 0,
+        { k: 'tov', p: loser.line.playerId });
     }
     return 0;
   }
@@ -505,13 +512,15 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
       const tf = foulBump(fouler);
       if (tf >= bonusAt) {
         const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
-        emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team);
+        emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team, 0,
+          { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
         const { made, lastMissed } = shootFreeThrows(shooter, 2, rng, emit);
         if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
         if (lastMissed && offenseRebounds(off, def, rng, emit)) return made + playShots(off, def, home, rng, clutch, emit, foulBump);
         return made;
       }
-      emit(`${fouler.name} Loose Ball FOUL (P${fouler.line.pf}.T${tf})`, fouler.team);
+      emit(`${fouler.name} Loose Ball FOUL (P${fouler.line.pf}.T${tf})`, fouler.team, 0,
+        { k: 'foul', p: fouler.line.playerId });
     }
   }
   // non-shooting foul in the penalty: two shots, no field-goal attempt
@@ -520,7 +529,8 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
     const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
     if (fouler) {
       const tf = foulBump(fouler);
-      emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team);
+      emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team, 0,
+        { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
     }
     const { made, lastMissed } = shootFreeThrows(shooter, 2, rng, emit);
     if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
@@ -571,12 +581,14 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       off.team.last = { name: shooter.name, type };
       const assister = maybeAssist(off, shooter, type, rng);
       const astText = assister ? ` (${assister.name} ${assister.line.ast} AST)` : '';
-      emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts);
+      emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts,
+        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...(assister ? { a: assister.line.playerId } : null) });
       if (fouled) {
         const fouler = chargeFoul(def, rng);
         if (fouler) {
           const tf = foulBump(fouler);
-          emit(`And one! ${fouler.name} FOUL (P${fouler.line.pf}.T${tf})`, fouler.team);
+          emit(`And one! ${fouler.name} FOUL (P${fouler.line.pf}.T${tf})`, fouler.team, 0,
+            { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
         }
         pts += shootFreeThrows(shooter, 1, rng, emit).made;
       }
@@ -587,7 +599,8 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       const fouler = chargeFoul(def, rng);
       if (fouler) {
         const tf = foulBump(fouler);
-        emit(`${fouler.name} Shooting FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team);
+        emit(`${fouler.name} Shooting FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team, 0,
+          { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
       }
       const { made: ftPts, lastMissed } = shootFreeThrows(shooter, shotPts, rng, emit);
       if (ftPts > 0) off.team.last = { name: shooter.name, type: 'ft' };
@@ -602,11 +615,13 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     // (NBA average is ~4.8). P(block|inside attempt) = clean_miss_rate * blockP
     // = 0.363 * 0.38 ≈ 13.8% per inside attempt, closer to the real ~5% of FGA.
     const blockP = type === 'ins' ? 0.38 : type === 'mid' ? 0.08 : 0.02;
-    emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`);
+    emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`, undefined, 0,
+      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts });
     if (rng() < blockP) {
       const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng);
       blocker.line.blk += 1;
-      emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`, blocker.team);
+      emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`, blocker.team, 0,
+        { k: 'blk', p: blocker.line.playerId, v: shooter.line.playerId });
     }
     if (!offenseRebounds(off, def, rng, emit)) return pts;
   }
@@ -657,9 +672,17 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   const awayQtrs = [];
   const events = [];
   const playByPlay = [];
+  const lineups = [];
   const qFouls = { home: 0, away: 0 }; // team fouls per quarter, cosmetic only
   let period = 0; // 0-3 = Q1-Q4, 4+ = overtimes
-  const addPlay = (text, t = '', q = periodLabel(period), side = null, score = null) => playByPlay.push({ q, t, text, side, score });
+  // `meta` is the structured form of what the text already says: who did it,
+  // from where, and whether it dropped. The sim knows all of this at emit
+  // time and used to throw it away into a string — but names aren't unique
+  // (a fresh league already has several duplicates, and that grows every
+  // draft), so anything rendering the game has to key off ids, not text.
+  // Spread flat rather than nested, like the zone stat columns.
+  const addPlay = (text, t = '', q = periodLabel(period), side = null, score = null, meta = null) =>
+    playByPlay.push(meta ? { q, t, text, side, score, ...meta } : { q, t, text, side, score });
   const sideName = (side) => (side === 0 ? homeTeam : awayTeam).name;
   const fmtClock = (rem) => {
     const t = Math.max(0, Math.round(rem * 60));
@@ -725,6 +748,17 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   const playStint = (minutes, possEach, ot, remStart) => {
     const hFive = pickFive(homePlayers, rng, ot);
     const aFive = pickFive(awayPlayers, rng, ot);
+    // Who is actually on the floor. Kept in its own array rather than the
+    // play feed so the existing play-by-play UI renders unchanged. These are
+    // the fives as the stint starts — a foul-out mid-stint swaps a player in
+    // (replaceFouledOut) without a new entry, so treat this as the stint's
+    // lineup, not a per-play guarantee.
+    lineups.push({
+      q: periodLabel(period),
+      t: fmtClock(remStart),
+      home: hFive.map((gp) => gp.line.playerId),
+      away: aFive.map((gp) => gp.line.playerId),
+    });
     // fatigue reflects minutes already in the books when the stint starts
     for (const gp of [...hFive, ...aFive]) { applyFatigue(gp); gp.line.min += minutes; gp.remaining -= minutes; }
     let h = floorContext(hFive, homeScore);
@@ -745,15 +779,15 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
       // possScore accumulates pts scored in the current possession so the emit
       // closures can show the live score; reset between home and away possessions.
       let possScore = 0;
-      const emitH = (text, side = 'home', delta = 0) => {
+      const emitH = (text, side = 'home', delta = 0, meta = null) => {
         possScore += delta;
         addPlay(text, fmtClock(remH), undefined, side,
-          possScore > 0 ? { home: homeScore.pts + possScore, away: awayScore.pts } : null);
+          possScore > 0 ? { home: homeScore.pts + possScore, away: awayScore.pts } : null, meta);
       };
-      const emitA = (text, side = 'away', delta = 0) => {
+      const emitA = (text, side = 'away', delta = 0, meta = null) => {
         possScore += delta;
         addPlay(text, fmtClock(remA), undefined, side,
-          possScore > 0 ? { home: homeScore.pts, away: awayScore.pts + possScore } : null);
+          possScore > 0 ? { home: homeScore.pts, away: awayScore.pts + possScore } : null, meta);
       };
       const hp = playPossession(h, a, true, rng, clutch, emitH, foulBump, bonusAt);
       homeScore.pts += hp;
@@ -804,6 +838,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     awayQtrs,
     events,
     playByPlay,
+    lineups,
   };
 }
 

@@ -867,6 +867,7 @@ function trimPlayByPlay(containers, keep = KEEP_PBP_GAMES) {
   for (let i = 0; i < containers.length - keep; i++) {
     delete containers[i].playByPlay;
     delete containers[i].events;
+    delete containers[i].lineups;
   }
 }
 
@@ -944,7 +945,7 @@ export function simDay(league) {
       updateCupGroupGame(league, home, away, homeWon);
     }
     pushGameNews(league, r, home, away, hurt);
-    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay, injuryReport });
+    results.push({ ...g, homePts: r.homePts, awayPts: r.awayPts, homeBox: r.homeBox, awayBox: r.awayBox, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, events: r.events, playByPlay: r.playByPlay, lineups: r.lineups, injuryReport });
   }
   // unsigned players heal on the same calendar clock as rostered players
   for (const p of league.freeAgents) {
@@ -959,7 +960,7 @@ export function simDay(league) {
   league.resultsByDay[league.dayIndex] = results.map((r) => {
     const slim = { home: r.home, away: r.away, homePts: r.homePts, awayPts: r.awayPts, homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs, injuryReport: r.injuryReport };
     if (r.home === league.userTeamId || r.away === league.userTeamId) {
-      return { ...slim, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox), events: r.events, playByPlay: r.playByPlay };
+      return { ...slim, homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox), events: r.events, playByPlay: r.playByPlay, lineups: r.lineups };
     }
     return { ...slim, homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) };
   });
@@ -1200,7 +1201,7 @@ export function simPlayoffGame(league) {
       home: homeId, away: awayId, homePts: r.homePts, awayPts: r.awayPts,
       homeQtrs: r.homeQtrs, awayQtrs: r.awayQtrs,
       injuryReport: hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft })),
-      ...(isUserGame ? { events: r.events, playByPlay: r.playByPlay } : null),
+      ...(isUserGame ? { events: r.events, playByPlay: r.playByPlay, lineups: r.lineups } : null),
       ...(fullBox
         ? { homeBox: encodeBox(r.homeBox), awayBox: encodeBox(r.awayBox) }
         : { homeStars: encodeBox(starLines(r.homeBox)), awayStars: encodeBox(starLines(r.awayBox)) }),
