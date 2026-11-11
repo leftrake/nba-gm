@@ -22,7 +22,7 @@ const PHASE_BLURB = {
   freeagency: 'Free Agency is open — sign players to fill out your roster before the season tips off.',
 };
 
-export default function Calendar({ league, leagueRef, commit, openTeam, openGame, setScreen, trackFeatured, setLastResults }) {
+export default function Calendar({ league, leagueRef, commit, openTeam, openGame, setScreen, trackFeatured, setLastResults, startWatch }) {
   const me = league.userTeamId;
   const lastDi = league.schedule.length - 1;
   const firstDate = dateForDay(league, 0);
@@ -110,6 +110,43 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     }
   };
 
+  // Sim today, then hand the user's game to the live viewer instead of
+  // revealing it. simDay mutates leagueRef in place, but nothing is committed
+  // here — so React, and therefore every other screen, still shows the
+  // pre-game league until the replay ends and reveal() runs. Everything
+  // reveal() does is what animatedSimTo does after a simmed day.
+  const watchTodaysGame = () => {
+    if (simDisabled || !startWatch) return;
+    const injuredBefore = new Map(getTeam(leagueRef.current, me).roster.filter((p) => p.injury).map((p) => [p.id, p.injury]));
+    const results = simDay(leagueRef.current);
+    const mine = results.find((r) => r.home === me || r.away === me);
+
+    const reveal = () => {
+      trackFeatured(results);
+      setLastResults(results);
+      commit();
+      setFlashDay(leagueRef.current.dayIndex - 1);
+      const rosterAfter = getTeam(leagueRef.current, me).roster;
+      const injured = rosterAfter.filter((p) => p.injury && !injuredBefore.has(p.id))
+        .map((p) => ({ id: p.id, name: p.name, pos: p.pos, injury: p.injury }));
+      const returned = rosterAfter.filter((p) => !p.injury && injuredBefore.has(p.id))
+        .map((p) => ({ id: p.id, name: p.name, pos: p.pos }));
+      if ((injured.length || returned.length) && !leagueRef.current.settings?.suppressInjuryAlerts) {
+        setInjuryAlert({ injured, returned });
+      }
+    };
+
+    // No game tonight, or play-by-play was trimmed: nothing to watch, so just
+    // reveal the day as a normal sim would.
+    if (!mine?.playByPlay?.length) { reveal(); return; }
+    startWatch({
+      game: mine,
+      home: getTeam(leagueRef.current, mine.home),
+      away: getTeam(leagueRef.current, mine.away),
+      onFinish: reveal,
+    });
+  };
+
   const nextEventDay = () => {
     const candidates = [CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS[0], league.schedule.length]
       .filter((d) => d > league.dayIndex);
@@ -143,6 +180,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
           <button className="ui-btn ui-btn--primary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(league.dayIndex + 1)}>
             {todayHasGame ? 'Simulate Game' : 'Next Day'}
           </button>
+          {todayHasGame && (
+            <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={watchTodaysGame}>Watch ▶</button>
+          )}
           <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
           <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
           <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>

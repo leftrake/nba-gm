@@ -35,8 +35,6 @@ just delete it — git history keeps the record).
 
 ## Sim Flow
 
-- Watchable games: surface the engine's possession-level play-by-play events as a scrolling live sim view with a fast-forward toggle, so the user can "watch" key games unfold.
-
 ## News
 
 - Audit the news feed for gaps and add game-generated items: notable individual game performances (40+ points, triple-doubles, player milestones), weekly league transaction summaries, coaching changes, rivalry game results, and end-of-month standings shifts.

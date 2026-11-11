@@ -357,7 +357,7 @@ function WatchlistSection({ league, commit, openPlayer, openTeam, setScreen }) {
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ league, leagueRef, commit, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews, onCounterTradeOffer, setScreen, trackFeatured, setLastResults }) {
+export default function Dashboard({ league, leagueRef, commit, lastResults, featuredGame, openTeam, openPlayer, openGame, openNews, onCounterTradeOffer, setScreen, trackFeatured, setLastResults, startWatch }) {
   const team = getTeam(league, league.userTeamId);
   const confStandings = standings(league, team.conf);
   const seed = confStandings.findIndex((t) => t.id === team.id) + 1;
@@ -415,6 +415,7 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
         setScreen={setScreen}
         trackFeatured={trackFeatured}
         setLastResults={setLastResults}
+        startWatch={startWatch}
       />
 
       <TradeOffers league={league} commit={commit} openPlayer={openPlayer} onCounter={onCounterTradeOffer} />

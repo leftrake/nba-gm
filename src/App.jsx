@@ -5,6 +5,7 @@ import { simCupGame, cupComplete } from './engine/cup.js';
 import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } from './engine/draft.js';
 import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
+import LiveGame from './components/LiveGame.jsx';
 import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
 import FuturePayroll from './components/FuturePayroll.jsx';
@@ -97,6 +98,10 @@ export default function App() {
   // just needs a re-render to pick the change up — only the setter is used.
   const [, bumpSlotRevision] = useState(0);
   const [slotError, setSlotError] = useState(null); // why a slot wouldn't load
+  // A game being watched play-by-play: { game, home, away, onFinish }. The day
+  // is already simmed into leagueRef when this is set, but deliberately not
+  // committed — onFinish is what reveals the result. See LiveGame.jsx.
+  const [liveGame, setLiveGame] = useState(null);
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
@@ -200,6 +205,7 @@ export default function App() {
     setViewPlayer(null);
     setViewGame(null);
     setShopTarget(null);
+    setLiveGame(null);
     setPendingTeamId(null);
     setPendingSlot(null);
     setFantasyMode(false);
@@ -758,6 +764,7 @@ export default function App() {
             setScreen={setScreen}
             trackFeatured={trackFeatured}
             setLastResults={setLastResults}
+            startWatch={setLiveGame}
           />
         ))}
         {screen === 'news' && <News league={league} openTeam={openTeam} />}
@@ -801,6 +808,14 @@ export default function App() {
             commit={commit}
             openPlayer={openPlayer}
             onOpenInMachine={(offer) => { setShopTarget(null); openTradeOffer(offer); }}
+          />
+        )}
+        {liveGame && (
+          <LiveGame
+            game={liveGame.game}
+            home={liveGame.home}
+            away={liveGame.away}
+            onFinish={() => { liveGame.onFinish?.(); setLiveGame(null); }}
           />
         )}
         {viewPlayer && <PlayerCard league={league} player={viewPlayer} onClose={closePlayer} openTeam={openTeam} openPlayer={openPlayer} onTradeFor={proposeTradeFor} onShop={openShop} commit={commit} />}
