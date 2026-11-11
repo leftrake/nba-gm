@@ -104,7 +104,7 @@ export function defenseFormation(offense, matchups, ball, onBallDefenderId) {
       const ang = Math.atan2(man.y - rim.y, man.x - rim.x) + Math.PI / 2;
       out[defId] = {
         x: +Math.max(-24, Math.min(24, man.x + Math.cos(ang) * gap)).toFixed(2),
-        y: +Math.max(0, man.y + Math.sin(ang) * gap).toFixed(2),
+        y: +Math.max(1.5, man.y + Math.sin(ang) * gap).toFixed(2),
       };
     }
   }

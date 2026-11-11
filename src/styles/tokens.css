@@ -25,6 +25,12 @@
   --color-elite: #d2a8ff;
 
   --color-primary-soft: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  /* ── COURT (live game view) ── */
+  --court-floor: color-mix(in srgb, #b07a46 26%, var(--panel));
+  --court-paint: color-mix(in srgb, #b07a46 42%, var(--panel));
+  --court-line:  color-mix(in srgb, #f0e6d8 55%, transparent);
+  --court-ball:  #e8833a;
+
   --color-success-soft: color-mix(in srgb, var(--green)  16%, var(--panel));
   --color-danger-soft:  color-mix(in srgb, var(--red)    16%, var(--panel));
   --color-warning-soft: color-mix(in srgb, var(--yellow) 16%, var(--panel));
