@@ -4,7 +4,7 @@ import { makeRng, randInt, clamp, gauss } from './rng.js';
 import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { ZONE_STAT_COLS } from './shotZones.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
-import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame } from './sim.js';
+import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame, injuryMoment } from './sim.js';
 import { initDraft } from './draft.js';
 import { initFantasyDraft } from './fantasyDraft.js';
 import { ensureDraftPicks } from './draftPicks.js';
@@ -929,18 +929,22 @@ export function simDay(league) {
     checkGameHighs(league, r, home, away);
     checkPlayerCareerHighs(league, r, home, away);
     const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft }));
-    // Injuries are rolled from the finished box score, not during the
-    // possession loop, so there is no moment in the game they belong to —
-    // hence the empty q/t. The player id is carried so anything rendering
-    // the game can identify him without parsing the name; when it matters
-    // enough to show a player going down on a specific play, the roll has to
-    // move inside simGame, which changes the rng stream.
-    for (const p of hurtHome) {
-      r.events.push({ q: '', t: '', k: 'injury', p: p.id, text: `🩹 ${p.name} (${home.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
-    }
-    for (const p of hurtAway) {
-      r.events.push({ q: '', t: '', k: 'injury', p: p.id, text: `🩹 ${p.name} (${away.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
-    }
+    // Injuries are rolled from the finished box score rather than inside the
+    // possession loop, but the moment still isn't arbitrary: the roll already
+    // truncated the line to the minutes he played before going down, and the
+    // lineup log says which stints those were. injuryMoment walks it back to
+    // a real clock reading.
+    const pushInjury = (p, team, box) => {
+      const line = box.find((l) => l.playerId === p.id);
+      const at = injuryMoment(r.lineups, p.id, line?.min ?? 0);
+      r.events.push({
+        q: at?.q ?? '', t: at?.t ?? '', ...(at ? { sec: at.sec } : null),
+        k: 'injury', p: p.id,
+        text: `🩹 ${p.name} (${team.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).`,
+      });
+    };
+    for (const p of hurtHome) pushInjury(p, home, r.homeBox);
+    for (const p of hurtAway) pushInjury(p, away, r.awayBox);
     const homeWon = r.homePts > r.awayPts;
     if (homeWon) { home.wins++; away.losses++; }
     else { away.wins++; home.losses++; }
@@ -1186,7 +1190,13 @@ export function simPlayoffGame(league) {
       applyBoxToStats(team.roster, box, 'playoffStats');
       for (const p of rollGameInjuries(league, team, box, rng)) {
         hurt.push(p);
-        r.events.push({ q: '', t: '', text: `🩹 ${p.name} (${team.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).` });
+        const line = box.find((l) => l.playerId === p.id);
+        const at = injuryMoment(r.lineups, p.id, line?.min ?? 0);
+        r.events.push({
+          q: at?.q ?? '', t: at?.t ?? '', ...(at ? { sec: at.sec } : null),
+          k: 'injury', p: p.id,
+          text: `🩹 ${p.name} (${team.city}) left the game injured: ${p.injury.type} (${injuryTimeline(p.injury)}).`,
+        });
       }
     }
     const playoffGameNum = (m.games?.length ?? 0) + 1;

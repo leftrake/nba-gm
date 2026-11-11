@@ -481,6 +481,32 @@ function maybeAssist(off, shooter, type, rng) {
 // One offensive possession. Mutates box-score lines, returns points scored.
 // `clutch` is true in the final two minutes of the 4th or any OT.
 // `foulBump(gp)` increments and returns the fouling team's quarter foul count.
+// Who contested the shot.
+//
+// Read this as attribution, not causation: the make probability above uses
+// the defense's *team* interior/perimeter averages (floorContext), never one
+// man's rating, so nobody is "the defender" as far as the math is concerned.
+// This names the most plausible one so a rendered game can put a body in
+// front of the shooter. Resolved off the same per-shot hash that picked the
+// zone — never the game RNG — so adding it can't move a seeded result.
+const POS_ORDER = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
+function pickDefender(def, shooter, type, hash) {
+  const want = POS_ORDER[shooter.pos] ?? 2;
+  let best = null;
+  let bestScore = -Infinity;
+  for (const g of def.five) {
+    const slot = POS_ORDER[g.pos] ?? 2;
+    // Position match dominates; the better defender takes the tougher
+    // assignment at the margin; the jitter keeps one matchup from being
+    // welded together for 48 minutes.
+    const score = -Math.abs(slot - want) * 2
+      + (type === 'ins' ? g.interiorDef : g.perimDef) * 0.02
+      + ((hash >>> (slot + 3)) % 89) / 89;
+    if (score > bestScore) { bestScore = score; best = g; }
+  }
+  return best;
+}
+
 // `bonusAt` is the team-foul threshold that triggers free throws (5 reg, 4 OT).
 function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump = () => 0, bonusAt = 5) {
   // turnover before a shot gets up?
@@ -554,6 +580,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     // shot-chart tracking can't perturb existing seeded-sim results.
     const shotH = shotHash(shooter.line.playerId, shooter.line.fga);
     const zone = pickZone(shotH, type);
+    const defender = pickDefender(def, shooter, type, shotH);
 
     let makeP, shotPts, foulP;
     if (type === 'ins') {
@@ -582,7 +609,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       const assister = maybeAssist(off, shooter, type, rng);
       const astText = assister ? ` (${assister.name} ${assister.line.ast} AST)` : '';
       emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts,
-        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(assister ? { a: assister.line.playerId } : null) });
+        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(defender ? { d: defender.line.playerId } : null), ...(assister ? { a: assister.line.playerId } : null) });
       if (fouled) {
         const fouler = chargeFoul(def, rng);
         if (fouler) {
@@ -616,7 +643,7 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     // = 0.363 * 0.38 ≈ 13.8% per inside attempt, closer to the real ~5% of FGA.
     const blockP = type === 'ins' ? 0.38 : type === 'mid' ? 0.08 : 0.02;
     emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`, undefined, 0,
-      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts, ...zoneCoords(shotH, zone.id) });
+      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(defender ? { d: defender.line.playerId } : null) });
     if (rng() < blockP) {
       const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng);
       blocker.line.blk += 1;
@@ -757,6 +784,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     lineups.push({
       q: periodLabel(period),
       t: fmtClock(remStart),
+      min: minutes, // stint length — this is the block of minutes each of these ten is credited
       home: hFive.map((gp) => gp.line.playerId),
       away: aFive.map((gp) => gp.line.playerId),
     });
@@ -782,6 +810,7 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
       lineups.push({
         q: periodLabel(period),
         t: fmtClock(remMin),
+        sub: 1, // mid-stint swap: changes who's out there, credits no minutes
         home: (side === 'home' ? next : h).five.map((gp) => gp.line.playerId),
         away: (side === 'away' ? next : a).five.map((gp) => gp.line.playerId),
       });
@@ -874,6 +903,44 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     lineups,
   };
 }
+
+// When a player's night ended.
+//
+// Injuries are rolled after the game from the finished box score, so there's
+// no injury event in the possession loop to read a clock off. But the moment
+// isn't arbitrary either: truncateForInjury (injuries.js) already cuts the
+// line down to the minutes he actually played before going down, and the
+// lineup log says which stints he was on the floor for. Walking his stints
+// until those minutes run out recovers the real moment he left.
+//
+// `minutesPlayed` is the already-truncated line.min. Returns null when it
+// can't be placed (no lineup log, or he never took the floor).
+export function injuryMoment(lineups, playerId, minutesPlayed) {
+  if (!lineups?.length || !(minutesPlayed > 0)) return null;
+  let acc = 0;
+  for (const ln of lineups) {
+    if (ln.sub) continue; // mid-stint swap — carries no minutes
+    if (!ln.home.includes(playerId) && !ln.away.includes(playerId)) continue;
+    const span = ln.min ?? SEGMENT_MIN;
+    if (acc + span >= minutesPlayed) {
+      const startSec = clockToSec(ln.t);
+      if (startSec == null) return null;
+      const sec = Math.max(0, startSec - (minutesPlayed - acc) * 60);
+      return { q: ln.q, t: secToClock(sec), sec: +sec.toFixed(2) };
+    }
+    acc += span;
+  }
+  return null;
+}
+
+const clockToSec = (t) => {
+  const m = /^(\d+):(\d+)$/.exec(t || '');
+  return m ? +m[1] * 60 + +m[2] : null;
+};
+const secToClock = (sec) => {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 
 // "Q1"…"Q4", then "OT", "2OT", … — shared by the sim log and the line score.
 export function periodLabel(i) {

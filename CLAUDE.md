@@ -78,17 +78,25 @@ The hard split is **engine vs. UI**:
       and unique per play, unlike the displayed `t`, where every play in a
       possession shares the possession's midpoint.
     - shots add `z` (zone), `x`/`y` (court feet, origin at the rim —
-      `zoneCoords` in `shotZones.js`), `m` (made), `pts`, `a` (assister)
+      `zoneCoords` in `shotZones.js`), `m` (made), `pts`, `a` (assister),
+      `d` (the defender who contested — see below)
     - `o` on rebounds (offensive), `v` on fouls/blocks (the player fouled
       or blocked)
 
     `simGame` also returns `lineups`: the five a side, logged at each stint
-    boundary and again whenever `replaceFouledOut` changes it, so it is
-    exact at every play rather than approximate (~18 entries per game).
+    boundary (`min` = minutes credited) and again whenever
+    `replaceFouledOut` changes it (`sub: 1`, no minutes), so it is exact at
+    every play rather than approximate (~18 entries per game).
 
-    In-game injuries are the one thing with no position in time — they're
-    rolled from the finished box score in `league.js`, not the possession
-    loop, so their events carry `k`/`p` but empty `q`/`t`.
+    `d` is attribution, not causation: the make probability uses the
+    defense's *team* interior/perimeter averages, never one man's rating,
+    so `pickDefender` names the most plausible defender for display rather
+    than the number the sim used.
+
+    Injury events carry a real clock. They're rolled after the game from
+    the finished box score, but `truncateForInjury` already cut the line to
+    the minutes played before going down, so `injuryMoment` walks the
+    lineup log to recover when he left.
 
     Event, coordinate and lineup generation must never read the game RNG,
     so that adding to them can't perturb seeded sim results — see the note
@@ -124,6 +132,12 @@ The hard split is **engine vs. UI**:
     Cap/Future Payroll screen (distinct from `league.js`'s own
     `projectedPayroll`, which is the one-season-out version AI decisions use).
   - `names.js` — per-nationality name pools for player generation.
+  - `courtPositions.js` — plausible floor positions for all ten players
+    (offensive spacing, defensive shading) in `shotZones.js`'s coordinate
+    space. Unlike everything else in `src/engine/`, this is **not
+    simulated**: the sim never models off-ball movement, so these are
+    invented for rendering. Nothing in it feeds a rating, probability or
+    box score, and nothing in the sim reads it.
   - `colorUtils.js` — WCAG contrast-safety helpers for team-color UI.
   - `save.js` — save-file version stamping and localStorage size guards.
   - `stats.js` — shared per-game/shooting-percentage math for stat displays.
