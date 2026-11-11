@@ -50,26 +50,46 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 // `ball`: { x, y } — where the action is (a shot's coordinates, say).
 // `handlerId`: whoever has it; he stands at the ball, everyone else spaces.
 // Returns { [id]: { x, y } }.
-export function offenseFormation(five, ball, handlerId) {
-  const out = {};
+// Who stands where, decided once and then left alone.
+//
+// Assignment is deliberately independent of the ball: work it out per
+// possession and reuse it, and the only thing that moves between plays is
+// whoever has the ball. Re-deriving it per play instead looks like the floor
+// is being reshuffled — one off-ball move in eight ended up over 8ft, some
+// as far as 44, which at a third of a second a play is a player crossing the
+// court at 40mph.
+export function assignSpots(five) {
   const taken = new Set();
-  const others = [];
-  for (const p of five) {
-    if (p.id === handlerId) out[p.id] = { x: ball.x, y: ball.y };
-    else others.push(p);
-  }
-  // Bigs claim their spots first — they have the fewest viable ones.
-  const order = [...others].sort((a, b) => (PREF[b.pos] ? 1 : 0) - (PREF[a.pos] ? 1 : 0)
-    || ['C', 'PF', 'SF', 'SG', 'PG'].indexOf(a.pos) - ['C', 'PF', 'SF', 'SG', 'PG'].indexOf(b.pos));
+  const out = {};
+  // Bigs claim first — they have the fewest viable spots.
+  const order = [...five].sort(
+    (a, b) => ['C', 'PF', 'SF', 'SG', 'PG'].indexOf(a.pos) - ['C', 'PF', 'SF', 'SG', 'PG'].indexOf(b.pos),
+  );
   for (const p of order) {
     const prefs = [...(PREF[p.pos] ?? []), ...FALLBACK];
-    // Skip spots already taken, and any spot the ball is sitting on — the
-    // handler is there, nobody should be standing on top of him.
-    const pick = prefs.find((s) => !taken.has(s) && dist(SPOTS[s], ball) > 6)
-      ?? prefs.find((s) => !taken.has(s))
-      ?? FALLBACK.find((s) => !taken.has(s));
+    const pick = prefs.find((s) => !taken.has(s)) ?? FALLBACK.find((s) => !taken.has(s));
     taken.add(pick);
-    out[p.id] = { ...SPOTS[pick] };
+    out[p.id] = pick;
+  }
+  return out;
+}
+
+// `spots` is an assignment from assignSpots. Omit it and one is made on the
+// spot — fine for a single frame, but a caller walking a possession should
+// hold on to it.
+export function offenseFormation(five, ball, handlerId, spots) {
+  const assigned = spots ?? assignSpots(five);
+  const out = {};
+  for (const p of five) {
+    if (p.id === handlerId) { out[p.id] = { x: ball.x, y: ball.y }; continue; }
+    const home = SPOTS[assigned[p.id]] ?? SPOTS.top;
+    const gap = dist(home, ball);
+    // If the ball comes to a teammate's spot, he steps off it rather than the
+    // whole formation re-forming around the ball.
+    const at = gap >= 4 ? home
+      : gap < 0.01 ? { x: home.x + 4.5, y: home.y }
+        : { x: ball.x + (home.x - ball.x) * (4.5 / gap), y: ball.y + (home.y - ball.y) * (4.5 / gap) };
+    out[p.id] = { x: +at.x.toFixed(2), y: +at.y.toFixed(2) };
   }
   return out;
 }

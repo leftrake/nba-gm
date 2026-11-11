@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { TeamBadge } from './TeamDisplay.jsx';
 import { safeAccent } from '../engine/colorUtils.js';
-import { offenseFormation, defenseFormation, positionMatchups } from '../engine/courtPositions.js';
+import { assignSpots, offenseFormation, defenseFormation, positionMatchups } from '../engine/courtPositions.js';
 import ArenaCourt from './ArenaCourt.jsx';
 
 // Watch a game unfold play by play.
@@ -19,9 +19,19 @@ import ArenaCourt from './ArenaCourt.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const BASE_MS = 350;        // per play at 1x — a median 398-play game runs ~2.3 min
+// Playback is paced on the game clock, not a fixed beat per play. Real gaps
+// between plays run from under a second to fifteen, and half of them are over
+// six — rendering all of them identically is what makes a flat beat read as a
+// slideshow instead of basketball. 45ms per game second puts a median gap at
+// ~350ms and a full game at a little over two minutes, the same as before.
+const MS_PER_GAME_SEC = 45;
+const MIN_PLAY_MS = 70;     // a scramble shouldn't flash past unreadably
+const MAX_PLAY_MS = 900;    // nor should a dead-ball stretch stall
 const WINDOW = 60;          // plays kept on screen; the full log is in the box score after
 const SPEEDS = [1, 2, 4];
+
+const playMs = (gapSec, speed) =>
+  Math.max(MIN_PLAY_MS, Math.min(MAX_PLAY_MS, ((gapSec ?? 4) * MS_PER_GAME_SEC) / Math.max(speed, 0.25)));
 
 const periodIdx = (q) => (q?.startsWith('Q') ? +q[1] - 1 : q === 'OT' ? 4 : 3 + parseInt(q, 10) || 0);
 
@@ -39,8 +49,9 @@ const BALL_AT = {
 // drawn from: who is out there, who has it, where the ball is.
 function buildFrames(plays, lineups, home, away) {
   const sideOf = new Map();
-  for (const p of home.roster) sideOf.set(p.id, 'home');
-  for (const p of away.roster) sideOf.set(p.id, 'away');
+  const posOf = new Map();
+  for (const p of home.roster) { sideOf.set(p.id, 'home'); posOf.set(p.id, p.pos); }
+  for (const p of away.roster) { sideOf.set(p.id, 'away'); posOf.set(p.id, p.pos); }
 
   // Which team had the ball on each possession. There's no explicit field for
   // it — and `side` can't stand in, since a steal or a block is credited to
@@ -61,6 +72,10 @@ function buildFrames(plays, lineups, home, away) {
   let handler = null;
   let shot = null;
   let li = 0;
+  let spots = null;      // spot assignment, held for the length of a possession
+  let spotsKey = '';
+  let prevSec = null;
+  let prevQ = null;
 
   for (const p of plays) {
     const per = periodIdx(p.q);
@@ -82,7 +97,21 @@ function buildFrames(plays, lineups, home, away) {
     // a steal or a block is the defense touching the ball, not holding it.
     if (p.p != null && sideOf.get(p.p) === offSide) handler = p.p;
 
-    frames.push({ offSide, defSide, mark, ball, handler, shot, defenderId: p.d ?? null });
+    // One assignment per possession (and per five, in case of a foul-out).
+    const offIds = offSide === 'home' ? mark?.home ?? [] : mark?.away ?? [];
+    const key = `${p.n}|${offIds.join(',')}`;
+    if (key !== spotsKey) {
+      spots = assignSpots(offIds.map((id) => ({ id, pos: posOf.get(id) ?? 'SF' })));
+      spotsKey = key;
+    }
+
+    // Game seconds since the previous play — what playback is paced on. A new
+    // period restarts the clock, so it gets a nominal beat instead.
+    const gap = p.q !== prevQ || prevSec == null ? 3 : Math.max(0, prevSec - (p.sec ?? prevSec));
+    prevQ = p.q;
+    prevSec = p.sec ?? prevSec;
+
+    frames.push({ offSide, defSide, mark, ball, handler, shot, spots, gap, defenderId: p.d ?? null });
   }
   return frames;
 }
@@ -125,6 +154,9 @@ export default function LiveGame({ game, home, away, onFinish }) {
     () => buildFrames(plays, game?.lineups, home, away),
     [plays, game, home, away],
   );
+  // Read inside the playback loop, which must not restart when frames change.
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
   const rosterById = useMemo(() => {
     const m = new Map();
     for (const p of [...home.roster, ...away.roster]) m.set(p.id, p);
@@ -141,7 +173,8 @@ export default function LiveGame({ game, home, away, onFinish }) {
       while (!cancelled && posRef.current < plays.length) {
         const s = speedRef.current;
         if (s === 0) { await delay(120); continue; } // paused
-        await delay(BASE_MS / s);
+        // The wait before a play is that play's own share of the game clock.
+        await delay(playMs(framesRef.current[posRef.current]?.gap, s));
         // Re-check after the wait: a skip may have landed mid-delay.
         if (cancelled || posRef.current >= plays.length) return;
         posRef.current += 1;
@@ -179,7 +212,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
     const off = toP(offIds);
     const def = toP(defIds);
     const handler = offIds.includes(f.handler) ? f.handler : offIds[0];
-    const O = offenseFormation(off, f.ball, handler);
+    const O = offenseFormation(off, f.ball, handler, f.spots);
     const M = positionMatchups(def, off);
     return {
       offense: O,
@@ -275,10 +308,11 @@ export default function LiveGame({ game, home, away, onFinish }) {
                 defenseTeam={court.defenseTeam}
                 playerById={(id) => rosterById.get(id)}
                 handlerId={court.handlerId}
-                // Movement has to finish inside one play, or at 4x every
-                // player is permanently in flight and nobody is ever where
-                // the ball is.
-                moveMs={speed === 0 ? 320 : Math.max(70, Math.min(320, (BASE_MS / speed) * 0.85))}
+                // Movement has to finish inside the play it belongs to, or
+                // every player is permanently in flight and nobody is ever
+                // where the ball is.
+                moveMs={speed === 0 ? 320
+                  : Math.min(320, playMs(frames[Math.max(0, idx - 1)]?.gap, speed) * 0.85)}
               />
               <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--sp-4)', marginTop: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
                 <span style={{ color: safeAccent(court.offenseTeam.color), fontWeight: 700 }}>
