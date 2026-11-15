@@ -82,6 +82,9 @@ The hard split is **engine vs. UI**:
       `d` (the defender who contested — see below)
     - `o` on rebounds (offensive), `v` on fouls/blocks (the player fouled
       or blocked)
+    - `sf` on shooting fouls (and-ones included). A fouled miss is never a
+      shot play — it isn't an FGA — so its foul carries the attempt's `z`
+      and `x`/`y` instead.
 
     `simGame` also returns `lineups`: the five a side, logged at each stint
     boundary (`min` = minutes credited) and again whenever
@@ -91,7 +94,13 @@ The hard split is **engine vs. UI**:
     `d` is attribution, not causation: the make probability uses the
     defense's *team* interior/perimeter averages, never one man's rating,
     so `pickDefender` names the most plausible defender for display rather
-    than the number the sim used.
+    than the number the sim used. When a defender does act on the shot, `d`
+    is him: the blocker on a blocked shot, the fouler on an and-one.
+
+    Team fouls in the play text (the T in `FOUL (P2.T4)`) are real: from a
+    period's 5th team foul (4th in overtime) a common foul is shot, and
+    before that a trip to the line is a shooting foul. Offensive fouls are
+    personal fouls but not team ones, and are logged as turnovers (`f`).
 
     Highlight events (`events`) are structured the same way: each carries
     `k` — run / clutch / bigq / qend / ot / closing / leadchanges / big /

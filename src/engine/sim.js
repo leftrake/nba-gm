@@ -555,8 +555,13 @@ function playPossession(off, def, home, rng, clutch, emit = () => {}, foulBump =
     const shooter = weightedPick(off.five, (g) => shotWeight(g, off.team), rng);
     if (fouler) {
       const tf = foulBump(fouler);
-      emit(`${fouler.name} FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team, 0,
-        { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
+      // Two shots and no FGA. Below the bonus a common foul is a side out,
+      // so a trip to the line from here can only be a shooting foul on a
+      // miss — the same line in the box score. Calling it a plain FOUL put a
+      // player at the line on T2, which a bonus indicator would contradict.
+      const shooting = tf < bonusAt;
+      emit(`${fouler.name} ${shooting ? 'Shooting FOUL' : 'FOUL'} (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team, 0,
+        { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId, ...(shooting ? { sf: 1 } : null) });
     }
     const { made, lastMissed } = shootFreeThrows(shooter, 2, rng, emit);
     if (made > 0) off.team.last = { name: shooter.name, type: 'ft' };
@@ -608,14 +613,19 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       off.team.last = { name: shooter.name, type };
       const assister = maybeAssist(off, shooter, type, rng);
       const astText = assister ? ` (${assister.name} ${assister.line.ast} AST)` : '';
+      // An and-one's fouler is the man who contested it, so he's picked
+      // before the make is logged and `d` names him (pickDefender's choice
+      // agreed only 20% of the time). chargeFoul is the next draw either way
+      // and logging draws nothing, so the RNG sequence is unchanged.
+      const fouler = fouled ? chargeFoul(def, rng) : null;
+      const contest = fouler ?? defender;
       emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} (${shooter.line.pts} PTS)${astText}`, undefined, shotPts,
-        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(defender ? { d: defender.line.playerId } : null), ...(assister ? { a: assister.line.playerId } : null) });
+        { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 1, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(contest ? { d: contest.line.playerId } : null), ...(assister ? { a: assister.line.playerId } : null) });
       if (fouled) {
-        const fouler = chargeFoul(def, rng);
         if (fouler) {
           const tf = foulBump(fouler);
           emit(`And one! ${fouler.name} FOUL (P${fouler.line.pf}.T${tf})`, fouler.team, 0,
-            { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
+            { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId, sf: 1 });
         }
         pts += shootFreeThrows(shooter, 1, rng, emit).made;
       }
@@ -626,8 +636,10 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
       const fouler = chargeFoul(def, rng);
       if (fouler) {
         const tf = foulBump(fouler);
+        // The attempt itself is never logged (a fouled miss isn't an FGA),
+        // so the foul carries where it went up from.
         emit(`${fouler.name} Shooting FOUL (P${fouler.line.pf}.T${tf}) — ${shooter.name} to the line`, fouler.team, 0,
-          { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId });
+          { k: 'foul', p: fouler.line.playerId, v: shooter.line.playerId, sf: 1, z: zone.id, ...zoneCoords(shotH, zone.id) });
       }
       const { made: ftPts, lastMissed } = shootFreeThrows(shooter, shotPts, rng, emit);
       if (ftPts > 0) off.team.last = { name: shooter.name, type: 'ft' };
@@ -642,10 +654,16 @@ function playShots(off, def, home, rng, clutch, emit = () => {}, foulBump = () =
     // (NBA average is ~4.8). P(block|inside attempt) = clean_miss_rate * blockP
     // = 0.363 * 0.38 ≈ 13.8% per inside attempt, closer to the real ~5% of FGA.
     const blockP = type === 'ins' ? 0.38 : type === 'mid' ? 0.08 : 0.02;
+    // Decided before the miss is logged so `d` names the blocker — the
+    // contest defender pickDefender chose blocked it only 26% of the time.
+    // Same draws in the same order; logging draws nothing.
+    const blocker = rng() < blockP
+      ? weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng)
+      : null;
+    const contest = blocker ?? defender;
     emit(`${shooter.name} ${shotDesc(shooter, zone, shotH)} MISS`, undefined, 0,
-      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(defender ? { d: defender.line.playerId } : null) });
-    if (rng() < blockP) {
-      const blocker = weightedPick(def.five, (g) => Math.pow(g.block * 0.9 + g.interiorDef * 0.1, 4) * (POS_BLOCK_MULT[g.pos] ?? 1), rng);
+      { k: 'shot', p: shooter.line.playerId, z: zone.id, m: 0, pts: shotPts, ...zoneCoords(shotH, zone.id), ...(contest ? { d: contest.line.playerId } : null) });
+    if (blocker) {
       blocker.line.blk += 1;
       emit(`${blocker.name} BLOCK (${blocker.line.blk} BLK)`, blocker.team, 0,
         { k: 'blk', p: blocker.line.playerId, v: shooter.line.playerId });
