@@ -19,7 +19,7 @@ import {
 import { extensionType, extensionSalaryRange, rookieMax } from './extensions.js';
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
-import { buildAllStarEvent, repairAllStarRosters } from './allstar.js';
+import { buildAllStarEvent, repairAllStarRosters, ALLSTAR_TEAMS } from './allstar.js';
 import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives, exceedsOwnerBudget, applyBudgetOverageEffect } from './owner.js';
 import { maybeCoachConversation } from './coachTalk.js';
 import { checkMilestoneAlerts } from './milestoneAlerts.js';
@@ -369,11 +369,6 @@ export function makeSchedule(teams, rng, season) {
 // Synthetic "teams" for the All-Star Game box score — not real franchises,
 // so they're not in league.teams, but getTeam needs to resolve them for
 // shared box-score components (TeamBadge/TeamLink/LineScore).
-const ALLSTAR_TEAMS = {
-  EAST: { id: 'EAST', city: 'Team', name: 'East', color: '#1d428a', conf: 'East' },
-  WEST: { id: 'WEST', city: 'Team', name: 'West', color: '#c8102e', conf: 'West' },
-};
-
 export function getTeam(league, id) {
   return league.teams.find((t) => t.id === id) || ALLSTAR_TEAMS[id];
 }
@@ -1375,6 +1370,9 @@ export function initPlayIn(league) {
   return { East: build('East'), West: build('West'), stage: 0, complete: false };
 }
 
+// `full` is the whole simGame result — play-by-play, lineups, events — for a
+// caller that wants to watch the game. It's handed back, never stored: the
+// play-in bracket in the save keeps the score and box lines only.
 function playInSimGame(league, home, away, rng) {
   const homeTeam = getTeam(league, home);
   const awayTeam = getTeam(league, away);
@@ -1382,7 +1380,7 @@ function playInSimGame(league, home, away, rng) {
   const homeWon = r.homePts > r.awayPts;
   if (homeWon) { homeTeam.wins++; awayTeam.losses++; }
   else { awayTeam.wins++; homeTeam.losses++; }
-  return { home, away, homePts: r.homePts, awayPts: r.awayPts, homeWon, homeBox: r.homeBox, awayBox: r.awayBox };
+  return { home, away, homePts: r.homePts, awayPts: r.awayPts, homeWon, homeBox: r.homeBox, awayBox: r.awayBox, full: r };
 }
 
 export function simPlayInGame(league) {
@@ -1405,32 +1403,32 @@ export function simPlayInGame(league) {
     // Game A: 7 vs 8 — winner locked in as 7 seed
     for (const conf of ['East', 'West']) {
       const c = pi[conf];
-      const r = playInSimGame(league, c.gameA.home, c.gameA.away, rng);
+      const { full, ...r } = playInSimGame(league, c.gameA.home, c.gameA.away, rng);
       c.gameA = { ...c.gameA, ...r, winner: r.homeWon ? r.home : r.away };
       c.seventh = c.gameA.winner;
-      played.push({ conf, game: 'A', ...r });
+      played.push({ conf, game: 'A', ...r, full });
     }
     pi.stage = 1;
   } else if (pi.stage === 1) {
     // Game B: 9 vs 10 — loser eliminated
     for (const conf of ['East', 'West']) {
       const c = pi[conf];
-      const r = playInSimGame(league, c.gameB.home, c.gameB.away, rng);
+      const { full, ...r } = playInSimGame(league, c.gameB.home, c.gameB.away, rng);
       c.gameB = { ...c.gameB, ...r, winner: r.homeWon ? r.home : r.away };
       // Set up Game C: loser of A (higher seed, home) vs winner of B
       const loserA = c.gameA.winner === c.gameA.home ? c.gameA.away : c.gameA.home;
       c.gameC = { home: loserA, away: c.gameB.winner, winner: null, homePts: null, awayPts: null };
-      played.push({ conf, game: 'B', ...r });
+      played.push({ conf, game: 'B', ...r, full });
     }
     pi.stage = 2;
   } else if (pi.stage === 2) {
     // Game C: loser of A vs winner of B — winner gets 8 seed
     for (const conf of ['East', 'West']) {
       const c = pi[conf];
-      const r = playInSimGame(league, c.gameC.home, c.gameC.away, rng);
+      const { full, ...r } = playInSimGame(league, c.gameC.home, c.gameC.away, rng);
       c.gameC = { ...c.gameC, ...r, winner: r.homeWon ? r.home : r.away };
       c.eighth = c.gameC.winner;
-      played.push({ conf, game: 'C', ...r });
+      played.push({ conf, game: 'C', ...r, full });
     }
     pi.stage = 3;
     pi.complete = true;

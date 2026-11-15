@@ -23,7 +23,9 @@ function cupSimGame(league, home, away, rng) {
   const homePts = r.homeBox.reduce((s, l) => s + l.pts, 0);
   const awayPts = r.awayBox.reduce((s, l) => s + l.pts, 0);
   const homeWon = homePts !== awayPts ? homePts > awayPts : rawHomeWon;
-  return { home, away, homePts, awayPts, homeWon, winner: homeWon ? home : away };
+  // `full` is the whole simGame result, for a caller that wants to watch the
+  // game — handed back, never stored in the bracket.
+  return { home, away, homePts, awayPts, homeWon, winner: homeWon ? home : away, full: r };
 }
 
 export function initCup(season) {
@@ -100,9 +102,9 @@ export function simCupGame(league) {
     for (const conf of ['East', 'West']) {
       for (const g of b[conf]) {
         if (g.winner) continue;
-        const r = cupSimGame(league, g.home, g.away, rng);
+        const { full, ...r } = cupSimGame(league, g.home, g.away, rng);
         Object.assign(g, r);
-        played.push({ label: `${conf} Quarterfinal`, ...r });
+        played.push({ label: `${conf} Quarterfinal`, ...r, full });
       }
     }
     const allDone = ['East', 'West'].every((c) => b[c].every((g) => g.winner));
@@ -119,9 +121,9 @@ export function simCupGame(league) {
     for (let i = 0; i < b.semis.length; i++) {
       const g = b.semis[i];
       if (g.winner) continue;
-      const r = cupSimGame(league, g.home, g.away, rng);
+      const { full, ...r } = cupSimGame(league, g.home, g.away, rng);
       Object.assign(g, r);
-      played.push({ label: i === 0 ? 'East Semifinal' : 'West Semifinal', ...r });
+      played.push({ label: i === 0 ? 'East Semifinal' : 'West Semifinal', ...r, full });
     }
     const allDone = b.semis.every((g) => g.winner);
     if (allDone) {
@@ -130,9 +132,9 @@ export function simCupGame(league) {
     }
   } else if (b.round === 2 && b.final && !b.final.winner) {
     // Cup Final
-    const r = cupSimGame(league, b.final.home, b.final.away, rng);
+    const { full, ...r } = cupSimGame(league, b.final.home, b.final.away, rng);
     Object.assign(b.final, r);
-    played.push({ label: 'NBA Cup Final', ...r });
+    played.push({ label: 'NBA Cup Final', ...r, full });
     cup.champion = b.final.winner;
     b.round = 3;
 

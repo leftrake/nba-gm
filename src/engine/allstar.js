@@ -14,6 +14,13 @@ import { pushNews } from './save.js';
 const STARTERS_PER_CONF = 5;
 const RESERVES_PER_CONF = 7;
 
+// The two All-Star sides as teams the rest of the app can show (getTeam
+// falls back to these).
+export const ALLSTAR_TEAMS = {
+  EAST: { id: 'EAST', city: 'Team', name: 'East', color: '#1d428a', conf: 'East' },
+  WEST: { id: 'WEST', city: 'Team', name: 'West', color: '#c8102e', conf: 'West' },
+};
+
 // Everyone in the conference who has played this season, best first — those
 // who've played at least half their team's games ahead of those who haven't.
 //
@@ -168,7 +175,10 @@ function allStarLineup(roster) {
 }
 
 // Runs the real possession sim for the All-Star Game, stores a full box
-// score on league.allStar.game, and records the MVP award.
+// score on league.allStar.game, and records the MVP award. Returns the stored
+// game plus, for a caller that wants to watch it, the whole sim result
+// (`full`) and both sides as teams with their exhibition rosters (`teams`) —
+// neither of which is stored.
 export function simAllStarGame(league) {
   const as = league.allStar;
   repairAllStarRosters(league);
@@ -211,5 +221,9 @@ export function simAllStarGame(league) {
     text: `⭐ Team ${winnerConf} wins the All-Star Game, ${Math.max(result.homePts, result.awayPts)}-${Math.min(result.homePts, result.awayPts)}.${mvpText}`,
   });
 
-  return as.game;
+  return {
+    ...as.game,
+    full: result,
+    teams: { home: { ...ALLSTAR_TEAMS.EAST, roster: eastRoster }, away: { ...ALLSTAR_TEAMS.WEST, roster: westRoster } },
+  };
 }
