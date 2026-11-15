@@ -716,7 +716,15 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     const t = Math.max(0, Math.round(rem * 60));
     return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
   };
-  const addEv = (text, t = '', q = periodLabel(period)) => events.push({ q, t, text });
+  // `meta` says what kind of highlight it is and where it belongs — `k`, plus
+  // the possession `n` for in-game moments or the period `per` for period
+  // ones — so a viewer can place it without parsing the text. Clock time
+  // alone won't do: in-game moments are stamped at the end of a possession
+  // pair, after the other team's possession too, which would put "ties it at
+  // 111" on screen after the lead had already changed again.
+  const addEv = (text, t = '', q = periodLabel(period), meta = null) =>
+    events.push(meta ? { q, t, text, ...meta } : { q, t, text });
+  const sideKey = (side) => (side === 0 ? 'home' : 'away');
 
   let leadSign = 0; // sign of home - away while someone leads
   let leadChanges = 0;
@@ -729,7 +737,8 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
       run.pts += pts;
     } else {
       if (run.side != null && run.pts >= 10) {
-        addEv(`The ${sideName(run.side)} ripped off a ${run.pts}-0 run.`, fmtClock(rem));
+        addEv(`The ${sideName(run.side)} ripped off a ${run.pts}-0 run.`, fmtClock(rem), undefined,
+          { k: 'run', n: possIndex, side: sideKey(run.side) });
       }
       run = { side, pts };
     }
@@ -740,9 +749,11 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     if (period >= 3 && rem <= 2.05 && last) {
       const shot = { ins: 'layup', mid: 'jumper', three: 'three', ft: 'free throw' }[last.type];
       if (sign === 0) {
-        addEv(`${last.name} ties it at ${homeScore.pts} with a ${shot}.`, fmtClock(rem));
+        addEv(`${last.name} ties it at ${homeScore.pts} with a ${shot}.`, fmtClock(rem), undefined,
+          { k: 'clutch', n: possIndex, side: sideKey(side) });
       } else if (sign !== leadSign && sign === (side === 0 ? 1 : -1)) {
-        addEv(`${last.name}'s ${shot} puts the ${sideName(side)} up ${Math.max(homeScore.pts, awayScore.pts)}-${Math.min(homeScore.pts, awayScore.pts)}.`, fmtClock(rem));
+        addEv(`${last.name}'s ${shot} puts the ${sideName(side)} up ${Math.max(homeScore.pts, awayScore.pts)}-${Math.min(homeScore.pts, awayScore.pts)}.`, fmtClock(rem), undefined,
+          { k: 'clutch', n: possIndex, side: sideKey(side) });
       }
     }
     if (sign !== 0 && sign !== leadSign) {
@@ -760,14 +771,14 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
     awayQtrs.push(aq);
     hPrev = homeScore.pts;
     aPrev = awayScore.pts;
-    if (hq >= 38) addEv(`The ${homeTeam.name} poured in ${hq} points in ${periodLabel(period)}.`);
-    if (aq >= 38) addEv(`The ${awayTeam.name} poured in ${aq} points in ${periodLabel(period)}.`);
+    if (hq >= 38) addEv(`The ${homeTeam.name} poured in ${hq} points in ${periodLabel(period)}.`, '', undefined, { k: 'bigq', per: period, side: 'home' });
+    if (aq >= 38) addEv(`The ${awayTeam.name} poured in ${aq} points in ${periodLabel(period)}.`, '', undefined, { k: 'bigq', per: period, side: 'away' });
     // period markers carry no q/t prefix — the text says it all
     if (period < 3) {
       const [lead, trail] = homeScore.pts >= awayScore.pts ? [homeTeam, awayTeam] : [awayTeam, homeTeam];
-      addEv(`End of ${periodLabel(period)}: ${lead.name} ${Math.max(homeScore.pts, awayScore.pts)}, ${trail.name} ${Math.min(homeScore.pts, awayScore.pts)}.`, '', '');
+      addEv(`End of ${periodLabel(period)}: ${lead.name} ${Math.max(homeScore.pts, awayScore.pts)}, ${trail.name} ${Math.min(homeScore.pts, awayScore.pts)}.`, '', '', { k: 'qend', per: period });
     } else if (homeScore.pts === awayScore.pts) {
-      addEv(`Tied at ${homeScore.pts} — headed to ${period === 3 ? 'overtime' : 'another overtime'}.`, '', '');
+      addEv(`Tied at ${homeScore.pts} — headed to ${period === 3 ? 'overtime' : 'another overtime'}.`, '', '', { k: 'ot', per: period });
     }
     qFouls.home = 0; qFouls.away = 0;
     period += 1;
@@ -881,13 +892,13 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
   }
 
   // post-game notes (q='' so the UI shows them unprefixed, after the action)
-  if (run.side != null && run.pts >= 10) addEv(`The ${sideName(run.side)} closed the game on a ${run.pts}-0 run.`, '', '');
-  if (leadChanges >= 12) addEv(`A back-and-forth battle: ${leadChanges} lead changes.`, '', '');
+  if (run.side != null && run.pts >= 10) addEv(`The ${sideName(run.side)} closed the game on a ${run.pts}-0 run.`, '', '', { k: 'closing', side: sideKey(run.side) });
+  if (leadChanges >= 12) addEv(`A back-and-forth battle: ${leadChanges} lead changes.`, '', '', { k: 'leadchanges' });
   for (const gp of [...homePlayers, ...awayPlayers]) {
     const l = gp.line;
-    if (l.pts >= 40) addEv(`${gp.name} erupted for ${l.pts} points.`, '', '');
+    if (l.pts >= 40) addEv(`${gp.name} erupted for ${l.pts} points.`, '', '', { k: 'big', p: l.playerId });
     if (l.pts >= 10 && l.reb >= 10 && l.ast >= 10) {
-      addEv(`${gp.name} posted a triple-double: ${l.pts} pts, ${l.reb} reb, ${l.ast} ast.`, '', '');
+      addEv(`${gp.name} posted a triple-double: ${l.pts} pts, ${l.reb} reb, ${l.ast} ast.`, '', '', { k: 'tripdbl', p: l.playerId });
     }
   }
 

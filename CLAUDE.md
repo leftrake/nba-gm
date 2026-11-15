@@ -93,6 +93,15 @@ The hard split is **engine vs. UI**:
     so `pickDefender` names the most plausible defender for display rather
     than the number the sim used.
 
+    Highlight events (`events`) are structured the same way: each carries
+    `k` — run / clutch / bigq / qend / ot / closing / leadchanges / big /
+    tripdbl / injury — plus `n` (the possession) for in-game moments, `per`
+    for period ones, and `side` or `p` where it applies. Place them by `n`,
+    not by clock: in-game moments are stamped at the end of a possession
+    *pair*, so clock placement shows "ties it at 111" after the other team's
+    possession — a quarter of clutch banners would show a score that had
+    already changed.
+
     Injury events carry a real clock. They're rolled after the game, from
     the finished box score, and the box line is left whole — so
     `injuryMoment` places the injury at the player's last appearance in the
