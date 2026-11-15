@@ -906,16 +906,25 @@ export function simGame(homeTeam, awayTeam, rng = rand) {
 
 // When a player's night ended.
 //
-// Injuries are rolled after the game from the finished box score, so there's
-// no injury event in the possession loop to read a clock off. But the moment
-// isn't arbitrary either: truncateForInjury (injuries.js) already cuts the
-// line down to the minutes he actually played before going down, and the
-// lineup log says which stints he was on the floor for. Walking his stints
-// until those minutes run out recovers the real moment he left.
+// Injuries are rolled after the game, from the finished box score, so the
+// feed already holds everything he did. The only moment that agrees with it
+// is his last appearance: put the injury any earlier and he goes down and
+// then keeps scoring (the old minutes-based cutoff did exactly that for 97%
+// of injured players). So: his last play — as the actor, assister, the
+// player fouled or blocked, or the contesting defender — and failing that,
+// the end of his last stint on the floor.
 //
-// `minutesPlayed` is the already-truncated line.min. Returns null when it
-// can't be placed (no lineup log, or he never took the floor).
-export function injuryMoment(lineups, playerId, minutesPlayed) {
+// `game` is a simGame result (playByPlay + lineups). Returns null when it
+// can't be placed (he never took the floor).
+export function injuryMoment(game, playerId, minutesPlayed) {
+  const plays = game?.playByPlay ?? [];
+  for (let i = plays.length - 1; i >= 0; i--) {
+    const p = plays[i];
+    if (p.p === playerId || p.a === playerId || p.v === playerId || p.d === playerId) {
+      return { q: p.q, t: p.t, sec: p.sec };
+    }
+  }
+  const lineups = game?.lineups;
   if (!lineups?.length || !(minutesPlayed > 0)) return null;
   let acc = 0;
   for (const ln of lineups) {

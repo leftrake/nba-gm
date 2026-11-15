@@ -919,8 +919,9 @@ export function simDay(league) {
         updateGLeagueHotStreak(p, box);
       }
     }
-    // Roll injuries before tallying stats so a player hurt mid-game banks
-    // only the minutes he actually played.
+    // Roll injuries here, before anything else draws from tonight's rng —
+    // the order is part of the seeded sequence, so it stays put even though
+    // the roll no longer changes the box line.
     const hurtHome = rollGameInjuries(league, home, r.homeBox, rng);
     const hurtAway = rollGameInjuries(league, away, r.awayBox, rng);
     const hurt = [...hurtHome, ...hurtAway];
@@ -929,14 +930,11 @@ export function simDay(league) {
     checkGameHighs(league, r, home, away);
     checkPlayerCareerHighs(league, r, home, away);
     const injuryReport = hurt.map((p) => ({ playerId: p.id, type: p.injury.type, tier: p.injury.tier, daysLeft: p.injury.daysLeft }));
-    // Injuries are rolled from the finished box score rather than inside the
-    // possession loop, but the moment still isn't arbitrary: the roll already
-    // truncated the line to the minutes he played before going down, and the
-    // lineup log says which stints those were. injuryMoment walks it back to
-    // a real clock reading.
+    // The injury lands at his last appearance in tonight's feed — the one
+    // moment that agrees with everything he did (see injuryMoment).
     const pushInjury = (p, team, box) => {
       const line = box.find((l) => l.playerId === p.id);
-      const at = injuryMoment(r.lineups, p.id, line?.min ?? 0);
+      const at = injuryMoment(r, p.id, line?.min ?? 0);
       r.events.push({
         q: at?.q ?? '', t: at?.t ?? '', ...(at ? { sec: at.sec } : null),
         k: 'injury', p: p.id,
@@ -1191,7 +1189,7 @@ export function simPlayoffGame(league) {
       for (const p of rollGameInjuries(league, team, box, rng)) {
         hurt.push(p);
         const line = box.find((l) => l.playerId === p.id);
-        const at = injuryMoment(r.lineups, p.id, line?.min ?? 0);
+        const at = injuryMoment(r, p.id, line?.min ?? 0);
         r.events.push({
           q: at?.q ?? '', t: at?.t ?? '', ...(at ? { sec: at.sec } : null),
           k: 'injury', p: p.id,

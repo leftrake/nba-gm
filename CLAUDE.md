@@ -93,10 +93,14 @@ The hard split is **engine vs. UI**:
     so `pickDefender` names the most plausible defender for display rather
     than the number the sim used.
 
-    Injury events carry a real clock. They're rolled after the game from
-    the finished box score, but `truncateForInjury` already cut the line to
-    the minutes played before going down, so `injuryMoment` walks the
-    lineup log to recover when he left.
+    Injury events carry a real clock. They're rolled after the game, from
+    the finished box score, and the box line is left whole — so
+    `injuryMoment` places the injury at the player's last appearance in the
+    feed, the only moment consistent with everything he did. (It used to
+    scale the box line down instead, which left his later plays in the feed
+    and his points in the team score: box scores stopped adding up to the
+    final.) Making him actually leave early means rolling inside the
+    possession loop, which changes the RNG stream.
 
     Event, coordinate and lineup generation must never read the game RNG,
     so that adding to them can't perturb seeded sim results — see the note

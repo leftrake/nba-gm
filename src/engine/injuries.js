@@ -88,32 +88,19 @@ export function tickInjuries(league, team) {
   }
 }
 
-// A player hurt mid-game only banks the minutes (and stats) he racked up
-// before leaving — pick a cutoff before his final minute and scale his line
-// down to it. Makes/attempts stay consistent (fgm<=fga, tpm<=tpa<=fga,
-// ftm<=fta) and pts is rebuilt from the scaled makes (2/fgm + 1/tpm + 1/ftm).
-// `frac` (0-1) is derived from the injury roll itself rather than drawing a
-// fresh rng() call, so adding this doesn't shift the rng sequence for
-// everything simmed after tonight's injuries.
-function truncateForInjury(line, frac) {
-  const oldMin = line.min;
-  if (oldMin <= 1) return;
-  const newMin = 1 + Math.floor(frac * (oldMin - 1));
-  const ratio = newMin / oldMin;
-  line.min = newMin;
-  line.fga = Math.round(line.fga * ratio);
-  line.fta = Math.round(line.fta * ratio);
-  line.tpa = Math.min(line.fga, Math.round(line.tpa * ratio));
-  line.fgm = Math.min(line.fgm, line.fga, Math.round(line.fgm * ratio));
-  line.tpm = Math.min(line.tpm, line.tpa, line.fgm, Math.round(line.tpm * ratio));
-  line.ftm = Math.min(line.ftm, line.fta, Math.round(line.ftm * ratio));
-  line.pts = 2 * line.fgm + line.tpm + line.ftm;
-  for (const k of ['reb', 'ast', 'stl', 'blk', 'tov', 'pf']) line[k] = Math.round(line[k] * ratio);
-}
-
 // Roll tonight's injuries for everyone who logged minutes in this box.
 // Returns the players hurt tonight, so the game log can mention them and the
-// box score can flag their truncated line.
+// box score can flag them.
+//
+// The roll happens after the game, so the box line is left whole. It used to
+// be scaled down to a cutoff (truncateForInjury) to model leaving early — but
+// only the box line moved: his plays stayed in the feed and his points stayed
+// in the team's score, so in most games with an injury the box score didn't
+// add up to the final (46 of 54 over 60 days, 362 points credited to nobody),
+// and a game viewer showed him going down and then scoring. Leaving early
+// properly means rolling inside the possession loop, which changes the rng
+// stream. Until then he is hurt after his last appearance (injuryMoment), and
+// every number agrees with every other.
 export function rollGameInjuries(league, team, box, rng) {
   const injured = [];
   for (const line of box) {
@@ -124,7 +111,6 @@ export function rollGameInjuries(league, team, box, rng) {
     const roll = rng();
     if (roll < chance) {
       injurePlayer(league, team, p, rng);
-      truncateForInjury(line, chance > 0 ? roll / chance : 0);
       injured.push(p);
     }
   }
