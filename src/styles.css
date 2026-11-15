@@ -1330,3 +1330,45 @@ button.slot-pick:hover { border-color: var(--accent); }
   padding: 0;
 }
 .walkthrough-skip:hover { color: var(--text); }
+
+/* ── Live game viewer ─────────────────────────────────────────────────
+   Layout lives here rather than inline so a phone can rearrange it: at
+   375px the side-by-side layout left the court 170px wide with 8px
+   players, and clipped the away team's name.
+   The modal overrides are two-class selectors on purpose: ui.css loads after
+   this file (main.jsx), so a lone .live-modal loses to .ui-modal. */
+.ui-modal.live-modal { display: flex; flex-direction: column; max-height: 88vh; }
+.live-scoreboard {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--border);
+}
+.live-team { display: flex; align-items: center; gap: var(--sp-3); flex: 1; min-width: 0; }
+.live-team--home { justify-content: flex-end; }
+.live-team-text { min-width: 0; }
+.live-team--home .live-team-text { text-align: right; }
+.live-city { font-size: var(--text-sm); color: var(--text-muted); }
+.live-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-score { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.live-team--away .live-score { margin-left: auto; }
+.live-team--home .live-score { margin-right: auto; }
+.live-clock { text-align: center; min-width: 96px; }
+.live-court-row { display: flex; gap: var(--sp-4); padding: var(--sp-3) 0; flex: 1; min-height: 0; }
+.live-court { flex: 0 0 58%; max-width: 520px; }
+.live-ticker { flex: 1; overflow-y: auto; min-width: 0; }
+
+@media (max-width: 640px) {
+  /* Full screen on a phone — every pixel goes to the court. */
+  .ui-modal-overlay.live-overlay { padding: 0; align-items: stretch; }
+  .ui-modal.live-modal {
+    max-width: none; width: 100%; max-height: none; height: 100%;
+    border: none; border-radius: 0; padding: var(--sp-3) 16px;
+  }
+  .live-scoreboard { gap: var(--sp-2); }
+  /* The badge already carries the abbreviation, scorebug-style. */
+  .live-team-text { display: none; }
+  .live-score { font-size: 28px; }
+  .live-clock { min-width: 56px; }
+  .live-court-row { flex-direction: column; gap: var(--sp-2); }
+  .live-court { flex: none; max-width: none; width: 100%; }
+  .live-ticker { flex: none; max-height: 132px; }
+}

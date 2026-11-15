@@ -142,7 +142,9 @@ The hard split is **engine vs. UI**:
     simulated**: the sim never models off-ball movement, so these are
     invented for rendering. Nothing in it feeds a rating, probability or
     box score, and nothing in the sim reads it.
-  - `colorUtils.js` — WCAG contrast-safety helpers for team-color UI.
+  - `colorUtils.js` — WCAG contrast-safety helpers for team-color UI, plus
+    `courtKit` (home in white, away in color) for the live court, since
+    team colors alone collide.
   - `save.js` — save-file version stamping and localStorage size guards.
   - `stats.js` — shared per-game/shooting-percentage math for stat displays.
   - `rng.js` — seeded mulberry32 RNG.

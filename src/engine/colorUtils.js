@@ -81,6 +81,28 @@ export function safeAccent(hex, minContrast = 4.5) {
   return hslToHex(h, s, Math.min(l, 96));
 }
 
+// Jerseys for the live court. The two teams are told apart the way the NBA
+// does it — home in white, away in color — because their colors alone can't
+// be trusted to differ: drawn as accents, 9 of the 435 pairings come out
+// identical (ATL/POR, NYK/PHI, MIN/NOP, …) and 120 are hard to tell apart.
+// Returns { fill, ring, ringWidth, text } for an SVG player disc.
+export function courtKit(teamColor, isHome) {
+  const accent = safeAccent(teamColor);
+  if (isHome) {
+    const fill = '#f2f2f2';
+    const raw = teamColor?.startsWith('#') ? teamColor : accent;
+    return {
+      fill,
+      ring: raw,
+      ringWidth: 0.36,
+      // the team color itself on the white, unless it's too pale to read —
+      // 4.5:1, the small-text bar, since a jersey number is a few px tall
+      text: contrastRatio(raw, fill) >= 4.5 ? raw : '#1a1a1a',
+    };
+  }
+  return { fill: accent, ring: 'rgba(0,0,0,.55)', ringWidth: 0.16, text: textOnColor(accent) };
+}
+
 // Returns '#ffffff' or '#000000' — whichever has better contrast on bgHex.
 export function textOnColor(bgHex) {
   if (!bgHex || !bgHex.startsWith('#')) return '#ffffff';

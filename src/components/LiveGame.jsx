@@ -1,8 +1,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { TeamBadge } from './TeamDisplay.jsx';
-import { safeAccent } from '../engine/colorUtils.js';
+import { safeAccent, courtKit } from '../engine/colorUtils.js';
 import { assignSpots, offenseFormation, defenseFormation, positionMatchups } from '../engine/courtPositions.js';
-import ArenaCourt from './ArenaCourt.jsx';
+import ArenaCourt, { KitSwatch } from './ArenaCourt.jsx';
 
 // Watch a game unfold play by play.
 //
@@ -39,7 +39,7 @@ const periodIdx = (q) => (q?.startsWith('Q') ? +q[1] - 1 : q === 'OT' ? 4 : 3 + 
 // only thing the sim places on the floor; everything else gets the spot that
 // kind of play happens at.
 const BALL_AT = {
-  ft: { x: 0, y: 15 },        // the line
+  ft: { x: 0, y: 19 },        // the line: 15ft from a backboard that sits 4ft in from the baseline
   reb: { x: 0, y: 7.5 },      // off the rim
   tov: { x: 0, y: 26 },       // out front
   stl: { x: 0, y: 26 },
@@ -240,23 +240,23 @@ export default function LiveGame({ game, home, away, onFinish }) {
     // triggered while this is open would re-read those mutated team objects
     // and show tonight's result behind the viewer. Covering the app entirely
     // is what keeps the game unspoiled until Continue.
-    <div className="ui-modal-overlay" style={{ background: 'var(--surface-0)' }}>
-      <div className="ui-modal ui-modal--wide" role="dialog" aria-modal="true" style={{ display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+    <div className="ui-modal-overlay live-overlay" style={{ background: 'var(--surface-0)' }}>
+      <div className="ui-modal ui-modal--wide live-modal" role="dialog" aria-modal="true">
 
         {/* Scoreboard */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)', paddingBottom: 'var(--sp-3)', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flex: 1 }}>
+        <div className="live-scoreboard">
+          <div className="live-team live-team--away">
             <TeamBadge team={away} />
-            <div>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>{away.city}</div>
-              <div style={{ fontWeight: 700 }}>{away.name}</div>
+            <div className="live-team-text">
+              <div className="live-city">{away.city}</div>
+              <div className="live-name">{away.name}</div>
             </div>
-            <div style={{ fontSize: 34, fontWeight: 800, marginLeft: 'auto', color: leader === 'away' ? awayColor : 'var(--text-primary)' }}>
+            <div className="live-score" style={{ color: leader === 'away' ? awayColor : 'var(--text-primary)' }}>
               {score.away}
             </div>
           </div>
 
-          <div style={{ textAlign: 'center', minWidth: 96 }}>
+          <div className="live-clock">
             {done ? (
               <div style={{ fontWeight: 800, letterSpacing: 1, color: 'var(--text-primary)' }}>FINAL</div>
             ) : (
@@ -267,13 +267,13 @@ export default function LiveGame({ game, home, away, onFinish }) {
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flex: 1, justifyContent: 'flex-end' }}>
-            <div style={{ fontSize: 34, fontWeight: 800, marginRight: 'auto', color: leader === 'home' ? homeColor : 'var(--text-primary)' }}>
+          <div className="live-team live-team--home">
+            <div className="live-score" style={{ color: leader === 'home' ? homeColor : 'var(--text-primary)' }}>
               {score.home}
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>{home.city}</div>
-              <div style={{ fontWeight: 700 }}>{home.name}</div>
+            <div className="live-team-text">
+              <div className="live-city">{home.city}</div>
+              <div className="live-name">{home.name}</div>
             </div>
             <TeamBadge team={home} />
           </div>
@@ -297,8 +297,8 @@ export default function LiveGame({ game, home, away, onFinish }) {
 
         {/* Court */}
         {view === 'court' && court && (
-          <div style={{ display: 'flex', gap: 'var(--sp-4)', padding: 'var(--sp-3) 0', flex: 1, minHeight: 0 }}>
-            <div style={{ flex: '0 0 58%', maxWidth: 520 }}>
+          <div className="live-court-row">
+            <div className="live-court">
               <ArenaCourt
                 offense={court.offense}
                 defense={court.defense}
@@ -306,6 +306,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
                 shot={court.shot}
                 offenseTeam={court.offenseTeam}
                 defenseTeam={court.defenseTeam}
+                homeId={home.id}
                 playerById={(id) => rosterById.get(id)}
                 handlerId={court.handlerId}
                 // Movement has to finish inside the play it belongs to, or
@@ -315,14 +316,16 @@ export default function LiveGame({ game, home, away, onFinish }) {
                   : Math.min(320, playMs(frames[Math.max(0, idx - 1)]?.gap, speed) * 0.85)}
               />
               <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--sp-4)', marginTop: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
-                <span style={{ color: safeAccent(court.offenseTeam.color), fontWeight: 700 }}>
-                  ● {court.offenseTeam.name} on offense
+                <span style={{ fontWeight: 700 }}>
+                  <KitSwatch kit={courtKit(court.offenseTeam.color, court.offenseTeam.id === home.id)} /> {court.offenseTeam.name} on offense
                 </span>
-                <span style={{ color: 'var(--text-muted)' }}>● {court.defenseTeam.name}</span>
+                <span style={{ color: 'var(--text-muted)' }}>
+                  <KitSwatch kit={courtKit(court.defenseTeam.color, court.defenseTeam.id === home.id)} /> {court.defenseTeam.name}
+                </span>
               </div>
             </div>
             {/* last few plays, so the court has a caption */}
-            <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+            <div className="live-ticker">
               {plays.slice(Math.max(0, idx - 9), idx).reverse().map((e, i) => (
                 <div
                   key={idx - i}

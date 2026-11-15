@@ -1,5 +1,5 @@
 import React from 'react';
-import { safeAccent } from '../engine/colorUtils.js';
+import { courtKit } from '../engine/colorUtils.js';
 
 // The court, drawn in the same coordinate space the sim emits shots in
 // (shotZones.js): half-court feet, origin at the centre of the rim, x -25..25
@@ -54,7 +54,7 @@ function Markings() {
   );
 }
 
-function Player({ at, color, textColor, number, name, ring, dimmed, ms }) {
+function Player({ at, kit, number, name, ring, dimmed, ms }) {
   return (
     <g
       style={{
@@ -66,9 +66,9 @@ function Player({ at, color, textColor, number, name, ring, dimmed, ms }) {
       {ring && <circle r="1.95" fill="none" stroke="var(--court-ball)" strokeWidth="0.3" opacity="0.9" />}
       {/* 1.3ft radius, not a true ~2ft shoulder width: defenders legitimately
           stand 3ft off their man, and at real scale the two discs merge. */}
-      <circle r="1.3" fill={color} stroke="rgba(0,0,0,.55)" strokeWidth="0.16" />
+      <circle r="1.3" fill={kit.fill} stroke={kit.ring} strokeWidth={kit.ringWidth} />
       <text
-        y="0.45" textAnchor="middle" fill={textColor}
+        y="0.45" textAnchor="middle" fill={kit.text}
         style={{ fontSize: 1.35, fontWeight: 700, pointerEvents: 'none' }}
       >
         {number}
@@ -78,11 +78,21 @@ function Player({ at, color, textColor, number, name, ring, dimmed, ms }) {
   );
 }
 
+// Exported so the legend under the court can show the same jerseys.
+export function KitSwatch({ kit, size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="-1.6 -1.6 3.2 3.2" style={{ verticalAlign: '-2px' }}>
+      <circle r="1.3" fill={kit.fill} stroke={kit.ring} strokeWidth={Math.max(kit.ringWidth, 0.3)} />
+    </svg>
+  );
+}
+
 export default function ArenaCourt({
-  offense, defense, ball, offenseTeam, defenseTeam, playerById, shot, handlerId, moveMs = 320,
+  offense, defense, ball, offenseTeam, defenseTeam, homeId, playerById, shot, handlerId, moveMs = 320,
 }) {
-  const offColor = safeAccent(offenseTeam.color);
-  const defColor = safeAccent(defenseTeam.color);
+  // Home in white, away in colour — see courtKit for why colours alone won't do.
+  const offKit = courtKit(offenseTeam.color, offenseTeam.id === homeId);
+  const defKit = courtKit(defenseTeam.color, defenseTeam.id === homeId);
   // Object.entries hands back string keys; player ids are numbers.
   const label = (id) => {
     const p = playerById(Number(id));
@@ -104,11 +114,11 @@ export default function ArenaCourt({
       )}
 
       {Object.entries(defense).map(([id, at]) => (
-        <Player key={`d${id}`} at={at} color={defColor} textColor="#fff" dimmed ms={moveMs} {...label(id)} />
+        <Player key={`d${id}`} at={at} kit={defKit} dimmed ms={moveMs} {...label(id)} />
       ))}
       {Object.entries(offense).map(([id, at]) => (
         <Player
-          key={`o${id}`} at={at} color={offColor} textColor="#fff" ms={moveMs}
+          key={`o${id}`} at={at} kit={offKit} ms={moveMs}
           ring={Number(id) === handlerId} {...label(id)}
         />
       ))}
