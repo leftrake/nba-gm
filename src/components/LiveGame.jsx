@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { TeamBadge } from './TeamDisplay.jsx';
 import { safeAccent, courtKit } from '../engine/colorUtils.js';
-import { assignSpots, offenseFormation, defenseFormation, positionMatchups } from '../engine/courtPositions.js';
+import { buildFrames } from './liveFrames.js';
 import ArenaCourt, { KitSwatch } from './ArenaCourt.jsx';
 
 // Watch a game unfold play by play.
@@ -33,97 +33,19 @@ const SPEEDS = [1, 2, 4];
 const playMs = (gapSec, speed) =>
   Math.max(MIN_PLAY_MS, Math.min(MAX_PLAY_MS, ((gapSec ?? 4) * MS_PER_GAME_SEC) / Math.max(speed, 0.25)));
 
-const periodIdx = (q) => (q?.startsWith('Q') ? +q[1] - 1 : q === 'OT' ? 4 : 3 + parseInt(q, 10) || 0);
-
-// Where the ball is for a play that doesn't carry coordinates. Shots are the
-// only thing the sim places on the floor; everything else gets the spot that
-// kind of play happens at.
-const BALL_AT = {
-  ft: { x: 0, y: 19 },        // the line: 15ft from a backboard that sits 4ft in from the baseline
-  reb: { x: 0, y: 7.5 },      // off the rim
-  tov: { x: 0, y: 26 },       // out front
-  stl: { x: 0, y: 26 },
-};
-
-// One pass over the game, turning the play feed into something a court can be
-// drawn from: who is out there, who has it, where the ball is.
-function buildFrames(plays, lineups, home, away) {
-  const sideOf = new Map();
-  const posOf = new Map();
-  for (const p of home.roster) { sideOf.set(p.id, 'home'); posOf.set(p.id, p.pos); }
-  for (const p of away.roster) { sideOf.set(p.id, 'away'); posOf.set(p.id, p.pos); }
-
-  // Which team had the ball on each possession. There's no explicit field for
-  // it — and `side` can't stand in, since a steal or a block is credited to
-  // the defense. But every possession contains a shot or a turnover, and
-  // those always belong to the offense.
-  const offenseOf = new Map();
-  for (const p of plays) {
-    if (p.n == null || offenseOf.has(p.n)) continue;
-    if (p.k === 'shot' || p.k === 'tov') offenseOf.set(p.n, sideOf.get(p.p));
-  }
-
-  const marks = [...(lineups ?? [])]
-    .map((ln) => ({ per: periodIdx(ln.q), sec: clockSec(ln.t), home: ln.home, away: ln.away }))
-    .sort((a, b) => a.per - b.per || b.sec - a.sec);
-
-  const frames = [];
-  let ball = { x: 0, y: 26 };
-  let handler = null;
-  let shot = null;
-  let li = 0;
-  let spots = null;      // spot assignment, held for the length of a possession
-  let spotsKey = '';
-  let prevSec = null;
-  let prevQ = null;
-
-  for (const p of plays) {
-    const per = periodIdx(p.q);
-    while (li + 1 < marks.length
-      && (marks[li + 1].per < per || (marks[li + 1].per === per && marks[li + 1].sec >= (p.sec ?? 0)))) li++;
-    const mark = marks[li];
-
-    const offSide = offenseOf.get(p.n) ?? (p.side === 'home' ? 'home' : 'away');
-    const defSide = offSide === 'home' ? 'away' : 'home';
-
-    if (p.k === 'shot' && p.x != null) {
-      ball = { x: p.x, y: p.y };
-      shot = { x: p.x, y: p.y, made: !!p.m };
-    } else if (BALL_AT[p.k]) {
-      ball = BALL_AT[p.k];
-      if (p.k !== 'reb') shot = null;
-    }
-    // The handler is whoever just acted, as long as he's on offense —
-    // a steal or a block is the defense touching the ball, not holding it.
-    if (p.p != null && sideOf.get(p.p) === offSide) handler = p.p;
-
-    // One assignment per possession (and per five, in case of a foul-out).
-    const offIds = offSide === 'home' ? mark?.home ?? [] : mark?.away ?? [];
-    const key = `${p.n}|${offIds.join(',')}`;
-    if (key !== spotsKey) {
-      spots = assignSpots(offIds.map((id) => ({ id, pos: posOf.get(id) ?? 'SF' })));
-      spotsKey = key;
-    }
-
-    // Game seconds since the previous play — what playback is paced on. A new
-    // period restarts the clock, so it gets a nominal beat instead.
-    const gap = p.q !== prevQ || prevSec == null ? 3 : Math.max(0, prevSec - (p.sec ?? prevSec));
-    prevQ = p.q;
-    prevSec = p.sec ?? prevSec;
-
-    frames.push({ offSide, defSide, mark, ball, handler, shot, spots, gap, defenderId: p.d ?? null });
-  }
-  return frames;
-}
-
-const clockSec = (t) => {
-  const m = /^(\d+):(\d+)$/.exec(t || '');
-  return m ? +m[1] * 60 + +m[2] : 0;
-};
+// Frames — who's where, who has it, the ball's route — come from liveFrames.js,
+// kept free of React so headless checks can run the same code.
 
 export default function LiveGame({ game, home, away, onFinish }) {
   const plays = game?.playByPlay ?? [];
-  const [idx, setIdx] = useState(0);     // plays revealed so far
+  const [idx, setIdx] = useState(0);     // plays revealed so far — ticker, score, clock
+  // The play the court is acting out, and over how long. It runs one play
+  // ahead of `idx`: during the wait before a play the players move into it and
+  // the ball makes its way there, and the play is revealed as it lands. Moving
+  // on reveal instead left the screen frozen through every gap and crammed the
+  // motion into the time after — so the run between possessions (the longest
+  // gaps) spilled into the next few plays, and free throws went up mid-pan.
+  const [stage, setStage] = useState({ k: 0, ms: 320 });
   const [speed, setSpeed] = useState(1); // 0 = paused
   const speedRef = useRef(1);
   // Playback position lives in a ref, not just state: the loop and "skip to
@@ -173,12 +95,17 @@ export default function LiveGame({ game, home, away, onFinish }) {
       while (!cancelled && posRef.current < plays.length) {
         const s = speedRef.current;
         if (s === 0) { await delay(120); continue; } // paused
-        // The wait before a play is that play's own share of the game clock.
-        await delay(playMs(framesRef.current[posRef.current]?.gap, s));
+        // The wait before a play is that play's own share of the game clock,
+        // and the court spends it acting the play out; motion gets 90% so it
+        // has landed by the reveal.
+        const k = posRef.current;
+        const wait = playMs(framesRef.current[k]?.gap, s);
+        setStage({ k, ms: wait * 0.9 });
+        await delay(wait);
         // Re-check after the wait: a skip may have landed mid-delay.
-        if (cancelled || posRef.current >= plays.length) return;
-        posRef.current += 1;
-        setIdx(posRef.current);
+        if (cancelled || posRef.current !== k) return;
+        posRef.current = k + 1;
+        setIdx(k + 1);
       }
     })();
     return () => { cancelled = true; };
@@ -200,33 +127,27 @@ export default function LiveGame({ game, home, away, onFinish }) {
   const shown = plays.slice(Math.max(0, idx - WINDOW), idx);
   const curPeriodIdx = idx > 0 ? periodOrder.indexOf(cur.q) : 0;
 
-  // The court for the play just shown. Formations are derived rather than
-  // simulated — see courtPositions.js.
+  // The court for the play just shown. Positions off the ball are derived
+  // rather than simulated — see courtPositions.js.
   const court = useMemo(() => {
-    const f = frames[Math.max(0, idx - 1)];
-    if (!f?.mark) return null;
+    const f = frames[Math.min(stage.k, frames.length - 1)];
+    if (!f?.players?.length) return null;
     const teamFor = (side) => (side === 'home' ? home : away);
-    const toP = (ids) => ids.map((id) => ({ id, pos: rosterById.get(id)?.pos ?? 'SF' }));
-    const offIds = f.offSide === 'home' ? f.mark.home : f.mark.away;
-    const defIds = f.defSide === 'home' ? f.mark.home : f.mark.away;
-    const off = toP(offIds);
-    const def = toP(defIds);
-    const handler = offIds.includes(f.handler) ? f.handler : offIds[0];
-    const O = offenseFormation(off, f.ball, handler, f.spots);
-    const M = positionMatchups(def, off);
     return {
-      offense: O,
-      handlerId: handler,
-      defense: defenseFormation(O, M, f.ball, f.defenderId),
-      ball: f.ball,
-      shot: f.shot,
+      ...f,
+      // Made or missed is the play's result: it waits for the reveal.
+      shot: frames[idx - 1]?.shot ?? null,
       offenseTeam: teamFor(f.offSide),
       defenseTeam: teamFor(f.defSide),
     };
-  }, [frames, idx, home, away, rosterById]);
+  }, [frames, stage.k, idx, home, away]);
 
   const setSpeedBoth = (s) => { speedRef.current = s; setSpeed(s); };
-  const skipToEnd = () => { posRef.current = plays.length; setIdx(plays.length); };
+  const skipToEnd = () => {
+    posRef.current = plays.length;
+    setStage({ k: plays.length - 1, ms: 320 });
+    setIdx(plays.length);
+  };
 
   const homeColor = safeAccent(home.color);
   const awayColor = safeAccent(away.color);
@@ -300,20 +221,17 @@ export default function LiveGame({ game, home, away, onFinish }) {
           <div className="live-court-row">
             <div className="live-court">
               <ArenaCourt
-                offense={court.offense}
-                defense={court.defense}
-                ball={court.ball}
+                players={court.players}
+                holderId={court.holderId}
+                ballPath={court.ballPath}
                 shot={court.shot}
-                offenseTeam={court.offenseTeam}
-                defenseTeam={court.defenseTeam}
-                homeId={home.id}
+                attackTop={court.attackTop}
+                homeTeam={home}
+                awayTeam={away}
                 playerById={(id) => rosterById.get(id)}
-                handlerId={court.handlerId}
-                // Movement has to finish inside the play it belongs to, or
-                // every player is permanently in flight and nobody is ever
-                // where the ball is.
-                moveMs={speed === 0 ? 320
-                  : Math.min(320, playMs(frames[Math.max(0, idx - 1)]?.gap, speed) * 0.85)}
+                // The wait before the staged play: a long gap between
+                // possessions is the run up the floor.
+                moveMs={stage.ms}
               />
               <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--sp-4)', marginTop: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
                 <span style={{ fontWeight: 700 }}>

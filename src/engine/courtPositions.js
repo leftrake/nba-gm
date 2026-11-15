@@ -99,10 +99,16 @@ export function offenseFormation(five, ball, handlerId, spots) {
 //
 // `matchups`: { [defenderId]: offensivePlayerId }. A sensible default is to
 // pair by position; the shot's own `d` field names the on-ball defender.
-export function defenseFormation(offense, matchups, ball, onBallDefenderId) {
+// `holderId` is a defender who has the ball — he grabbed the rebound or
+// made the steal — and stands on it rather than on his man.
+export function defenseFormation(offense, matchups, ball, onBallDefenderId, holderId = null) {
   const rim = { x: 0, y: RIM_Y };
   const out = {};
   for (const [defId, manId] of Object.entries(matchups)) {
+    if (holderId != null && defId === String(holderId)) {
+      out[defId] = { x: ball.x, y: ball.y };
+      continue;
+    }
     const man = offense[manId];
     if (!man) continue;
     const onBall = defId === String(onBallDefenderId);
@@ -129,6 +135,59 @@ export function defenseFormation(offense, matchups, ball, onBallDefenderId) {
     }
   }
   return out;
+}
+
+// When the ball comes to a teammate's spot, he clears out to the nearest open
+// one instead of standing next to the handler. Stepping a few feet off it
+// (which offenseFormation still does as a last resort) left a teammate within
+// 6ft of the ball in 31% of frames — and with both defenders following, four
+// bodies around the ball in 41%.
+//
+// Returns a new assignment (or the same object when nothing moved) for the
+// caller to hold for the rest of the possession: once a man has cleared out he
+// stays cleared, instead of drifting back the moment the ball moves on. Also
+// settles two players claiming one spot, which a change of handler mid-
+// possession can cause.
+const CLEAR_FT = 6;
+export function clearSpace(spots, five, ball, handlerId) {
+  const claimed = new Set();
+  const displaced = [];
+  for (const p of five) {
+    if (p.id === handlerId) continue;
+    const s = spots[p.id];
+    if (s && !claimed.has(s) && dist(SPOTS[s], ball) >= CLEAR_FT) claimed.add(s);
+    else displaced.push(p);
+  }
+  if (!displaced.length) return spots;
+  const next = { ...spots };
+  for (const p of displaced) {
+    const from = SPOTS[spots[p.id]] ?? ball;
+    const open = Object.keys(SPOTS)
+      .filter((k) => !claimed.has(k) && dist(SPOTS[k], ball) >= CLEAR_FT)
+      .sort((a, b) => dist(SPOTS[a], from) - dist(SPOTS[b], from))[0];
+    if (!open) continue; // nowhere to go: offenseFormation's step-off handles it
+    claimed.add(open);
+    next[p.id] = open;
+  }
+  return next;
+}
+
+// Where a missed shot comes down. Every miss used to land on the same spot
+// under the rim, corner three or layup alike. Longer shots carom longer, and
+// more often than not off the far side; deterministic per shot (`hash`), like
+// everything else here, so a replay puts each rebound back where it was.
+export function reboundSpot(shotX, shotY, hash) {
+  const range = Math.hypot(shotX, shotY - RIM_Y);
+  const toShooter = Math.atan2(shotY - RIM_Y, shotX);
+  const u = ((hash >>> 3) % 1000) / 1000;
+  const v = ((hash >>> 13) % 1000) / 1000;
+  const farSide = u < 0.6;
+  const ang = (farSide ? Math.PI - toShooter : toShooter) + (v - 0.5) * 0.9;
+  const r = 3 + range * 0.3 + v * 3; // a layup drops ~3-6ft out, a three ~10-14
+  return {
+    x: +Math.max(-23.5, Math.min(23.5, r * Math.cos(ang))).toFixed(2),
+    y: +Math.max(1.5, Math.min(30, RIM_Y + r * Math.sin(ang))).toFixed(2),
+  };
 }
 
 // Pair defenders to offensive players by listed position — the default

@@ -137,7 +137,8 @@ The hard split is **engine vs. UI**:
     `projectedPayroll`, which is the one-season-out version AI decisions use).
   - `names.js` — per-nationality name pools for player generation.
   - `courtPositions.js` — plausible floor positions for all ten players
-    (offensive spacing, defensive shading) in `shotZones.js`'s coordinate
+    (offensive spacing, defensive shading, clearing space around the ball,
+    where a miss comes down) in `shotZones.js`'s half-court coordinate
     space. Unlike everything else in `src/engine/`, this is **not
     simulated**: the sim never models off-ball movement, so these are
     invented for rendering. Nothing in it feeds a rating, probability or
@@ -164,6 +165,11 @@ The hard split is **engine vs. UI**:
     `fmtPerGame`, `fmtFgPct`, color/label helpers). Distinct from
     `engine/stats.js`, which exports the same-named numeric computation
     versions (`perGame`, `fgPct`).
+  - `liveFrames.js` — turns a game's play-by-play into the live viewer's
+    frames: who's on the floor and where, who has the ball, its route each
+    play, in full-court coordinates (teams switch ends at halftime). Plain
+    JS rather than JSX so headless checks import the code the viewer
+    actually runs; `LiveGame.jsx` and `ArenaCourt.jsx` render it.
   - `onboarding.jsx` — walkthrough + first-encounter tooltip system
     (`GuideTooltip`, `isWalkthroughDone`, `resetTutorial`, etc.).
 - `src/theme.js` — dark color themes + optional custom accent, stored as
