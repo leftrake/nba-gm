@@ -104,7 +104,8 @@ function Ball({ path, ms }) {
   msRef.current = ms;
 
   useLayoutEffect(() => {
-    if (!path?.length || !ballRef.current?.animate) return undefined;
+    // A single point is a ball at rest — nothing to fly.
+    if (!path || path.length < 2 || !ballRef.current?.animate) return undefined;
     // Time is shared out by distance so the ball keeps a steady pace; time in
     // the air counts extra, or a short jumper's arc is over before it's seen.
     const legs = path.slice(1).map((w, i) => {
@@ -151,7 +152,7 @@ export function KitSwatch({ kit, size = 12 }) {
 }
 
 export default function ArenaCourt({
-  players, holderId, ballPath, shot, attackTop, homeTeam, awayTeam, playerById, moveMs = 320,
+  players, holderId, ballPath, shot, attackTop, homeTeam, awayTeam, playerById, moment, moveMs = 320,
 }) {
   // Home in white, away in colour — see courtKit for why colours alone won't do.
   const kits = { home: courtKit(homeTeam.color, true), away: courtKit(awayTeam.color, false) };
@@ -189,6 +190,27 @@ export default function ArenaCourt({
             ring={pl.id === holderId} {...label(pl.id)}
           />
         ))}
+
+        {/* The moment a shot lands: a swish and the points on a make, a glance
+            off the iron on a miss. Keyed by play, so each one replays; drawn
+            under the ball so the ball stays on top. */}
+        {moment && (
+          <g key={moment.key} transform={`translate(${wx(0)} ${wy(moment.top ? LEN - RIM_Y : RIM_Y)})`}>
+            {moment.made ? (
+              <>
+                <circle className="court-swish" r="1.2" fill="none" stroke={moment.color} strokeWidth="0.35" />
+                <text
+                  className="court-points" y="-2.6" textAnchor="middle" fill={moment.color}
+                  style={{ fontSize: 2.4, fontWeight: 800, pointerEvents: 'none' }}
+                >
+                  +{moment.pts}
+                </text>
+              </>
+            ) : (
+              <circle className="court-clank" r="0.9" fill="none" stroke="var(--court-line)" strokeWidth="0.25" />
+            )}
+          </g>
+        )}
 
         <Ball path={ballPath} ms={moveMs} />
       </g>

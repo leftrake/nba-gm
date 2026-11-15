@@ -195,8 +195,97 @@ export function buildFrames(plays, lineups, home, away) {
       holderId: onDef(holder) ? holder : offAtBall,
       ballPath: path,
       shot,
+      blocked,   // a miss that never reached the rim — no clank to show
       gap,
     });
   }
   return frames;
+}
+
+// ---- Moments ---------------------------------------------------------------
+
+const POST_GAME = new Set(['closing', 'leadchanges', 'big', 'tripdbl']);
+
+// Where each of the sim's highlight events belongs. In-game moments (a run, a
+// clutch basket) carry the possession they happened in, so each surfaces as
+// soon as that possession's last play is revealed. An injury sits on the play
+// it was placed at (injuryMoment, which copies that play's clock). Period
+// notes go on that period's break card and post-game notes on the final one.
+// End-of-quarter lines are dropped: the break cards are built from the data.
+export function placeHighlights(plays, events) {
+  const lastOfPossession = new Map();
+  plays.forEach((p, i) => { if (p.n != null) lastOfPossession.set(p.n, i); });
+  const byPlay = new Map();
+  const periodNotes = new Map();
+  const post = [];
+  const add = (i, e) => { if (!byPlay.has(i)) byPlay.set(i, []); byPlay.get(i).push(e); };
+  for (const e of events ?? []) {
+    if (e.k === 'run' || e.k === 'clutch') {
+      if (lastOfPossession.has(e.n)) add(lastOfPossession.get(e.n), e);
+    } else if (e.k === 'injury') {
+      let at = -1;
+      if (e.sec != null) plays.forEach((p, i) => { if (p.q === e.q && p.sec >= e.sec - 1e-6) at = i; });
+      if (at >= 0) add(at, e); else post.push(e);
+    } else if (e.k === 'bigq' || e.k === 'ot') {
+      if (!periodNotes.has(e.per)) periodNotes.set(e.per, []);
+      periodNotes.get(e.per).push(e);
+    } else if (POST_GAME.has(e.k)) {
+      post.push(e);
+    }
+  }
+  return { byPlay, periodNotes, post };
+}
+
+// The last play of each period: where the game pauses for a break card.
+export function periodBreaks(plays) {
+  const out = [];
+  plays.forEach((p, i) => {
+    const next = plays[i + 1];
+    if (!next || next.q !== p.q) out.push({ i, per: periodIdx(p.q), q: p.q, final: !next });
+  });
+  return out;
+}
+
+// Points, rebounds and assists per player through the first `upto` plays,
+// from the structured plays alone — they add up exactly to the box score, so
+// a live line needs nothing from the engine.
+export function liveBox(plays, upto = plays.length) {
+  const box = new Map();
+  const line = (id) => {
+    if (!box.has(id)) box.set(id, { pts: 0, reb: 0, ast: 0 });
+    return box.get(id);
+  };
+  for (let i = 0; i < Math.min(upto, plays.length); i++) {
+    const p = plays[i];
+    if (p.k === 'shot' && p.m) {
+      line(p.p).pts += p.pts;
+      if (p.a != null) line(p.a).ast += 1;
+    } else if (p.k === 'ft' && p.m) line(p.p).pts += 1;
+    else if (p.k === 'reb') line(p.p).reb += 1;
+  }
+  return box;
+}
+
+// What was true before tip-off. A watched game has already been simmed into
+// the league — records, season stats and injuries all include tonight — so
+// the pre-game card takes tonight back out. Showing the live numbers would
+// tell you who won (a record that's already moved) before the opening tip.
+export function pregame(game, home, away) {
+  const homeWon = game.homePts > game.awayPts;
+  const lines = new Map([...(game.homeBox ?? []), ...(game.awayBox ?? [])].map((l) => [l.playerId, l]));
+  const hurtTonight = new Set((game.injuryReport ?? []).map((e) => e.playerId));
+  const side = (team, won, key) => ({
+    w: team.wins - (won ? 1 : 0),
+    l: team.losses - (won ? 0 : 1),
+    starters: (game.lineups?.[0]?.[key] ?? []).map((id) => {
+      const p = team.roster.find((x) => x.id === id);
+      const l = lines.get(id);
+      const played = l && l.min > 0;
+      const gp = (p?.stats?.gp ?? 0) - (played ? 1 : 0);
+      const pts = (p?.stats?.pts ?? 0) - (played ? l.pts : 0);
+      return { id, name: p?.name ?? '', pos: p?.pos ?? '', ppg: gp > 0 ? pts / gp : null };
+    }),
+    out: team.roster.filter((p) => p.injury && !hurtTonight.has(p.id)).map((p) => p.name),
+  });
+  return { home: side(home, homeWon, 'home'), away: side(away, !homeWon, 'away') };
 }
