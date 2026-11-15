@@ -19,7 +19,7 @@ import {
 import { extensionType, extensionSalaryRange, rookieMax } from './extensions.js';
 import { maybeGenerateTradeOffer, expireTradeOffers } from './tradeOffers.js';
 import { diffStats } from './stats.js';
-import { buildAllStarEvent } from './allstar.js';
+import { buildAllStarEvent, repairAllStarRosters } from './allstar.js';
 import { generateOwner, dailyApprovalUpdate, maybeOwnerInterference, processOwnerSeason, playoffRoundReached, issueDirectives, exceedsOwnerBudget, applyBudgetOverageEffect } from './owner.js';
 import { maybeCoachConversation } from './coachTalk.js';
 import { checkMilestoneAlerts } from './milestoneAlerts.js';
@@ -545,6 +545,10 @@ export function backfillPlayers(league) {
       && league.dayIndex > ALL_STAR_DAYS[ALL_STAR_DAYS.length - 1]) {
     league.allStar.shown = true;
   }
+  // Saves that reached the break before the eligibility fix have this
+  // season's event with no one on it — unplayable, and the calendar won't sim
+  // past the break until it's played. Fill the rosters in.
+  repairAllStarRosters(league);
   if (!league.tradeOfferCooldowns) league.tradeOfferCooldowns = {};
   // Saves predating free-agency negotiations / RFA offer sheets / extensions
   if (!league.negotiations) league.negotiations = {};
