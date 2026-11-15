@@ -23,16 +23,30 @@ import { BoxTable } from './BoxScore.jsx';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Playback is paced on the game clock, not a fixed beat per play. Real gaps
-// between plays run from under a second to fifteen, and half of them are over
-// six — rendering all of them identically is what makes a flat beat read as a
-// slideshow instead of basketball. 45ms per game second puts a median gap at
-// ~350ms and a full game at a little over two minutes, the same as before.
-const MS_PER_GAME_SEC = 45;
-const MIN_PLAY_MS = 70;     // a scramble shouldn't flash past unreadably
-const MAX_PLAY_MS = 900;    // nor should a dead-ball stretch stall
+// Playback is paced on the game clock — real gaps between plays run from
+// under a second to fifteen, and a flat beat per play reads as a slideshow —
+// but with a floor for each kind of play, so every one stays on screen long
+// enough to follow: a shot has to fly, a free throw has its routine.
+//
+// On the clock alone (45ms a game second, as it was) half of all plays were
+// over in under 140ms, some shots in 70, and a whole game in two minutes:
+// too fast to watch. This puts a game at about eight minutes at 1x, every
+// shot on screen for at least a second, and 4x at about the old pace.
+const MS_PER_GAME_SEC = 90;
+const MAX_PLAY_MS = 2400;   // a dead-ball stretch shouldn't stall
+const FLOOR_MS = { shot: 1100, ft: 950, reb: 650, blk: 650, stl: 700, tov: 700, foul: 800 };
+const FLOOR_DEFAULT_MS = 500;
 const WINDOW = 60;          // plays kept on screen; the full log is in the box score after
 const SPEEDS = [1, 2, 4];
+
+// A beat after a result lands, before the next play starts moving: long
+// enough to watch a basket drop and the score change, and to register a
+// miss or the end of a trip to the line.
+const dwellMs = (p, next) => (
+  p?.k === 'shot' ? (p.m ? 700 : 250)
+    : p?.k === 'ft' && next?.k !== 'ft' ? 350
+      : 0
+);
 
 // The beats around the play. Tip-off waits for you, but not forever; a break
 // card is a breath, shorter at higher speeds; a highlight banner rides along
@@ -41,8 +55,9 @@ const TIPOFF_MS = 4500;
 const BREAK_MS = 3000;
 const BANNER_MS = 2600;
 
-const playMs = (gapSec, speed) =>
-  Math.max(MIN_PLAY_MS, Math.min(MAX_PLAY_MS, ((gapSec ?? 4) * MS_PER_GAME_SEC) / Math.max(speed, 0.25)));
+const playMs = (play, gapSec, speed) =>
+  Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, (gapSec ?? 4) * MS_PER_GAME_SEC))
+    / Math.max(speed, 0.25);
 
 // Frames — who's where, who has it, the ball's route — come from liveFrames.js,
 // kept free of React so headless checks can run the same code.
@@ -148,13 +163,19 @@ export default function LiveGame({ game, home, away, onFinish }) {
         // and the court spends it acting the play out; motion gets 90% so it
         // has landed by the reveal.
         const k = posRef.current;
-        const wait = playMs(framesRef.current[k]?.gap, s);
+        const wait = playMs(plays[k], framesRef.current[k]?.gap, s);
         setStage({ k, ms: wait * 0.9 });
         await delay(wait);
         // Re-check after the wait: a skip may have landed mid-delay.
         if (cancelled || posRef.current !== k) return;
         posRef.current = k + 1;
         setIdx(k + 1);
+        // Let it land before the next play starts moving.
+        const dwell = dwellMs(plays[k], plays[k + 1]) / Math.max(1, speedRef.current);
+        if (dwell) {
+          await delay(dwell);
+          if (cancelled || posRef.current !== k + 1) return;
+        }
         // End of a period: a beat before the next one starts.
         const brk = breakAtRef.current.get(k);
         if (brk && !brk.final) {
