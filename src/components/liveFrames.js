@@ -14,6 +14,7 @@
 import {
   assignSpots, offenseFormation, defenseFormation, positionMatchups, clearSpace, reboundSpot,
 } from '../engine/courtPositions.js';
+import { BOX_COLS } from '../engine/sim.js';
 
 export const COURT_LEN = 94;
 const RIM = { x: 0, y: 5.25 };
@@ -45,6 +46,21 @@ const fartherOut = (pt, d) => {
   return { x: pt.x + ((pt.x - RIM.x) / len) * d, y: pt.y + ((pt.y - RIM.y) / len) * d };
 };
 
+// Somewhere in the lane, for a shooting foul whose attempt the sim never
+// placed: two shots and no location reads as a drive.
+const driveSpot = (h) => ({ x: (h & 1 ? 1 : -1) * (2 + ((h >>> 1) % 4)), y: 6 + ((h >>> 3) % 5) });
+
+// Who the play pits against whom: the defender contesting a shot, the
+// blocker and the man he blocked, the fouler and the man he fouled. Every
+// shot names its contest defender (`d`, which the sim makes the blocker on a
+// blocked shot and the fouler on an and-one), so this is never a guess.
+function confrontation(p, onOff, onDef) {
+  if (p.k === 'shot' && onDef(p.d) && onOff(p.p)) return { actor: p.d, target: p.p, act: 'contest' };
+  if (p.k === 'blk' && onDef(p.p) && onOff(p.v)) return { actor: p.p, target: p.v, act: 'block' };
+  if (p.k === 'foul' && onDef(p.p)) return { actor: p.p, target: onOff(p.v) ? p.v : null, act: 'foul' };
+  return null;
+}
+
 export function buildFrames(plays, lineups, home, away) {
   const sideOf = new Map();
   const posOf = new Map();
@@ -71,6 +87,8 @@ export function buildFrames(plays, lineups, home, away) {
   let li = 0;
   let spots = null;        // offensive spot assignment, held for a possession
   let spotsKey = '';
+  let matchups = null;     // defender -> man, held for a possession; switches stick
+  let matchKey = '';
   let prevSec = null;
   let prevQ = null;
   let prevN = null;
@@ -109,6 +127,7 @@ export function buildFrames(plays, lineups, home, away) {
     // Where the play happens and who ends up with the ball. A foul or a block
     // leaves both where they were.
     const blocked = p.k === 'shot' && !p.m && plays[i + 1]?.k === 'blk';
+    let relocated = false;   // a shooting foul moved the play to the shooter
     switch (p.k) {
       case 'shot':
         action = { x: p.x, y: p.y };
@@ -131,6 +150,23 @@ export function buildFrames(plays, lineups, home, away) {
         holder = p.p;
         shot = null;
         break;
+      case 'foul': {
+        // A shooting foul puts the ball in the shooter's hands where he went
+        // up: the attempt's own spot when the sim logged one (a fouled miss is
+        // never a shot play), else a drive into the lane. An and-one is
+        // already there — the make just before it. Any other foul leaves the
+        // ball alone.
+        const prev = plays[i - 1];
+        const andOne = prev?.k === 'shot' && prev.m && prev.p === p.v;
+        if (p.sf && onOff(p.v) && !andOne) {
+          action = p.x != null ? { x: p.x, y: p.y } : driveSpot(playHash(p));
+          lastShot = action;
+          holder = p.v;
+          shot = null;
+          relocated = true;
+        }
+        break;
+      }
       default:
         break;
     }
@@ -149,7 +185,23 @@ export function buildFrames(plays, lineups, home, away) {
     // all the clear-outs, before this) looks exactly backwards.
     if (p.k !== 'reb' && p.k !== 'blk') spots = clearSpace(spots, offP, action, offAtBall);
     const O = offenseFormation(offP, action, offAtBall, spots);
-    const D = defenseFormation(O, positionMatchups(defP, offP), action, p.d, onDef(holder) ? holder : null);
+    // The defender in the play is on the man he's playing against. Matching
+    // by position alone left the contest defender 11ft from the shooter on
+    // average — 58% of the time someone else was the man in his face — and
+    // put the blocker 10ft and the fouler 14ft from their men. So he switches
+    // onto him, whoever had that man picks up his old one, and the switch
+    // holds for the rest of the possession rather than undoing itself next
+    // play.
+    const mKey = `${p.n}|${offIds.join(',')}|${defIds.join(',')}`;
+    if (mKey !== matchKey) { matchups = positionMatchups(defP, offP); matchKey = mKey; }
+    const face = confrontation(p, onOff, onDef);
+    if (face?.target != null && String(matchups[face.actor]) !== String(face.target)) {
+      const had = Object.keys(matchups).find((d) => String(matchups[d]) === String(face.target));
+      const old = matchups[face.actor];
+      matchups = { ...matchups, [face.actor]: face.target };
+      if (had != null && old != null) matchups[had] = old;
+    }
+    const D = defenseFormation(O, matchups, action, face?.target != null ? face.actor : null, onDef(holder) ? holder : null);
 
     // The ball's route this play, world coords. `h` is height (0 on the floor,
     // 1 at the top of a long arc); `held` means it's in someone's hands.
@@ -170,7 +222,7 @@ export function buildFrames(plays, lineups, home, away) {
     } else if (p.k === 'reb') {
       const land = at(action, 0, true);
       path = [start, { x: (start.x + land.x) / 2, y: (start.y + land.y) / 2, h: 0.3, held: false }, land];
-    } else if (p.k === 'tov' || p.k === 'stl' || newPossession) {
+    } else if (p.k === 'tov' || p.k === 'stl' || newPossession || relocated) {
       path = [start, at(action, 0, true)];
     } else {
       path = [start, start];
@@ -193,6 +245,11 @@ export function buildFrames(plays, lineups, home, away) {
       offSide, defSide, attackTop: top, newPossession,
       players,
       holderId: onDef(holder) ? holder : offAtBall,
+      // The defender in the play, who he's on (null for a loose-ball foul)
+      // and what he's doing: 'contest' | 'block' | 'foul'.
+      actorId: face?.actor ?? null,
+      targetId: face?.target ?? null,
+      act: face?.act ?? null,
       ballPath: path,
       shot,
       blocked,   // a miss that never reached the rim — no clank to show
@@ -246,24 +303,125 @@ export function periodBreaks(plays) {
   return out;
 }
 
-// Points, rebounds and assists per player through the first `upto` plays,
-// from the structured plays alone — they add up exactly to the box score, so
-// a live line needs nothing from the engine.
-export function liveBox(plays, upto = plays.length) {
+// ---- Following the game ------------------------------------------------------
+
+const blankLine = (id) => ({ ...Object.fromEntries(BOX_COLS.map((k) => [k, 0])), playerId: id });
+
+// Where the game clock stands once `n` plays are in: the last one's period
+// and time — or that period's end, when it was the last play before a break.
+function clockAfter(plays, n) {
+  if (n <= 0) return { per: 0, sec: 12 * 60 };
+  const last = plays[n - 1];
+  return { per: periodIdx(last.q), sec: plays[n]?.q !== last.q ? 0 : (last.sec ?? clockSec(last.t)) };
+}
+
+// Every box-score column for each player through the first `upto` plays,
+// rebuilt from the plays alone — they add up exactly to the box score, so a
+// live line needs nothing from the engine.
+//
+// Given the frames it keeps +/- as well, from who the court has on the floor
+// for each basket; given the lineups, minutes — counted the way the box score
+// counts them: a stint's minutes go to the five who started it, even one who
+// fouls out partway. (Counting time on the floor instead left about three
+// lines a game off the box score at the final whistle, by up to five
+// minutes.) So once the last play is in, every line equals the real one,
+// column for column.
+export function liveBox(plays, upto = plays.length, { frames = null, lineups = null } = {}) {
+  const end = Math.min(upto, plays.length);
   const box = new Map();
   const line = (id) => {
-    if (!box.has(id)) box.set(id, { pts: 0, reb: 0, ast: 0 });
-    return box.get(id);
+    let l = box.get(id);
+    if (!l) { l = blankLine(id); box.set(id, l); }
+    return l;
   };
-  for (let i = 0; i < Math.min(upto, plays.length); i++) {
+  for (let i = 0; i < end; i++) {
     const p = plays[i];
-    if (p.k === 'shot' && p.m) {
-      line(p.p).pts += p.pts;
-      if (p.a != null) line(p.a).ast += 1;
-    } else if (p.k === 'ft' && p.m) line(p.p).pts += 1;
-    else if (p.k === 'reb') line(p.p).reb += 1;
+    if (p.p == null) continue;
+    let pts = 0;
+    switch (p.k) {
+      case 'shot': {
+        const l = line(p.p);
+        l.fga += 1;
+        if (p.z) l[`${p.z}Fga`] += 1;
+        if (p.pts === 3) l.tpa += 1;
+        if (p.m) {
+          l.fgm += 1;
+          if (p.z) l[`${p.z}Fgm`] += 1;
+          if (p.pts === 3) l.tpm += 1;
+          pts = p.pts;
+          if (p.a != null) line(p.a).ast += 1;
+        }
+        break;
+      }
+      case 'ft': {
+        const l = line(p.p);
+        l.fta += 1;
+        if (p.m) { l.ftm += 1; pts = 1; }
+        break;
+      }
+      case 'reb': {
+        const l = line(p.p);
+        l.reb += 1;
+        if (p.o) l.oreb += 1; else l.dreb += 1;
+        break;
+      }
+      case 'stl': line(p.p).stl += 1; break;
+      case 'blk': line(p.p).blk += 1; break;
+      // An offensive foul is logged as the turnover it is, and it's still a
+      // personal foul.
+      case 'tov': { const l = line(p.p); l.tov += 1; if (p.f) l.pf += 1; break; }
+      case 'foul': line(p.p).pf += 1; break;
+      default: break;
+    }
+    if (pts) {
+      line(p.p).pts += pts;
+      const on = frames?.[i]?.players;
+      const scorer = on?.find((x) => x.id === p.p);
+      if (scorer) for (const x of on) line(x.id).pm += x.side === scorer.side ? pts : -pts;
+    }
+  }
+  if (lineups) {
+    const now = end >= plays.length ? null : clockAfter(plays, end);   // null: game over
+    for (const ln of lineups) {
+      if (ln.sub) continue;   // a mid-stint swap credits no minutes
+      const per = periodIdx(ln.q);
+      const len = (ln.min ?? 0) * 60;
+      const ran = !now || per < now.per ? len
+        : per > now.per ? 0
+          : Math.max(0, Math.min(len, clockSec(ln.t) - now.sec));
+      if (ran > 0) for (const id of [...ln.home, ...ln.away]) line(id).min += ran / 60;
+    }
   }
   return box;
+}
+
+// Team fouls in the period, as they stand after each play. Counted from the
+// foul plays, which the sim keeps in step with its own count (the T in
+// "FOUL (P2.T4)") and resets each period. An offensive foul is a personal
+// foul but not a team one, as in the NBA — and the sim logs it as a
+// turnover, so it never reaches this count. `bonusAt` is the sim's too: from
+// the 5th team foul in a period (the 4th in overtime) a common foul sends
+// the other side to the line.
+export function teamFoulsByPlay(plays) {
+  const out = [];
+  let per = null;
+  let f = { home: 0, away: 0 };
+  for (const p of plays) {
+    const pi = periodIdx(p.q);
+    if (pi !== per) { per = pi; f = { home: 0, away: 0 }; }
+    if (p.k === 'foul' && (p.side === 'home' || p.side === 'away')) f = { ...f, [p.side]: f[p.side] + 1 };
+    out.push({ per, home: f.home, away: f.away, bonusAt: per >= 4 ? 4 : 5 });
+  }
+  return out;
+}
+
+// The order a side's players took the floor: the starting five, then everyone
+// else as they first checked in. A live box in points order would reshuffle
+// with every basket.
+export function floorOrder(lineups, side) {
+  const seen = [];
+  for (const ln of lineups ?? []) for (const id of ln[side] ?? []) if (!seen.includes(id)) seen.push(id);
+  return seen;
 }
 
 // What was true before tip-off. A watched game has already been simmed into

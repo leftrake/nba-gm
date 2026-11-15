@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { courtKit } from '../engine/colorUtils.js';
 
 // The court. Frames arrive in full-court feet (liveFrames.js): x -25..25
@@ -65,16 +65,31 @@ function EndMarkings() {
   );
 }
 
-function Player({ at, kit, number, name, ring, dimmed, ms }) {
+// What the defender in the play is doing, as a ring round him: in a
+// shooter's face, blocking him, or fouling him.
+const ACT_RING = {
+  contest: { stroke: '#fff', width: 0.26, dash: null, opacity: 0.85 },
+  block: { stroke: 'var(--color-danger)', width: 0.38, dash: null, opacity: 1 },
+  foul: { stroke: 'var(--color-warning)', width: 0.3, dash: '0.55 0.4', opacity: 1 },
+};
+
+function Player({ at, kit, number, name, ring, act, dimmed, ms }) {
+  const actRing = act && ACT_RING[act];
   return (
     <g
       style={{
         transform: `translate(${wx(at.x)}px, ${wy(at.y)}px)`,
         transition: `transform ${ms}ms cubic-bezier(.4,0,.2,1)`,
-        opacity: dimmed ? 0.55 : 1,
+        opacity: dimmed && !actRing ? 0.55 : 1,
       }}
     >
       {ring && <circle r="1.95" fill="none" stroke="var(--court-ball)" strokeWidth="0.3" opacity="0.9" />}
+      {actRing && (
+        <circle
+          className={`court-act court-act--${act}`} r="1.75" fill="none"
+          stroke={actRing.stroke} strokeWidth={actRing.width} strokeDasharray={actRing.dash ?? undefined} opacity={actRing.opacity}
+        />
+      )}
       {/* 1.3ft radius, not a true ~2ft shoulder width: defenders legitimately
           stand 3ft off their man, and at real scale the two discs merge. */}
       <circle r="1.3" fill={kit.fill} stroke={kit.ring} strokeWidth={kit.ringWidth} />
@@ -142,6 +157,75 @@ function Ball({ path, ms }) {
   );
 }
 
+// Name tags. Hover tooltips can't be read while the game is playing, so the
+// two players the play is about — whoever has the ball, and the defender on
+// him — carry their names.
+const surname = (name = '') => {
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? parts.slice(1).join(' ') : parts[0] ?? '';
+};
+
+const TAG_GAP = 2.05;   // clears the 1.95ft ball-handler ring
+const tagSize = (text, font) => ({ w: text.length * font * 0.58 + font * 1.1, h: font * 1.5 });
+const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+// A disc against a box, as a circle — its bounding square calls a corner
+// graze an overlap and pushes tags off their best side.
+const covers = (box, x, y, r) => Math.hypot(
+  x - Math.max(box.x0, Math.min(x, box.x1)),
+  y - Math.max(box.y0, Math.min(y, box.y1)),
+) < r;
+
+// Where each tag goes: just off its player's disc, on whichever of four sides
+// covers the least — never the ball, never the other tag, as few players as
+// possible — and on screen. A fixed side doesn't hold up: the defender
+// usually stands between his man and the rim, but at the rim he squares up
+// beside him, and a blocked shot's loose ball lands right where the
+// shooter's tag would go. Preferences only break ties: the ball handler's
+// tag away from the basket, the defender's away from the ball handler.
+function placeTags(tags, players, ballAt, attackTop) {
+  const camY = attackTop ? 0 : HALF;
+  const view = { x0: -1.5, x1: W + 1.5, y0: camY - 1.5, y1: camY + HALF + 1.5 };
+  const placed = [];
+  for (const t of tags) {
+    const X = wx(t.pl.x);
+    const Y = wy(t.pl.y);
+    const other = tags.find((o) => o !== t);
+    // Up the screen is away from the basket when attacking the bottom end.
+    const awayUp = other ? wy(other.pl.y) > Y : !attackTop;
+    const sides = [
+      { dx: 0, dy: awayUp ? -1 : 1 }, { dx: 0, dy: awayUp ? 1 : -1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+    ];
+    let best = null;
+    sides.forEach((s, rank) => {
+      let dx = s.dx * (TAG_GAP + t.w / 2);
+      const dy = s.dy * (TAG_GAP + t.h / 2);
+      // Slide along a sideline rather than off it.
+      dx += Math.min(Math.max(0, view.x0 + 0.1 - (X + dx - t.w / 2)), view.x1 - 0.1 - (X + dx + t.w / 2));
+      const box = { x0: X + dx - t.w / 2, x1: X + dx + t.w / 2, y0: Y + dy - t.h / 2, y1: Y + dy + t.h / 2 };
+      let cost = rank;
+      if (box.y0 < view.y0 || box.y1 > view.y1) cost += 1000;
+      if (ballAt && covers(box, ballAt[0], ballAt[1], 0.8)) cost += 100;
+      for (const p of placed) if (overlaps(box, p.box)) cost += 100;
+      for (const pl of players) if (pl.id !== t.id && covers(box, wx(pl.x), wy(pl.y), 1.3)) cost += 10;
+      if (!best || cost < best.cost) best = { cost, dx, dy, box };
+    });
+    placed.push({ ...t, ...best });
+  }
+  return placed;
+}
+
+function NameTag({ at, kit, text, w, h, dx, dy, font, ms }) {
+  const ease = 'cubic-bezier(.4,0,.2,1)';
+  return (
+    <g style={{ transform: `translate(${wx(at.x)}px, ${wy(at.y)}px)`, transition: `transform ${ms}ms ${ease}`, pointerEvents: 'none' }}>
+      <g className="court-tag" style={{ transform: `translate(${dx}px, ${dy}px)`, transition: `transform 180ms ${ease}` }}>
+        <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill={kit.fill} stroke={kit.ring} strokeWidth={Math.max(0.12, kit.ringWidth * 0.7)} />
+        <text y={font * 0.36} textAnchor="middle" fill={kit.text} style={{ fontSize: font, fontWeight: 700 }}>{text}</text>
+      </g>
+    </g>
+  );
+}
+
 // Exported so the legend under the court can show the same jerseys.
 export function KitSwatch({ kit, size = 12 }) {
   return (
@@ -152,7 +236,7 @@ export function KitSwatch({ kit, size = 12 }) {
 }
 
 export default function ArenaCourt({
-  players, holderId, ballPath, shot, attackTop, homeTeam, awayTeam, playerById, moment, moveMs = 320,
+  players, holderId, actorId = null, act = null, ballPath, shot, attackTop, homeTeam, awayTeam, playerById, moment, moveMs = 320,
 }) {
   // Home in white, away in colour — see courtKit for why colours alone won't do.
   const kits = { home: courtKit(homeTeam.color, true), away: courtKit(awayTeam.color, false) };
@@ -162,8 +246,32 @@ export default function ArenaCourt({
   };
   const ease = 'cubic-bezier(.4,0,.2,1)';
 
+  // Tags are sized in court feet, so they shrink with the court: measure it
+  // and keep the text at 11px or more on screen (a phone's court is a third
+  // the width of a desktop's).
+  const svgRef = useRef(null);
+  const [pxPerFt, setPxPerFt] = useState(12);
+  useLayoutEffect(() => {
+    const el = svgRef.current;
+    if (!el) return undefined;
+    const measure = () => { const w = el.getBoundingClientRect().width; if (w > 0) setPxPerFt(w / (W + 3)); };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+  const tagFont = Math.max(1.15, 11 / pxPerFt);
+  const restAt = ballPath?.length ? ballXY(ballPath[ballPath.length - 1]) : null;
+  const tags = placeTags(
+    [holderId, actorId]
+      .map((id, i) => ({ id, role: i ? 'd' : 'h', pl: players.find((x) => x.id === id) }))
+      .filter((t) => t.id != null && t.pl)
+      .map((t) => ({ ...t, text: surname(playerById(t.id)?.name), ...tagSize(surname(playerById(t.id)?.name), tagFont) })),
+    players, restAt, attackTop,
+  );
+
   return (
-    <svg viewBox={`-1.5 -1.5 ${W + 3} ${HALF + 3}`} style={{ width: '100%', display: 'block' }}>
+    <svg ref={svgRef} viewBox={`-1.5 -1.5 ${W + 3} ${HALF + 3}`} style={{ width: '100%', display: 'block' }}>
       {/* The camera: the bottom half sits 47 units down the world, so showing
           it means sliding everything up by that much. */}
       <g style={{ transform: `translate(0px, ${attackTop ? 0 : -HALF}px)`, transition: `transform ${moveMs}ms ${ease}` }}>
@@ -187,7 +295,16 @@ export default function ArenaCourt({
         {[...players].sort((a, b) => a.id - b.id).map((pl) => (
           <Player
             key={pl.id} at={pl} kit={kits[pl.side]} dimmed={!pl.off} ms={moveMs}
-            ring={pl.id === holderId} {...label(pl.id)}
+            ring={pl.id === holderId} act={pl.id === actorId ? act : null} {...label(pl.id)}
+          />
+        ))}
+
+        {/* Above every disc, so no one stands on a name. Keyed by who and why:
+            a tag that stays with its player moves with him, a new one fades in. */}
+        {tags.map((t) => (
+          <NameTag
+            key={`${t.role}${t.id}`} at={t.pl} kit={kits[t.pl.side]} text={t.text}
+            w={t.w} h={t.h} dx={t.dx} dy={t.dy} font={tagFont} ms={moveMs}
           />
         ))}
 

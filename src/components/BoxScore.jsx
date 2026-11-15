@@ -43,10 +43,16 @@ function BoxInjuryIcon({ entry }) {
   );
 }
 
-export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injuryReport }) {
+// `live` is the live viewer's box, { onFloor: Set of ids }: rows stay in the
+// order they arrive (the order players took the floor) rather than by
+// points, so they don't reshuffle with every basket; whoever's on the floor
+// is marked; a fifth foul is flagged; and the shot chart is left out.
+export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injuryReport, live = null }) {
   const byId = usePlayerIndex(league);
   const team = getTeam(league, teamId);
-  const lines = asLines(box).filter((l) => l.min > 0 || l.pts > 0 || l.reb > 0 || l.ast > 0 || l.stl > 0 || l.blk > 0 || l.tov > 0 || l.fgm > 0);
+  const onFloor = live?.onFloor;
+  const lines = asLines(box).filter((l) => onFloor?.has(l.playerId) || l.min > 0 || l.pts > 0 || l.reb > 0 || l.ast > 0 || l.stl > 0 || l.blk > 0 || l.tov > 0 || l.fgm > 0);
+  const rows = live ? lines : [...lines].sort((a, b) => b.pts - a.pts);
   const total = (k) => lines.reduce((s, l) => s + l[k], 0);
   const injuryById = new Map((injuryReport || []).map((e) => [e.playerId, e]));
   const hurtHere = (injuryReport || []).filter((e) => lines.some((l) => l.playerId === e.playerId));
@@ -63,12 +69,14 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
           </tr>
         </thead>
         <tbody>
-          {[...lines].sort((a, b) => b.pts - a.pts).map((line) => {
+          {rows.map((line) => {
             const p = byId.get(line.playerId);
             const badge = ddTd(line);
+            const on = onFloor?.has(line.playerId);
             return (
-              <tr key={line.playerId}>
+              <tr key={line.playerId} className={on ? 'box-row--on' : undefined}>
                 <td>
+                  {live && <span className={`box-floor${on ? ' is-on' : ''}`} title={on ? 'On the floor' : undefined} aria-label={on ? 'On the floor' : undefined}>●</span>}
                   {p?.jerseyNumber != null && <span style={{ color: 'var(--text-muted)' }}>#{p.jerseyNumber} </span>}
                   {p ? <PlayerLink p={p} openPlayer={openPlayer} /> : '–'}
                   {badge && (
@@ -87,8 +95,10 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
                 <td className="num">{line.stl}</td>
                 <td className="num">{line.blk}</td>
                 <td className="num">{line.tov}</td>
-                <td className="num" style={line.pf >= 6 ? { color: 'var(--red)', fontWeight: 700 } : undefined}
-                    title={line.pf >= 6 ? 'Fouled out' : undefined}>
+                <td className="num"
+                    style={line.pf >= 6 ? { color: 'var(--red)', fontWeight: 700 }
+                      : live && line.pf === 5 ? { color: 'var(--color-warning)', fontWeight: 700 } : undefined}
+                    title={line.pf >= 6 ? 'Fouled out' : live && line.pf === 5 ? 'One foul from fouling out' : undefined}>
                   {line.pf}
                 </td>
                 <td className="num">{line.pm > 0 ? `+${line.pm}` : line.pm}</td>
@@ -130,9 +140,11 @@ export function BoxTable({ league, teamId, pts, box, openTeam, openPlayer, injur
           })}
         </p>
       )}
-      <div style={{ marginTop: 'var(--sp-3)' }}>
-        <ShotChart stats={teamZoneTotals(lines)} />
-      </div>
+      {!live && (
+        <div style={{ marginTop: 'var(--sp-3)' }}>
+          <ShotChart stats={teamZoneTotals(lines)} />
+        </div>
+      )}
     </div>
   );
 }

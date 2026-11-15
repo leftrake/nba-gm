@@ -1,9 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { TeamBadge } from './TeamDisplay.jsx';
 import { safeAccent, courtKit } from '../engine/colorUtils.js';
-import { buildFrames, placeHighlights, periodBreaks, liveBox, pregame } from './liveFrames.js';
+import {
+  buildFrames, placeHighlights, periodBreaks, liveBox, pregame, teamFoulsByPlay, floorOrder,
+} from './liveFrames.js';
 import ArenaCourt, { KitSwatch } from './ArenaCourt.jsx';
 import { TipOffCard, BreakCard, FinalCard, HighlightBanner } from './LiveCards.jsx';
+import { BoxTable } from './BoxScore.jsx';
 
 // Watch a game unfold play by play.
 //
@@ -91,7 +94,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
 
   const periodOrder = useMemo(() => [...new Set(plays.map((p) => p.q).filter(Boolean))], [plays]);
 
-  const [view, setView] = useState('court'); // 'court' | 'feed'
+  const [view, setView] = useState('court'); // 'court' | 'box' | 'feed'
   const frames = useMemo(
     () => buildFrames(plays, game?.lineups, home, away),
     [plays, game, home, away],
@@ -113,6 +116,16 @@ export default function LiveGame({ game, home, away, onFinish }) {
   const breakAtRef = useRef(breakAt);
   breakAtRef.current = breakAt;
   const pre = useMemo(() => pregame(game, home, away), [game, home, away]);
+  const fouls = useMemo(() => teamFoulsByPlay(plays), [plays]);
+  // The live box: the app's own box-score table, fed lines rebuilt from the
+  // plays so far. It looks players up through a league; these two rosters are
+  // all it needs, and handing it the real league — already simmed past
+  // tonight — would only invite a spoiler.
+  const boxLeague = useMemo(() => ({ teams: [home, away], freeAgents: [] }), [home, away]);
+  const order = useMemo(
+    () => ({ home: floorOrder(game?.lineups, 'home'), away: floorOrder(game?.lineups, 'away') }),
+    [game],
+  );
 
   // Playback loop. Mirrors Calendar's animatedSimTo: a local counter drives
   // the async loop so no tick reads a stale closure, and the cleanup flag
@@ -191,6 +204,24 @@ export default function LiveGame({ game, home, away, onFinish }) {
     };
   }, [frames, stage.k, idx, home, away]);
 
+  // The box as of the last play revealed — built only while it's on screen.
+  const liveLines = useMemo(() => {
+    if (view !== 'box') return null;
+    const box = liveBox(plays, idx, { frames, lineups: game?.lineups });
+    // Whole minutes, like the box score: a clock that's run 2:40 shows 2.
+    const side = (s) => order[s].filter((id) => box.has(id))
+      .map((id) => ({ ...box.get(id), min: Math.floor(box.get(id).min + 1e-9) }));
+    return { home: side('home'), away: side('away') };
+  }, [view, plays, idx, frames, game, order]);
+  // Injuries reach the box score as they happen, not before.
+  const hurtSoFar = useMemo(() => {
+    if (view !== 'box') return [];
+    const seen = new Set();
+    for (const [i, evs] of highlights.byPlay) if (i < idx) for (const e of evs) if (e.k === 'injury') seen.add(e.p);
+    const over = idx >= plays.length;
+    return (game?.injuryReport ?? []).filter((e) => over || seen.has(e.playerId));
+  }, [view, highlights, idx, plays, game]);
+
   if (!plays.length) return null;
 
   const done = idx >= plays.length;
@@ -211,6 +242,18 @@ export default function LiveGame({ game, home, away, onFinish }) {
   const homeColor = safeAccent(home.color);
   const awayColor = safeAccent(away.color);
   const leader = score.home === score.away ? null : score.home > score.away ? 'home' : 'away';
+  // Team fouls this period, and who's in the bonus: the side whose opponent
+  // has reached the limit, so any common foul against it is shot.
+  const tf = idx > 0 ? fouls[idx - 1] : { home: 0, away: 0, bonusAt: 5 };
+  const foulLine = (s) => !done && (
+    <div className="live-fouls">
+      <span>Fouls {tf[s]}</span>
+      {tf[s === 'home' ? 'away' : 'home'] >= tf.bonusAt && (
+        <span className="live-bonus" title="In the bonus: common fouls against them go to the line">Bonus</span>
+      )}
+    </div>
+  );
+  const onFloor = new Set((frames[Math.max(0, idx - 1)]?.players ?? []).map((x) => x.id));
   const teamFor = (side) => (side === 'home' ? home : away);
   const sideOfPlayer = (id) => (home.roster.some((p) => p.id === id) ? 'home' : 'away');
   const nameOf = (id) => rosterById.get(id)?.name ?? '';
@@ -280,6 +323,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
             <div className="live-team-text">
               <div className="live-city">{away.city}</div>
               <div className="live-name">{away.name}</div>
+              {foulLine('away')}
             </div>
             <div
               key={`a${score.away}`}
@@ -312,6 +356,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
             <div className="live-team-text">
               <div className="live-city">{home.city}</div>
               <div className="live-name">{home.name}</div>
+              {foulLine('home')}
             </div>
             <TeamBadge team={home} />
           </div>
@@ -341,6 +386,8 @@ export default function LiveGame({ game, home, away, onFinish }) {
                 <ArenaCourt
                   players={court.players}
                   holderId={court.holderId}
+                  actorId={court.actorId}
+                  act={court.act}
                   // Held at its starting point until tip-off: the court is
                   // already staged on the opening play, and its flight would
                   // otherwise run (and finish) behind the tip-off card.
@@ -387,6 +434,20 @@ export default function LiveGame({ game, home, away, onFinish }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Box score, live */}
+          {view === 'box' && liveLines && (
+            <div className="live-box">
+              {[['away', away], ['home', home]].map(([s, team]) => (
+                <div key={s} className="ui-table-wrap">
+                  <BoxTable
+                    league={boxLeague} teamId={team.id} pts={score[s]} box={liveLines[s]}
+                    injuryReport={hurtSoFar} live={{ onFloor }}
+                  />
+                </div>
+              ))}
             </div>
           )}
 
@@ -454,13 +515,18 @@ export default function LiveGame({ game, home, away, onFinish }) {
               <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={skipToEnd}>Skip to final ▸▸</button>
             </>
           )}
-          <button
-            className="ui-btn ui-btn--secondary ui-btn--md"
-            style={{ marginLeft: 'auto' }}
-            onClick={() => setView((v) => (v === 'court' ? 'feed' : 'court'))}
-          >
-            {view === 'court' ? 'Play-by-play' : 'Court'}
-          </button>
+          <div className="live-views">
+            {[['court', 'Court'], ['box', 'Box score'], ['feed', 'Play-by-play']].map(([v, label]) => (
+              <button
+                key={v}
+                aria-pressed={view === v}
+                className={`ui-btn ui-btn--md ${view === v ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
+                onClick={() => setView(v)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
             {idx} / {plays.length} plays
           </span>

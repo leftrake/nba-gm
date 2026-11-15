@@ -1422,8 +1422,30 @@ button.slot-pick:hover { border-color: var(--accent); }
 @keyframes live-banner-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes live-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
+/* Team fouls and the bonus, under each team's name. */
+.live-fouls {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.live-team--home .live-fouls { justify-content: flex-end; }
+.live-bonus {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  padding: 0 5px; border-radius: 999px;
+  color: var(--color-warning); background: var(--color-warning-soft); border: 1px solid var(--color-warning-line);
+}
+/* Court, box score, play-by-play. */
+.live-views { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+/* The live box: both teams, scrolling inside the viewer rather than the page. */
+.live-box { overflow-y: auto; flex: 1; min-height: 240px; display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-3) 0; }
+.live-box .ui-table td, .live-box .ui-table th { white-space: nowrap; }
+.box-floor { display: inline-block; width: 1.2em; font-size: 9px; vertical-align: 1px; color: transparent; }
+.box-floor.is-on { color: var(--color-success); }
+/* Name tags fade in rather than pop. */
+.court-tag { animation: court-tag-in 220ms ease-out both; }
+@keyframes court-tag-in { from { opacity: 0; } to { opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .live-score--pop, .live-banner, .live-card, .court-points { animation: none; }
+  .live-score--pop, .live-banner, .live-card, .court-points, .court-tag { animation: none; }
   /* A ring that only means something while it expands — without the motion, drop it. */
   .court-swish, .court-clank { display: none; }
 }
@@ -1436,8 +1458,11 @@ button.slot-pick:hover { border-color: var(--accent); }
     border: none; border-radius: 0; padding: var(--sp-3) 16px;
   }
   .live-scoreboard { gap: var(--sp-2); }
-  /* The badge already carries the abbreviation, scorebug-style. */
-  .live-team-text { display: none; }
+  /* The badge already carries the abbreviation, scorebug-style — leaving
+     room for just the fouls. */
+  .live-city, .live-name { display: none; }
+  .live-fouls { flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 0; }
+  .live-team--home .live-fouls { align-items: flex-end; }
   .live-score { font-size: 28px; }
   .live-clock { min-width: 56px; }
   .live-court-row { flex-direction: column; gap: var(--sp-2); }

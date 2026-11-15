@@ -185,14 +185,20 @@ The hard split is **engine vs. UI**:
     versions (`perGame`, `fgPct`).
   - `liveFrames.js` — turns a game's play-by-play into the live viewer's
     frames: who's on the floor and where, who has the ball, its route each
-    play, in full-court coordinates (teams switch ends at halftime). Also
-    places the sim's highlights on the plays they belong to, finds the
-    period breaks, keeps a live box score from the plays, and builds the
+    play, in full-court coordinates (teams switch ends at halftime), with
+    the defender in each play switched onto the man he's contesting,
+    blocking or fouling. Also places the sim's highlights on the plays they
+    belong to, finds the period breaks, keeps team fouls, and builds the
     pre-game numbers with tonight taken back out (a watched game is already
     simmed into the league, so live records and averages would spoil it).
-    Plain JS rather than JSX so headless checks import the code the viewer
-    actually runs; `LiveGame.jsx`, `ArenaCourt.jsx` and `LiveCards.jsx`
-    (tip-off, break and final cards, highlight banners) render it.
+    `liveBox` rebuilds every box-score column from the plays — +/- from the
+    frames, minutes from the lineups, credited the box score's way (a
+    stint's minutes go to the five who started it) — so at the final
+    whistle it equals the real box line for line. Plain JS rather than JSX
+    so headless checks import the code the viewer actually runs;
+    `LiveGame.jsx`, `ArenaCourt.jsx` (name tags included) and `LiveCards.jsx`
+    (tip-off, break and final cards, highlight banners) render it, and the
+    live box is `BoxScore.jsx`'s own `BoxTable` in its `live` mode.
   - `onboarding.jsx` — walkthrough + first-encounter tooltip system
     (`GuideTooltip`, `isWalkthroughDone`, `resetTutorial`, etc.).
 - `src/theme.js` — dark color themes + optional custom accent, stored as
