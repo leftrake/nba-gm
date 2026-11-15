@@ -6,6 +6,7 @@ import { onTheClock, simDraftPick, simDraftRound, simDraftToUser, finishDraft } 
 import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, autoFantasyPick, finishFantasyDraft } from './engine/fantasyDraft.js';
 import Dashboard from './components/Dashboard.jsx';
 import LiveGame from './components/LiveGame.jsx';
+import { canWatch, forViewer, playoffContext } from './components/watchGame.js';
 import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
 import FuturePayroll from './components/FuturePayroll.jsx';
@@ -487,9 +488,12 @@ export default function App() {
 
   // One playoff sim step lands on the post-game screen (the user's result in
   // full, or the day's scoreboard); a round fast-forward goes to the bracket.
-  const handleSimPlayoffGame = () => {
-    const before = captureUserInjuries();
-    const played = simPlayoffGame(league);
+  //
+  // Sim and reveal are split so a watched game can be simmed now and revealed
+  // when the viewer closes: the night is simmed (the league mutated in place)
+  // but nothing is committed until then, so every screen still shows the
+  // bracket as it stood.
+  const revealPlayoffNight = (played, before) => {
     trackFeaturedPlayoff(played);
     // Only the single-game sim checks for an interactive coach-talk/milestone
     // moment — "Sim Playoff Round" fast-forwards through several games per
@@ -508,6 +512,27 @@ export default function App() {
       setScreen('playoffs');
     }
   };
+  const handleSimPlayoffGame = () => {
+    const before = captureUserInjuries();
+    revealPlayoffNight(simPlayoffGame(league), before);
+  };
+  // Every Watch below: sim, find the user's game, hand it to the viewer, and
+  // reveal on close — or reveal straight away if there's nothing to watch.
+  const mineOf = (games, home = (g) => g.home, away = (g) => g.away) =>
+    games.find((g) => home(g) === league.userTeamId || away(g) === league.userTeamId);
+  const handleWatchPlayoffGame = () => {
+    const before = captureUserInjuries();
+    const played = simPlayoffGame(league);
+    const mine = mineOf(played, (x) => x.game.home, (x) => x.game.away);
+    if (!mine || !canWatch(mine.game)) { revealPlayoffNight(played, before); return; }
+    setLiveGame({
+      game: forViewer(mine.game),
+      home: getTeam(league, mine.game.home),
+      away: getTeam(league, mine.game.away),
+      ctx: playoffContext(league, mine),
+      onFinish: () => revealPlayoffNight(played, before),
+    });
+  };
   const handleSimPlayoffRound = () => {
     const before = captureUserInjuries();
     const played = simPlayoffRound(league);
@@ -518,8 +543,7 @@ export default function App() {
     setScreen('playoffs');
   };
 
-  const handleSimPlayIn = () => {
-    simPlayInGame(league);
+  const afterPlayIn = () => {
     if (league.playIn?.complete) {
       league.phase = 'playoffs';
       commit();
@@ -529,14 +553,71 @@ export default function App() {
       setScreen('playin');
     }
   };
+  const handleSimPlayIn = () => {
+    simPlayInGame(league);
+    afterPlayIn();
+  };
+  const PLAY_IN_GAMES = { A: '7 vs. 8', B: '9 vs. 10', C: 'Last Chance' };
+  const handleWatchPlayIn = () => {
+    const mine = mineOf(simPlayInGame(league));
+    if (!mine?.full || !canWatch(mine.full)) { afterPlayIn(); return; }
+    setLiveGame({
+      game: forViewer({ ...mine.full, home: mine.home, away: mine.away }),
+      home: getTeam(league, mine.home),
+      away: getTeam(league, mine.away),
+      // The play-in counts in the standings but not in season stats.
+      ctx: { kicker: `Play-In · ${PLAY_IN_GAMES[mine.game]}`, pregame: { records: 'subtract', tonightInStats: false } },
+      onFinish: afterPlayIn,
+    });
+  };
 
-  const handleSimCupGame = () => {
-    simCupGame(league);
+  const afterCupRound = () => {
     if (cupComplete(league)) {
       league.phase = 'regular';
     }
     commit();
+    setScreen('cup');
   };
+  const handleSimCupGame = () => {
+    simCupGame(league);
+    afterCupRound();
+  };
+  const handleWatchCupGame = () => {
+    const mine = mineOf(simCupGame(league));
+    if (!mine?.full || !canWatch(mine.full)) { afterCupRound(); return; }
+    setLiveGame({
+      game: forViewer({ ...mine.full, home: mine.home, away: mine.away }),
+      home: getTeam(league, mine.home),
+      away: getTeam(league, mine.away),
+      // A Cup knockout counts in neither the standings nor season stats.
+      ctx: { kicker: `NBA Cup · ${mine.label}`, pregame: { records: 'asis', tonightInStats: false } },
+      onFinish: afterCupRound,
+    });
+  };
+
+  // Whether the user's team plays in the next playoff night, play-in stage or
+  // Cup round — the only times there's a game of theirs to watch.
+  const uid = league.userTeamId;
+  const unplayedWithUser = (g) => !!g && !g.winner && (g.home === uid || g.away === uid);
+  const userInNextPlayoffNight = (() => {
+    const po = league.playoffs;
+    if (!po || po.champion) return false;
+    const series = po.round < 3 ? [...(po.East ?? []), ...(po.West ?? [])] : [po.finals];
+    return series.some((m) => m && !m.winner && (m.high === uid || m.low === uid));
+  })();
+  const userInNextPlayIn = (() => {
+    const pi = league.playIn;
+    if (!pi || pi.complete) return false;
+    const key = ['gameA', 'gameB', 'gameC'][pi.stage];
+    return ['East', 'West'].some((c) => unplayedWithUser(pi[c]?.[key]));
+  })();
+  const userInNextCupRound = (() => {
+    const b = league.cup?.bracket;
+    if (!b || league.cup.champion) return false;
+    const games = b.round === 0 ? [...(b.East ?? []), ...(b.West ?? [])]
+      : b.round === 1 ? (b.semis ?? []) : b.round === 2 ? [b.final] : [];
+    return games.some(unplayedWithUser);
+  })();
 
   // The Dev Report tab only shows while this offseason's report is fresh
   // (between development and the next season tipping off)
@@ -654,11 +735,12 @@ export default function App() {
       <main>
         {league.phase === 'cup' && (
           <div className="controls">
-            <button className="btn" onClick={() => { handleSimCupGame(); setScreen('cup'); }}>
+            <button className="btn" onClick={handleSimCupGame}>
               {league.cup?.bracket?.round === 0 ? 'Sim Cup Quarterfinals' :
                league.cup?.bracket?.round === 1 ? 'Sim Cup Semifinals' :
                league.cup?.bracket?.round === 2 ? 'Sim Cup Final' : 'Cup Complete'}
             </button>
+            {userInNextCupRound && <button className="btn secondary" onClick={handleWatchCupGame}>Watch ▶</button>}
           </div>
         )}
         {league.phase === 'play-in' && (
@@ -669,11 +751,13 @@ export default function App() {
                league.playIn?.stage === 1 ? 'Sim Play-In: 9 vs. 10' :
                'Sim Play-In: Last Chance Game'}
             </button>
+            {userInNextPlayIn && <button className="btn secondary" onClick={handleWatchPlayIn}>Watch ▶</button>}
           </div>
         )}
         {league.phase === 'playoffs' && (
           <div className="controls">
             <button className="btn" onClick={handleSimPlayoffGame}>Sim Next Playoff Game</button>
+            {userInNextPlayoffNight && <button className="btn secondary" onClick={handleWatchPlayoffGame}>Watch ▶</button>}
             <button className="btn secondary" onClick={handleSimPlayoffRound}>Sim Playoff Round</button>
           </div>
         )}
@@ -781,6 +865,7 @@ export default function App() {
             openPlayer={openPlayer}
             openTeam={openTeam}
             onContinue={() => { league.allStar.shown = true; commit(); setScreen('dashboard'); }}
+            startWatch={setLiveGame}
           />
         )}
         {screen === 'trade' && <TradeMachine league={league} commit={commit} openPlayer={openPlayer} prefill={tradePrefill} />}
@@ -799,7 +884,13 @@ export default function App() {
         {screen === 'settings' && <Settings league={league} commit={commit} importLeague={importLeague} onResetTutorial={handleResetTutorial} theme={theme} setTheme={updateTheme} accentColor={accentColor} setAccentColor={updateAccent} />}
         {screen === 'styleguide' && <StyleGuide />}
         </div>
-        {viewGame && <GameModal league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)} openTeam={openTeam} openPlayer={openPlayer} />}
+        {viewGame && (
+          <GameModal
+            league={league} game={viewGame.game} title={viewGame.title} onClose={() => setViewGame(null)}
+            openTeam={openTeam} openPlayer={openPlayer}
+            startWatch={(watch) => { setViewGame(null); setLiveGame(watch); }}
+          />
+        )}
         {shopTarget && (
           <ShopPlayerModal
             league={league}
@@ -815,6 +906,7 @@ export default function App() {
             game={liveGame.game}
             home={liveGame.home}
             away={liveGame.away}
+            ctx={liveGame.ctx}
             onFinish={() => { liveGame.onFinish?.(); setLiveGame(null); }}
           />
         )}

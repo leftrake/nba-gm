@@ -199,6 +199,18 @@ The hard split is **engine vs. UI**:
     `LiveGame.jsx`, `ArenaCourt.jsx` (name tags included) and `LiveCards.jsx`
     (tip-off, break and final cards, highlight banners) render it, and the
     live box is `BoxScore.jsx`'s own `BoxTable` in its `live` mode.
+  - `watchGame.js` — turns a game the app already has into what the viewer
+    needs: whether it can be watched at all (structured plays and lineups),
+    box lines decoded, and for a replay each side's roster as it took the
+    floor that night (from the box score, wherever those players are now).
+    Also the viewer's `ctx` for each kind of game — playoffs show the series
+    instead of a record; a play-in game counts in the standings but not in
+    stats; a Cup knockout counts in neither; the All-Star Game and replays
+    show no record — since the pre-game card has to take tonight back out
+    of only what tonight was put into. Every Watch follows the regular
+    season's pattern: sim, open the viewer, and commit only when it closes.
+    `simPlayInGame`, `simCupGame` and `simAllStarGame` hand back each game's
+    full result as `full` for this; none of it goes into the save.
   - `onboarding.jsx` — walkthrough + first-encounter tooltip system
     (`GuideTooltip`, `isWalkthroughDone`, `resetTutorial`, etc.).
 - `src/theme.js` — dark color themes + optional custom accent, stored as

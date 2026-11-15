@@ -4,6 +4,7 @@ import { getPlayerById, simAllStarGame, userHasAllStar } from '../engine/allstar
 import { BoxTable, LineScore, TopPerformers, GameFlow } from './BoxScore.jsx';
 import { PlayerLink } from './PlayerDisplay.jsx';
 import { TeamLink } from './TeamDisplay.jsx';
+import { canWatch, forViewer } from './watchGame.js';
 
 function PlayerRow({ league, playerId, teamId, openPlayer, openTeam, extra }) {
   const found = getPlayerById(league, playerId);
@@ -37,7 +38,7 @@ function RosterPanel({ league, conf, roster, openPlayer, openTeam }) {
   );
 }
 
-export default function AllStarScreen({ league, commit, openPlayer, openTeam, onContinue }) {
+export default function AllStarScreen({ league, commit, openPlayer, openTeam, onContinue, startWatch }) {
   const as = league.allStar;
   if (!as) return null;
   const { rosters, honors, game } = as;
@@ -47,6 +48,20 @@ export default function AllStarScreen({ league, commit, openPlayer, openTeam, on
   const simulate = () => {
     simAllStarGame(league);
     commit();
+  };
+  // Sim it, watch it, and only then commit — until then this screen still
+  // shows the game as unplayed (the viewer covers it either way).
+  const watch = () => {
+    const g = simAllStarGame(league);
+    if (!startWatch || !canWatch(g.full)) { commit(); return; }
+    startWatch({
+      game: forViewer({ ...g.full, home: g.home, away: g.away }),
+      home: g.teams.home,
+      away: g.teams.away,
+      // An exhibition: no records, no injury list, and it's in nobody's stats.
+      ctx: { kicker: `All-Star Game · ${as.season}`, pregame: { records: false, tonightInStats: false, showOut: false } },
+      onFinish: commit,
+    });
   };
 
   return (
@@ -79,6 +94,7 @@ export default function AllStarScreen({ league, commit, openPlayer, openTeam, on
             </p>
             <div className="controls">
               <button className="btn" onClick={simulate}>Simulate All-Star Game</button>
+              {startWatch && <button className="btn secondary" onClick={watch}>Watch ▶</button>}
             </div>
           </>
         ) : (

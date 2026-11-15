@@ -1,4 +1,5 @@
 import React from 'react';
+import { canWatch, forViewer, asPlayed, REPLAY } from './watchGame.js';
 import { getTeam, standings, payroll, deadMoneyTotal, dateForDay, teamPlayoffStatus, askingPrice } from '../engine/league.js';
 import { PRO_SCOUT_GAMES_FULL, removeFaBookmark, removeTradeBookmark } from '../engine/scoutingTrips.js';
 import { SALARY_CAP, LUXURY_TAX } from '../data/teams.js';
@@ -477,6 +478,17 @@ export default function Dashboard({ league, leagueRef, commit, lastResults, feat
                    onClick={() => openGame(r, fmtDate(dateForDay(league, lastDay)))}>
                   view ▸
                 </a>
+                {startWatch && canWatch(r) && (
+                  <a className="team-link" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}
+                     onClick={() => startWatch({
+                       game: forViewer(r),
+                       home: asPlayed(league, r.home, r.homeBox),
+                       away: asPlayed(league, r.away, r.awayBox),
+                       ctx: REPLAY,
+                     })}>
+                    watch ▸
+                  </a>
+                )}
               </div>
             ))}
           </Section>

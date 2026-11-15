@@ -62,7 +62,9 @@ const playMs = (play, gapSec, speed) =>
 // Frames — who's where, who has it, the ball's route — come from liveFrames.js,
 // kept free of React so headless checks can run the same code.
 
-export default function LiveGame({ game, home, away, onFinish }) {
+// `ctx` says what kind of game this is, for the cards around it — see
+// watchGame.js. Left out, it's tonight's regular-season game.
+export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   const plays = game?.playByPlay ?? [];
   const [idx, setIdx] = useState(0);     // plays revealed so far — ticker, score, clock
   // The play the court is acting out, and over how long. It runs one play
@@ -130,7 +132,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
   const breakAt = useMemo(() => new Map(breaks.map((b) => [b.i, b])), [breaks]);
   const breakAtRef = useRef(breakAt);
   breakAtRef.current = breakAt;
-  const pre = useMemo(() => pregame(game, home, away), [game, home, away]);
+  const pre = useMemo(() => pregame(game, home, away, ctx?.pregame), [game, home, away, ctx]);
   const fouls = useMemo(() => teamFoulsByPlay(plays), [plays]);
   // The live box: the app's own box-score table, fed lines rebuilt from the
   // plays so far. It looks players up through a league; these two rosters are
@@ -499,13 +501,16 @@ export default function LiveGame({ game, home, away, onFinish }) {
           {/* The beats around play: tip-off, breaks, the result. */}
           {(card?.kind === 'tipoff' || breakCard || done) && (
             <div className="live-card-scrim">
-              {card?.kind === 'tipoff' && <TipOffCard home={home} away={away} pre={pre} onStart={endHold} />}
+              {card?.kind === 'tipoff' && (
+                <TipOffCard home={home} away={away} pre={pre} onStart={endHold} kicker={ctx?.kicker} subtitle={ctx?.subtitle} />
+              )}
               {breakCard && <BreakCard home={home} away={away} {...breakCard} onContinue={endHold} />}
               {done && !card && (
                 <FinalCard
                   home={home} away={away} score={score}
                   top={{ home: finalTop('home'), away: finalTop('away') }}
                   notes={highlights.post.map((e) => e.text.replace(/^🩹\s*/, ''))}
+                  note={ctx?.finalNote}
                 />
               )}
             </div>
@@ -515,7 +520,7 @@ export default function LiveGame({ game, home, away, onFinish }) {
         {/* Transport */}
         <div className="controls" style={{ paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--border)', marginBottom: 0 }}>
           {done ? (
-            <button className="ui-btn ui-btn--primary ui-btn--md" onClick={finish}>Continue</button>
+            <button className="ui-btn ui-btn--primary ui-btn--md" onClick={finish}>{ctx?.replay ? 'Close' : 'Continue'}</button>
           ) : (
             <>
               <button

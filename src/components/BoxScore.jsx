@@ -7,6 +7,7 @@ import { ZONE_STAT_COLS } from '../engine/shotZones.js';
 import { PlayerLink } from './PlayerDisplay.jsx';
 import { TeamLink, TeamBadge } from './TeamDisplay.jsx';
 import ShotChart from './ShotChart.jsx';
+import { canWatch, forViewer, asPlayed, REPLAY } from './watchGame.js';
 
 // Sums every zone Fgm/Fga column across a team's box lines, for a
 // team-level shot chart (one chart per game's box is more readable than
@@ -293,7 +294,7 @@ export function GameFlow({ events }) {
 // Full game page (as a modal): line score, top performers, box scores when
 // the save kept them, and the game-flow log. Falls back gracefully for
 // games stored slim (top performers only) and for results from old saves.
-export default function GameModal({ league, game, title, onClose, openTeam, openPlayer }) {
+export default function GameModal({ league, game, title, onClose, openTeam, openPlayer, startWatch }) {
   const hasPbp = !!(game.playByPlay?.length);
   const [boxTab, setBoxTab] = useState('away');
 
@@ -327,7 +328,20 @@ export default function GameModal({ league, game, title, onClose, openTeam, open
               </span>
             </div>
           </div>
-          <button className="btn small secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
+          {startWatch && canWatch(game) && (
+            <button
+              className="btn small" style={{ marginLeft: 'auto' }}
+              onClick={() => startWatch({
+                game: forViewer(game),
+                home: asPlayed(league, game.home, game.homeBox),
+                away: asPlayed(league, game.away, game.awayBox),
+                ctx: REPLAY,
+              })}
+            >
+              Watch replay ▶
+            </button>
+          )}
+          <button className="btn small secondary" style={startWatch && canWatch(game) ? undefined : { marginLeft: 'auto' }} onClick={onClose}>✕</button>
         </div>
         <div style={{ marginTop: 12 }}>
           <LineScore league={league} game={game} />

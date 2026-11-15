@@ -68,6 +68,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     const steps = Math.max(1, (target ?? startDay + 1) - startDay);
     const stepDelay = clamp(1500 / steps, 40, 250);
     let results = [];
+    let broke = false;   // stopped short: an alert, an offer, the break, Stop
     while (leagueRef.current.phase === 'regular' && (target == null || leagueRef.current.dayIndex < target)) {
       const injuredBefore = new Map(getTeam(leagueRef.current, me).roster.filter((p) => p.injury).map((p) => [p.id, p.injury]));
       results = simDay(leagueRef.current);
@@ -85,14 +86,14 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
         .map((p) => ({ id: p.id, name: p.name, pos: p.pos }));
       if ((injured.length || returned.length) && !leagueRef.current.settings?.suppressInjuryAlerts) {
         setInjuryAlert({ injured, returned });
-        break;
+        { broke = true; break; }
       }
-      if (hasPendingEvent(getTeam(leagueRef.current, me))) break;
-      if (stopAtGame && mine) break;
-      if (leagueRef.current.tradeOffers.length > offersBefore) break;
-      if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) break;
-      if (leagueRef.current.dayIndex >= leagueRef.current.schedule.length) break;
-      if (stopRef.current) break;
+      if (hasPendingEvent(getTeam(leagueRef.current, me))) { broke = true; break; }
+      if (stopAtGame && mine) { broke = true; break; }
+      if (leagueRef.current.tradeOffers.length > offersBefore) { broke = true; break; }
+      if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) { broke = true; break; }
+      if (leagueRef.current.dayIndex >= leagueRef.current.schedule.length) { broke = true; break; }
+      if (stopRef.current) { broke = true; break; }
       // pause a little longer on a day with one of the user's games, so the
       // FeaturedGame card has time to register before sliding on
       if (!skipRef.current) await delay(mine ? Math.max(stepDelay, 700) : stepDelay);
@@ -108,6 +109,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     if (leagueRef.current.allStar && !leagueRef.current.allStar.shown && leagueRef.current.dayIndex >= ALL_STAR_DAYS[0]) {
       setScreen('allstar');
     }
+    return !broke && target != null && leagueRef.current.dayIndex >= target;
   };
 
   // Sim today, then hand the user's game to the live viewer instead of
@@ -147,6 +149,23 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     });
   };
 
+  // The next day the user's team plays, from today on.
+  const nextGameDay = () => {
+    for (let d = league.dayIndex; d < league.schedule.length; d++) {
+      if (league.schedule[d].some((g) => g.home === me || g.away === me)) return d;
+    }
+    return null;
+  };
+  // Sim up to the day of the next game, then watch it — unless something on
+  // the way (an injury, a trade offer, the All-Star break, Stop) cut the sim
+  // short, in which case that comes first and the game waits.
+  const watchNextGame = async () => {
+    const target = nextGameDay();
+    if (target == null || simDisabled || !startWatch) return;
+    const there = target <= leagueRef.current.dayIndex || await animatedSimTo(target);
+    if (there) watchTodaysGame();
+  };
+
   const nextEventDay = () => {
     const candidates = [CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS[0], league.schedule.length]
       .filter((d) => d > league.dayIndex);
@@ -182,6 +201,9 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
           </button>
           {todayHasGame && (
             <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={watchTodaysGame}>Watch ▶</button>
+          )}
+          {!todayHasGame && startWatch && nextGameDay() != null && (
+            <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={watchNextGame}>Watch Next Game ▶</button>
           )}
           <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
           <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>

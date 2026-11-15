@@ -425,25 +425,40 @@ export function floorOrder(lineups, side) {
 }
 
 // What was true before tip-off. A watched game has already been simmed into
-// the league — records, season stats and injuries all include tonight — so
-// the pre-game card takes tonight back out. Showing the live numbers would
+// the league — records, season stats and injuries can all include tonight —
+// so the pre-game card takes tonight back out. Showing the live numbers would
 // tell you who won (a record that's already moved) before the opening tip.
-export function pregame(game, home, away) {
+//
+// Games don't all count the same way, so the caller says how this one does:
+//   records         'subtract' — tonight is in the W-L (regular season, the
+//                   play-in); 'asis' — it isn't (an NBA Cup knockout); false —
+//                   no record to show (the playoffs, which show the series;
+//                   the All-Star Game; a replay, whose pre-game record is gone)
+//   tonightInStats  whether tonight's line is in season stats (regular season)
+//   showOut         the injury list — not for a replay, whose injuries are
+//                   today's, not that night's
+export function pregame(game, home, away, { records = 'subtract', tonightInStats = true, showOut = true } = {}) {
   const homeWon = game.homePts > game.awayPts;
   const lines = new Map([...(game.homeBox ?? []), ...(game.awayBox ?? [])].map((l) => [l.playerId, l]));
   const hurtTonight = new Set((game.injuryReport ?? []).map((e) => e.playerId));
-  const side = (team, won, key) => ({
-    w: team.wins - (won ? 1 : 0),
-    l: team.losses - (won ? 0 : 1),
-    starters: (game.lineups?.[0]?.[key] ?? []).map((id) => {
-      const p = team.roster.find((x) => x.id === id);
-      const l = lines.get(id);
-      const played = l && l.min > 0;
-      const gp = (p?.stats?.gp ?? 0) - (played ? 1 : 0);
-      const pts = (p?.stats?.pts ?? 0) - (played ? l.pts : 0);
-      return { id, name: p?.name ?? '', pos: p?.pos ?? '', ppg: gp > 0 ? pts / gp : null };
-    }),
-    out: team.roster.filter((p) => p.injury && !hurtTonight.has(p.id)).map((p) => p.name),
-  });
+  const side = (team, won, key) => {
+    const back = records === 'subtract' ? 1 : 0;
+    const w = records ? (team.wins ?? 0) - (won ? back : 0) : null;
+    const l = records ? (team.losses ?? 0) - (won ? 0 : back) : null;
+    return {
+      w,
+      l,
+      record: records ? `${w}–${l}` : null,
+      starters: (game.lineups?.[0]?.[key] ?? []).map((id) => {
+        const p = team.roster.find((x) => x.id === id);
+        const line = lines.get(id);
+        const played = tonightInStats && line && line.min > 0;
+        const gp = (p?.stats?.gp ?? 0) - (played ? 1 : 0);
+        const pts = (p?.stats?.pts ?? 0) - (played ? line.pts : 0);
+        return { id, name: p?.name ?? '', pos: p?.pos ?? '', ppg: gp > 0 ? pts / gp : null };
+      }),
+      out: showOut ? team.roster.filter((p) => p.injury && !hurtTonight.has(p.id)).map((p) => p.name) : [],
+    };
+  };
   return { home: side(home, homeWon, 'home'), away: side(away, !homeWon, 'away') };
 }

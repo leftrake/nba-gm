@@ -31,10 +31,10 @@ function TeamHead({ team, record }) {
   );
 }
 
-export function TipOffCard({ home, away, pre, onStart }) {
+export function TipOffCard({ home, away, pre, onStart, kicker = 'Tip-off', subtitle = null }) {
   const side = (team, s) => (
     <div className="live-card-side">
-      <TeamHead team={team} record={`${s.w}–${s.l}`} />
+      <TeamHead team={team} record={s.record} />
       <div className="live-card-label">Starting five</div>
       <ul className="live-card-list">
         {s.starters.map((p) => (
@@ -52,8 +52,9 @@ export function TipOffCard({ home, away, pre, onStart }) {
   );
   return (
     <div className="live-card" role="dialog" aria-label="Tip-off">
-      <div className="live-card-kicker">Tip-off</div>
+      <div className="live-card-kicker">{kicker}</div>
       <div className="live-card-title">{away.name} at {home.name}</div>
+      {subtitle && <div className="live-card-center live-card-muted">{subtitle}</div>}
       <div className="live-card-cols">
         {side(away, pre.away)}
         {side(home, pre.home)}
@@ -96,7 +97,7 @@ export function BreakCard({ title, home, away, score, period, leaders, notes, on
   );
 }
 
-export function FinalCard({ home, away, score, top, notes }) {
+export function FinalCard({ home, away, score, top, notes, note = null }) {
   const winner = score.home > score.away ? home : away;
   return (
     <div className="live-card" role="dialog" aria-label="Final">
@@ -106,7 +107,7 @@ export function FinalCard({ home, away, score, top, notes }) {
         <span className="live-card-muted">–</span>
         <span className="live-card-big">{score.home}</span><TeamHead team={home} />
       </div>
-      <div className="live-card-center live-card-muted">{winner.city} {winner.name} win</div>
+      <div className="live-card-center live-card-muted">{note ?? `${winner.city} ${winner.name} win`}</div>
       <div className="live-card-cols">
         {[[away, top.away], [home, top.home]].map(([team, lines]) => (
           <div key={team.id} className="live-card-side">
