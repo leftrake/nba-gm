@@ -1444,6 +1444,59 @@ button.slot-pick:hover { border-color: var(--accent); }
 .court-tag { animation: court-tag-in 220ms ease-out both; }
 @keyframes court-tag-in { from { opacity: 0; } to { opacity: 1; } }
 
+/* Focused on open so the keyboard reaches it; no ring for that. */
+.live-modal:focus { outline: none; }
+
+/* The line score's periods double as jump buttons. */
+.live-period {
+  text-align: center; background: none; border: none; padding: 2px 4px; border-radius: var(--radius-sm);
+  color: inherit; font: inherit; cursor: pointer;
+}
+.live-period:hover, .live-period:focus-visible { background: var(--surface-2, rgba(255,255,255,.06)); }
+/* Timeline: a scrubber the width of the viewer, quarters ticked under it. */
+.live-timeline { position: relative; padding: var(--sp-2) 0 14px; }
+.live-timeline input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.live-timeline-ticks { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; pointer-events: none; }
+.live-timeline-ticks span {
+  position: absolute; transform: translateX(-50%); font-size: 10px; line-height: 12px; color: var(--text-muted);
+}
+.live-timeline-ticks span::before {
+  content: ''; position: absolute; left: 50%; top: -9px; width: 1px; height: 6px; background: var(--text-muted);
+}
+.live-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: var(--sp-2); }
+.live-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; padding: 0 4px; }
+.live-help-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: var(--text-sm); }
+.live-help-list dt { text-align: right; white-space: nowrap; }
+.live-help-list dd { margin: 0; color: var(--text-secondary); }
+.live-help-list kbd {
+  display: inline-block; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; font: 600 var(--text-xs) / 1.4 var(--font-mono, ui-monospace, monospace); color: var(--text-primary);
+}
+
+/* Reduced motion, app-wide — from the system setting, or the app's own
+   switch (Settings), which puts .reduce-motion on <html>. Anything that
+   moves for its own sake becomes an instant change. Nothing that carries
+   information is lost: the court still shows everyone where they are, it
+   just cuts between plays instead of gliding (the ball's flight, which runs
+   on the Web Animations API, checks the same setting in ArenaCourt). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .confetti { display: none !important; }
+}
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+.reduce-motion .confetti { display: none !important; }
+.reduce-motion .court-swish, .reduce-motion .court-clank { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .live-score--pop, .live-banner, .live-card, .court-points, .court-tag { animation: none; }
   /* A ring that only means something while it expands — without the motion, drop it. */

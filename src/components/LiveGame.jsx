@@ -7,6 +7,8 @@ import {
 import ArenaCourt, { KitSwatch } from './ArenaCourt.jsx';
 import { TipOffCard, BreakCard, FinalCard, HighlightBanner } from './LiveCards.jsx';
 import { BoxTable } from './BoxScore.jsx';
+import { useLivePrefs, getLivePrefs, setLivePrefs, LIVE_SPEEDS } from './livePrefs.js';
+import { playSound, primeSound } from './liveSound.js';
 
 // Watch a game unfold play by play.
 //
@@ -37,7 +39,7 @@ const MAX_PLAY_MS = 2400;   // a dead-ball stretch shouldn't stall
 const FLOOR_MS = { shot: 1100, ft: 950, reb: 650, blk: 650, stl: 700, tov: 700, foul: 800 };
 const FLOOR_DEFAULT_MS = 500;
 const WINDOW = 60;          // plays kept on screen; the full log is in the box score after
-const SPEEDS = [1, 2, 4];
+const SPEEDS = LIVE_SPEEDS;
 
 // A beat after a result lands, before the next play starts moving: long
 // enough to watch a basket drop and the score change, and to register a
@@ -54,6 +56,20 @@ const dwellMs = (p, next) => (
 const TIPOFF_MS = 4500;
 const BREAK_MS = 3000;
 const BANNER_MS = 2600;
+
+// The keyboard, as the help card lists it.
+const SHORTCUTS = [
+  ['Space', 'Play / pause — or go on past a card'],
+  ['← →', 'Back / forward a play'],
+  ['N', 'Next basket'],
+  ['R', 'Instant replay: the last possession again'],
+  ['1 2 3', '1x · 2x · 4x'],
+  ['C B P', 'Court · box score · play-by-play'],
+  ['M', 'Sound on / off'],
+  ['Enter', 'Go on past a card; close at the final'],
+  ['Esc', 'Close at the final'],
+  ['?', 'This list'],
+];
 
 const playMs = (play, gapSec, speed) =>
   Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, (gapSec ?? 4) * MS_PER_GAME_SEC))
@@ -74,10 +90,15 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   // motion into the time after — so the run between possessions (the longest
   // gaps) spilled into the next few plays, and free throws went up mid-pan.
   const [stage, setStage] = useState({ k: 0, ms: 320 });
-  const [speed, setSpeed] = useState(1); // 0 = paused
+  // Speed starts where you last left it (livePrefs.js); 0 = paused.
+  const [speed, setSpeed] = useState(() => getLivePrefs().speed);
   const [card, setCard] = useState(null);     // tip-off / break card holding play
   const [banner, setBanner] = useState(null); // a highlight riding along with play
-  const speedRef = useRef(1);
+  const [help, setHelp] = useState(false);    // the keyboard card
+  const speedRef = useRef(speed);
+  const prefs = useLivePrefs();
+  const prefsRef = useRef(prefs);             // the loop reads this, not a stale closure
+  prefsRef.current = prefs;
   // Playback position lives in a ref, not just state: the loop and "skip to
   // final" both move it, and a loop counting on its own local would overwrite
   // a skip on its very next tick.
@@ -93,10 +114,11 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     onFinish?.();
   };
 
-  // A pause in playback that a button can cut short.
+  // A pause in playback that a button can cut short. Infinity holds until
+  // one does (pausing at every break, if that's the setting).
   const hold = (ms) => new Promise((resolve) => {
     const done = () => { clearTimeout(timer); holdRef.current = null; resolve(); };
-    const timer = setTimeout(done, ms);
+    const timer = Number.isFinite(ms) ? setTimeout(done, ms) : null;
     holdRef.current = done;
   });
   const endHold = () => holdRef.current?.();
@@ -144,12 +166,43 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     [game],
   );
 
+  // What a condensed game stops to show: baskets, the sim's highlights, and
+  // the last play of each period (so the breaks still come). Everything in
+  // between lands at once.
+  const keyPlays = useMemo(() => {
+    const keys = new Set();
+    plays.forEach((p, i) => { if (p.k === 'shot' && p.m) keys.add(i); });
+    for (const i of highlights.byPlay.keys()) keys.add(i);
+    for (const b of breaks) keys.add(b.i);
+    return keys;
+  }, [plays, highlights, breaks]);
+  const keyRef = useRef(keyPlays);
+  keyRef.current = keyPlays;
+
   // Playback loop. Mirrors Calendar's animatedSimTo: a local counter drives
   // the async loop so no tick reads a stale closure, and the cleanup flag
   // stops it if this unmounts mid-game.
+  //
+  // It runs for as long as the viewer is open, not only until the last play:
+  // the position can be moved under it — the timeline, a jump, an instant
+  // replay, rewinding from the final — and wherever it lands, play carries
+  // on from there.
   useEffect(() => {
     if (!plays.length) return undefined;
     let cancelled = false;
+    // Wait `ms` of playing time. The clock stops while paused — so a pause
+    // freezes the game where it is instead of letting the play in flight land
+    // — and the wait gives up the moment the position moves (a seek).
+    const playFor = async (ms, at) => {
+      let left = ms;
+      while (left > 0) {
+        if (cancelled || posRef.current !== at) return false;
+        const tick = Math.min(left, 50);
+        await delay(tick);
+        if (speedRef.current !== 0) left -= tick;
+      }
+      return !cancelled && posRef.current === at;
+    };
     (async () => {
       // The matchup first: until "Tip off", or a few seconds.
       if (posRef.current === 0) {
@@ -158,38 +211,78 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
         if (cancelled) return;
         setCard(null);
       }
-      while (!cancelled && posRef.current < plays.length) {
+      while (!cancelled) {
         const s = speedRef.current;
-        if (s === 0) { await delay(120); continue; } // paused
+        const k = posRef.current;
+        if (s === 0 || k >= plays.length) { await delay(120); continue; } // paused, or at the final
+        // Condensed: everything up to the next play worth showing lands at
+        // once, and only that one is acted out.
+        if (prefsRef.current.condensed && !keyRef.current.has(k)) {
+          let j = k;
+          while (j < plays.length && !keyRef.current.has(j)) j++;
+          posRef.current = j;
+          setIdx(j);
+          setStage({ k: Math.max(0, Math.min(plays.length - 1, j - 1)), ms: 200 });
+          await delay(220 / s); // a beat, so the jump reads as a cut
+          continue;
+        }
         // The wait before a play is that play's own share of the game clock,
         // and the court spends it acting the play out; motion gets 90% so it
         // has landed by the reveal.
-        const k = posRef.current;
         const wait = playMs(plays[k], framesRef.current[k]?.gap, s);
         setStage({ k, ms: wait * 0.9 });
-        await delay(wait);
-        // Re-check after the wait: a skip may have landed mid-delay.
-        if (cancelled || posRef.current !== k) return;
+        if (!(await playFor(wait, k))) { if (cancelled) return; continue; } // moved: carry on from there
         posRef.current = k + 1;
         setIdx(k + 1);
         // Let it land before the next play starts moving.
         const dwell = dwellMs(plays[k], plays[k + 1]) / Math.max(1, speedRef.current);
-        if (dwell) {
-          await delay(dwell);
-          if (cancelled || posRef.current !== k + 1) return;
-        }
-        // End of a period: a beat before the next one starts.
+        if (dwell && !(await playFor(dwell, k + 1))) { if (cancelled) return; continue; }
+        // End of a period: a beat before the next one starts — or, if that's
+        // the setting, a stop until Continue.
         const brk = breakAtRef.current.get(k);
         if (brk && !brk.final) {
           setCard({ kind: 'break', brk });
-          await hold(Math.max(900, BREAK_MS / Math.max(1, speedRef.current)));
-          if (cancelled || posRef.current !== k + 1) return;
+          await hold(prefsRef.current.pauseAtBreaks ? Infinity : Math.max(900, BREAK_MS / Math.max(1, speedRef.current)));
+          if (cancelled) return;
+          if (posRef.current !== k + 1) continue;
           setCard(null);
         }
       }
     })();
     return () => { cancelled = true; endHold(); };
   }, [plays]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sound for the play just revealed, when it's on — only in sequence: a jump
+  // reveals plays in a lump, and a lump of swishes is just noise.
+  const heardRef = useRef(0);
+  useEffect(() => {
+    const prev = heardRef.current;
+    heardRef.current = idx;
+    if (!prefsRef.current.sound || idx !== prev + 1) return;
+    const i = idx - 1;
+    const p = plays[i];
+    if (p.k === 'shot' || p.k === 'ft') {
+      if (p.m) playSound('swish');
+      else if (!framesRef.current[i]?.blocked) playSound('rim');
+    } else if (p.k === 'blk') playSound('block');
+    if (breakAtRef.current.has(i)) playSound('buzzer');
+    if (highlights.byPlay.get(i)?.some((e) => e.k === 'run' || e.k === 'clutch')) playSound('crowd');
+  }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The keyboard. One listener for the viewer's lifetime, calling whatever
+  // the latest render set up (below the early return, where it can see
+  // everything it needs).
+  const keysRef = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => keysRef.current?.(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  // Focus moves into the viewer when it opens, as a dialog's should — left on
+  // the button that opened it (now behind the viewer), Space would press
+  // that button again instead of pausing the game.
+  const modalRef = useRef(null);
+  useEffect(() => { modalRef.current?.focus(); }, []);
 
   // A highlight rides along for a couple of seconds without stopping play.
   // Its timer isn't tied to `idx`: the next play usually lands well before
@@ -254,12 +347,80 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   const curPeriodIdx = idx > 0 ? periodOrder.indexOf(cur.q) : 0;
 
   const setSpeedBoth = (s) => { speedRef.current = s; setSpeed(s); };
-  const skipToEnd = () => {
-    posRef.current = plays.length;
+  // A speed you pick is the one the next game starts at.
+  const chooseSpeed = (s) => { setSpeedBoth(s); setLivePrefs({ speed: s }); };
+  const togglePause = () => setSpeedBoth(speed === 0 ? 1 : 0);
+
+  // Move playback to just before play `i`: everything before it revealed,
+  // the court on the last of those, any card holding play let go. The loop
+  // carries on from there — or stays paused.
+  const seekTo = (i, ms = 250) => {
+    const t = Math.max(0, Math.min(plays.length, i));
+    posRef.current = t;
     endHold();
     setCard(null);
-    setStage({ k: plays.length - 1, ms: 320 });
-    setIdx(plays.length);
+    setIdx(t);
+    setStage({ k: Math.max(0, Math.min(plays.length - 1, t - 1)), ms });
+  };
+  const skipToEnd = () => seekTo(plays.length, 320);
+  // A play at a time, paused, slow enough to see what happened.
+  const step = (d) => { setSpeedBoth(0); seekTo(posRef.current + d, 600); };
+  const nextBasket = () => {
+    for (let i = posRef.current; i < plays.length; i++) {
+      if ((plays[i].k === 'shot' || plays[i].k === 'ft') && plays[i].m) {
+        seekTo(i);
+        if (speedRef.current === 0) setSpeedBoth(1);
+        return;
+      }
+    }
+  };
+  // Instant replay: back to the start of the possession just shown, at 1x.
+  const replay = () => {
+    const last = posRef.current - 1;
+    if (last < 0) return;
+    let j = last;
+    while (j > 0 && plays[j - 1].n === plays[last].n) j--;
+    seekTo(j);
+    setSpeedBoth(1);
+  };
+  const toggleSound = () => {
+    const on = !prefs.sound;
+    if (on) primeSound(); // inside the click, so the browser lets audio start
+    setLivePrefs({ sound: on });
+  };
+
+  // Where each period starts, for the line score and the timeline. Overtime
+  // only appears once it's reached — shown from tip-off, an OT column or
+  // tick would give the ending away.
+  const periodStart = (i) => (i === 0 ? 0 : (breaks[i - 1]?.i ?? plays.length - 1) + 1);
+  const shownPeriods = periodOrder.map((q, i) => ({ q, i, at: periodStart(i) }))
+    .filter((pd) => pd.i < 4 || idx >= pd.at || done);
+  // The timeline likewise stops at the end of regulation until then.
+  const regEnd = breaks.find((b) => b.per === 3 && !b.final);
+  const timelineMax = regEnd && idx < regEnd.i + 1 ? regEnd.i + 1 : plays.length;
+  const lastTwo = plays.findIndex((p) => p.q === 'Q4' && (p.sec ?? Infinity) <= 120);
+
+  keysRef.current = (e) => {
+    const tag = e.target?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (tag === 'BUTTON' && e.key === 'Enter') return; // a focused button's own Enter
+    const k = e.key;
+    let handled = true;
+    if (k === ' ') { if (card) endHold(); else if (!done) togglePause(); }
+    else if (k === 'ArrowRight') step(1);
+    else if (k === 'ArrowLeft') step(-1);
+    else if (k === 'n' || k === 'N') nextBasket();
+    else if (k === 'r' || k === 'R') replay();
+    else if (k === '1' || k === '2' || k === '3') chooseSpeed(SPEEDS[+k - 1]);
+    else if (k === 'c' || k === 'C') setView('court');
+    else if (k === 'b' || k === 'B') setView('box');
+    else if (k === 'p' || k === 'P') setView('feed');
+    else if (k === 'm' || k === 'M') toggleSound();
+    else if (k === 'Enter') { if (card) endHold(); else if (done) finish(); else handled = false; }
+    else if (k === 'Escape') { if (help) setHelp(false); else if (done || ctx?.replay) finish(); else handled = false; }
+    else if (k === '?') setHelp((h) => !h);
+    else handled = false;
+    if (handled) e.preventDefault();
   };
 
   const homeColor = safeAccent(home.color);
@@ -336,7 +497,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     // and show tonight's result behind the viewer. Covering the app entirely
     // is what keeps the game unspoiled until Continue.
     <div className="ui-modal-overlay live-overlay" style={{ background: 'var(--surface-0)' }}>
-      <div className="ui-modal ui-modal--wide live-modal" role="dialog" aria-modal="true">
+      <div className="ui-modal ui-modal--wide live-modal" role="dialog" aria-modal="true" ref={modalRef} tabIndex={-1}>
 
         {/* Scoreboard. Each score is keyed by its value, so a basket remounts it
             and the pop plays. */}
@@ -385,18 +546,23 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
           </div>
         </div>
 
-        {/* Line score — a quarter fills in once play moves past it */}
+        {/* Line score — a quarter fills in once play moves past it, and each
+            one jumps to its start */}
         {periodOrder.length > 0 && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-2) 0', borderBottom: '1px solid var(--border)', fontSize: 'var(--text-sm)' }}>
-            {periodOrder.map((q, i) => (
-              <div key={q} style={{ textAlign: 'center', opacity: i <= curPeriodIdx ? 1 : 0.3 }}>
+            {shownPeriods.map(({ q, i, at }) => (
+              <button
+                key={q} type="button" className="live-period" onClick={() => seekTo(at)}
+                title={`Jump to the start of ${q}`}
+                style={{ opacity: i <= curPeriodIdx ? 1 : 0.3 }}
+              >
                 <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{q}</div>
                 <div style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {i < curPeriodIdx || done
                     ? `${game.awayQtrs?.[i] ?? '–'}–${game.homeQtrs?.[i] ?? '–'}`
                     : i === curPeriodIdx ? '·' : '–'}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -498,6 +664,22 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
           </div>
           )}
 
+          {help && (
+            <div className="live-card-scrim" onClick={() => setHelp(false)}>
+              <div className="live-card live-help" role="dialog" aria-label="Keyboard shortcuts" onClick={(e) => e.stopPropagation()}>
+                <div className="live-card-kicker">Keyboard</div>
+                <dl className="live-help-list">
+                  {SHORTCUTS.map(([keys, what]) => (
+                    <React.Fragment key={keys}><dt><kbd>{keys}</kbd></dt><dd>{what}</dd></React.Fragment>
+                  ))}
+                </dl>
+                <div className="live-card-actions">
+                  <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => setHelp(false)}>Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* The beats around play: tip-off, breaks, the result. */}
           {(card?.kind === 'tipoff' || breakCard || done) && (
             <div className="live-card-scrim">
@@ -517,6 +699,39 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
           )}
         </div>
 
+        {/* Timeline: drag or click to move through the game, quarters marked.
+            The range input carries the keyboard too (arrows, Home, End). */}
+        <div className="live-timeline">
+          <input
+            type="range" min={0} max={timelineMax} step={1} value={Math.min(idx, timelineMax)}
+            onChange={(e) => seekTo(+e.target.value)}
+            aria-label="Game timeline" aria-valuetext={idx > 0 ? `${cur.q} ${cur.t}` : 'Tip-off'}
+          />
+          <div className="live-timeline-ticks" aria-hidden="true">
+            {shownPeriods.filter((pd) => pd.at > 0 && pd.at < timelineMax).map((pd) => (
+              <span key={pd.q} style={{ left: `${(pd.at / timelineMax) * 100}%` }}>{pd.q}</span>
+            ))}
+          </div>
+        </div>
+        <div className="live-tools">
+          <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={replay} disabled={idx === 0} title="Instant replay: the last possession again (R)">⟲ Replay</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={nextBasket} disabled={done} title="Next basket (N)">Next basket ▸</button>
+          {lastTwo > 0 && (
+            <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => seekTo(lastTwo)} title="The last two minutes of regulation">Last 2:00</button>
+          )}
+          <label className="live-toggle" title="Only baskets and highlights; everything else lands at once">
+            <input type="checkbox" checked={prefs.condensed} onChange={(e) => setLivePrefs({ condensed: e.target.checked })} />
+            Condensed
+          </label>
+          <button
+            className="ui-btn ui-btn--secondary ui-btn--sm" onClick={toggleSound} aria-pressed={prefs.sound}
+            title={prefs.sound ? 'Sound on — turn off (M)' : 'Sound off — turn on (M)'} aria-label={prefs.sound ? 'Sound on' : 'Sound off'}
+          >
+            {prefs.sound ? 'Sound on' : 'Sound off'}
+          </button>
+          <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setHelp((h) => !h)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+        </div>
+
         {/* Transport */}
         <div className="controls" style={{ paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--border)', marginBottom: 0 }}>
           {done ? (
@@ -525,7 +740,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
             <>
               <button
                 className="ui-btn ui-btn--secondary ui-btn--md"
-                onClick={() => setSpeedBoth(speed === 0 ? 1 : 0)}
+                onClick={togglePause}
               >
                 {speed === 0 ? '▶ Play' : '❙❙ Pause'}
               </button>
@@ -533,7 +748,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
                 <button
                   key={s}
                   className={`ui-btn ui-btn--md ${speed === s ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
-                  onClick={() => setSpeedBoth(s)}
+                  onClick={() => chooseSpeed(s)}
                 >
                   {s}x
                 </button>

@@ -7,6 +7,7 @@ import { onFantasyClock, simFantasyPick, simFantasyRound, simFantasyToUser, auto
 import Dashboard from './components/Dashboard.jsx';
 import LiveGame from './components/LiveGame.jsx';
 import { canWatch, forViewer, playoffContext } from './components/watchGame.js';
+import { useLivePrefs } from './components/livePrefs.js';
 import News from './components/News.jsx';
 import Roster from './components/Roster.jsx';
 import FuturePayroll from './components/FuturePayroll.jsx';
@@ -68,6 +69,11 @@ const initialSave = loadSave();
 // the user ever saw it) — don't surface the first-session tour mid-game.
 if (initialSave.league && !isWalkthroughDone()) markWalkthroughDone();
 
+// Shown beside a sim button that auto-watch has turned into a Watch.
+function AutoWatchNote() {
+  return <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', alignSelf: 'center' }}>Auto-watch is on: sims stop at your games.</span>;
+}
+
 export default function App() {
   const [league, setLeagueState] = useState(initialSave.league);
   const [screen, setScreen] = useState('dashboard');
@@ -103,6 +109,13 @@ export default function App() {
   // is already simmed into leagueRef when this is set, but deliberately not
   // committed — onFinish is what reveals the result. See LiveGame.jsx.
   const [liveGame, setLiveGame] = useState(null);
+  // How the user likes to watch (a browser preference, like the theme).
+  // Reduce motion applies app-wide as a class on <html>; the system setting
+  // is honored by CSS on its own.
+  const livePrefs = useLivePrefs();
+  useEffect(() => {
+    document.documentElement.classList.toggle('reduce-motion', !!livePrefs.reduceMotion);
+  }, [livePrefs.reduceMotion]);
   const [tradePrefill, setTradePrefill] = useState(null); // { otherId, give, get, key }
   const [pendingTeamId, setPendingTeamId] = useState(null); // new-game team selection, pending mode choice
   const [fantasyMode, setFantasyMode] = useState(false);
@@ -595,6 +608,11 @@ export default function App() {
     });
   };
 
+  // Auto-watch (Settings → Live Games): a sim never runs past one of the
+  // user's games — it stops there and plays that game in the viewer. With a
+  // game of theirs up next, every sim button here watches it instead.
+  const watchFirst = (userPlays, watch, sim) => (livePrefs.autoWatch && userPlays ? watch : sim);
+
   // Whether the user's team plays in the next playoff night, play-in stage or
   // Cup round — the only times there's a game of theirs to watch.
   const uid = league.userTeamId;
@@ -735,30 +753,33 @@ export default function App() {
       <main>
         {league.phase === 'cup' && (
           <div className="controls">
-            <button className="btn" onClick={handleSimCupGame}>
+            <button className="btn" onClick={watchFirst(userInNextCupRound, handleWatchCupGame, handleSimCupGame)}>
               {league.cup?.bracket?.round === 0 ? 'Sim Cup Quarterfinals' :
                league.cup?.bracket?.round === 1 ? 'Sim Cup Semifinals' :
                league.cup?.bracket?.round === 2 ? 'Sim Cup Final' : 'Cup Complete'}
             </button>
-            {userInNextCupRound && <button className="btn secondary" onClick={handleWatchCupGame}>Watch ▶</button>}
+            {userInNextCupRound && !livePrefs.autoWatch && <button className="btn secondary" onClick={handleWatchCupGame}>Watch ▶</button>}
+            {userInNextCupRound && livePrefs.autoWatch && <AutoWatchNote />}
           </div>
         )}
         {league.phase === 'play-in' && (
           <div className="controls">
-            <button className="btn" onClick={handleSimPlayIn}>
+            <button className="btn" onClick={watchFirst(userInNextPlayIn, handleWatchPlayIn, handleSimPlayIn)}>
               {league.playIn?.complete ? 'View Playoff Bracket' :
                league.playIn?.stage === 0 ? 'Sim Play-In: 7 vs. 8' :
                league.playIn?.stage === 1 ? 'Sim Play-In: 9 vs. 10' :
                'Sim Play-In: Last Chance Game'}
             </button>
-            {userInNextPlayIn && <button className="btn secondary" onClick={handleWatchPlayIn}>Watch ▶</button>}
+            {userInNextPlayIn && !livePrefs.autoWatch && <button className="btn secondary" onClick={handleWatchPlayIn}>Watch ▶</button>}
+            {userInNextPlayIn && livePrefs.autoWatch && <AutoWatchNote />}
           </div>
         )}
         {league.phase === 'playoffs' && (
           <div className="controls">
-            <button className="btn" onClick={handleSimPlayoffGame}>Sim Next Playoff Game</button>
-            {userInNextPlayoffNight && <button className="btn secondary" onClick={handleWatchPlayoffGame}>Watch ▶</button>}
-            <button className="btn secondary" onClick={handleSimPlayoffRound}>Sim Playoff Round</button>
+            <button className="btn" onClick={watchFirst(userInNextPlayoffNight, handleWatchPlayoffGame, handleSimPlayoffGame)}>Sim Next Playoff Game</button>
+            {userInNextPlayoffNight && !livePrefs.autoWatch && <button className="btn secondary" onClick={handleWatchPlayoffGame}>Watch ▶</button>}
+            <button className="btn secondary" onClick={watchFirst(userInNextPlayoffNight, handleWatchPlayoffGame, handleSimPlayoffRound)}>Sim Playoff Round</button>
+            {userInNextPlayoffNight && livePrefs.autoWatch && <AutoWatchNote />}
           </div>
         )}
         {league.phase === 'offseason/draft' && screen !== 'dashboard' && (

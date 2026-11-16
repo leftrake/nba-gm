@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { courtKit } from '../engine/colorUtils.js';
+import { motionReduced } from './livePrefs.js';
 
 // The court. Frames arrive in full-court feet (liveFrames.js): x -25..25
 // across, y 0..94 from the bottom baseline, each team attacking one basket.
@@ -119,8 +120,9 @@ function Ball({ path, ms }) {
   msRef.current = ms;
 
   useLayoutEffect(() => {
-    // A single point is a ball at rest — nothing to fly.
-    if (!path || path.length < 2 || !ballRef.current?.animate) return undefined;
+    // A single point is a ball at rest — nothing to fly. With reduced motion
+    // it doesn't fly either: it's simply where the play left it.
+    if (!path || path.length < 2 || !ballRef.current?.animate || motionReduced()) return undefined;
     // Time is shared out by distance so the ball keeps a steady pace; time in
     // the air counts extra, or a short jumper's arc is over before it's seen.
     const legs = path.slice(1).map((w, i) => {

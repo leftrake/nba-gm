@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLivePrefs } from './livePrefs.js';
 import {
   getTeam, dateForDay, dayIndexForDate, simDay, getLeagueEvents, weeklyRecapNews,
   CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS,
@@ -30,6 +31,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
   const todayDate = dateForDay(league, clamp(league.dayIndex, 0, lastDi));
 
   const [view, setView] = useState(() => ({ year: todayDate.getFullYear(), month: todayDate.getMonth() }));
+  const { autoWatch } = useLivePrefs();
 
   // Keep the visible month in sync with the in-game date as days are simmed,
   // so the user doesn't have to manually page the calendar forward.
@@ -166,6 +168,17 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     if (there) watchTodaysGame();
   };
 
+  // Every sim button goes through here. With auto-watch on, a sim never runs
+  // past one of the user's games: it stops on the day of the next one and
+  // plays it in the viewer — unless something on the way cut it short.
+  const simTo = async (target, opts) => {
+    const game = autoWatch && startWatch ? nextGameDay() : null;
+    if (game == null || (target != null && target <= game)) return animatedSimTo(target, opts);
+    const there = game <= leagueRef.current.dayIndex || await animatedSimTo(game, { ...opts, stopAtGame: false });
+    if (there) watchTodaysGame();
+    return there;
+  };
+
   const nextEventDay = () => {
     const candidates = [CHRISTMAS_DAY, TRADE_DEADLINE_DAY, ALL_STAR_DAYS[0], league.schedule.length]
       .filter((d) => d > league.dayIndex);
@@ -196,19 +209,22 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
     <div>
       {league.phase === 'regular' && (
         <div className="controls" data-tour="sim-controls">
-          <button className="ui-btn ui-btn--primary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(league.dayIndex + 1)}>
-            {todayHasGame ? 'Simulate Game' : 'Next Day'}
+          <button className="ui-btn ui-btn--primary ui-btn--md" disabled={simDisabled} onClick={() => simTo(league.dayIndex + 1)}>
+            {todayHasGame ? (autoWatch && startWatch ? 'Watch Game ▶' : 'Simulate Game') : 'Next Day'}
           </button>
-          {todayHasGame && (
+          {todayHasGame && !autoWatch && (
             <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={watchTodaysGame}>Watch ▶</button>
           )}
-          {!todayHasGame && startWatch && nextGameDay() != null && (
+          {!todayHasGame && !autoWatch && startWatch && nextGameDay() != null && (
             <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={watchNextGame}>Watch Next Game ▶</button>
           )}
-          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(null, { stopAtGame: true })}>Sim Next Game</button>
-          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(nextEventDay())}>Sim to Next Event</button>
-          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => animatedSimTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => simTo(null, { stopAtGame: true })}>Sim Next Game</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => simTo(nextEventDay())}>Sim to Next Event</button>
+          <button className="ui-btn ui-btn--secondary ui-btn--md" disabled={simDisabled} onClick={() => simTo(Math.min(league.dayIndex + 7, league.schedule.length), { weeklyRecap: true })}>Sim Week</button>
           {animating && <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => { skipRef.current = true; }}>Skip ▸▸</button>}
+          {autoWatch && startWatch && !animating && (
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', alignSelf: 'center' }}>Auto-watch is on: sims stop at your games.</span>
+          )}
           {animating && <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={() => { stopRef.current = true; }}>Stop ⏹</button>}
         </div>
       )}
@@ -320,7 +336,7 @@ export default function Calendar({ league, leagueRef, commit, openTeam, openGame
                   <div className="calendar-popover">
                     <p>Sim to {fmtDate(d)}?</p>
                     <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' }}>
-                      <button className="ui-btn ui-btn--primary ui-btn--sm" onClick={(e) => { e.stopPropagation(); animatedSimTo(di); }}>Sim</button>
+                      <button className="ui-btn ui-btn--primary ui-btn--sm" onClick={(e) => { e.stopPropagation(); simTo(di); }}>Sim</button>
                       <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={(e) => { e.stopPropagation(); setConfirmDay(null); }}>Cancel</button>
                     </div>
                   </div>

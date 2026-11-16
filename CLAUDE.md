@@ -211,6 +211,20 @@ The hard split is **engine vs. UI**:
     season's pattern: sim, open the viewer, and commit only when it closes.
     `simPlayInGame`, `simCupGame` and `simAllStarGame` hand back each game's
     full result as `full` for this; none of it goes into the save.
+
+    `LiveGame.jsx`'s playback loop runs for as long as the viewer is open
+    and follows one position (`posRef`), so the timeline, period jumps,
+    Next basket, instant replay and rewinding from the final all just move
+    that position and play carries on from it. Its waits count playing
+    time only, so a pause freezes the game mid-play.
+  - `livePrefs.js` — how the user likes to watch: starting speed, condensed
+    games, pausing at breaks, sound, auto-watch (a sim never runs past one
+    of the user's games), reduce motion. A browser preference under its own
+    localStorage key, like the theme — not part of the save. `motionReduced()`
+    is the check for motion driven from JS (the ball's flight); CSS honors
+    the system setting and the `.reduce-motion` class on `<html>` itself.
+  - `liveSound.js` — the viewer's sounds, synthesized with Web Audio (no
+    audio files), off unless the user turns them on.
   - `onboarding.jsx` — walkthrough + first-encounter tooltip system
     (`GuideTooltip`, `isWalkthroughDone`, `resetTutorial`, etc.).
 - `src/theme.js` — dark color themes + optional custom accent, stored as
