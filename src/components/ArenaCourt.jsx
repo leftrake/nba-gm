@@ -228,7 +228,19 @@ function NameTag({ at, kit, text, w, h, dx, dy, font, ms }) {
   );
 }
 
-// Exported so the legend under the court can show the same jerseys.
+// A player's disc off the court, number and all — the list beside the court
+// draws each one exactly as the court does, so a number on the floor finds
+// its name at a glance.
+export function JerseyDot({ kit, number, size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="-1.6 -1.6 3.2 3.2" style={{ display: 'block' }} aria-hidden="true">
+      <circle r="1.3" fill={kit.fill} stroke={kit.ring} strokeWidth={kit.ringWidth} />
+      <text y="0.45" textAnchor="middle" fill={kit.text} style={{ fontSize: 1.35, fontWeight: 700 }}>{number}</text>
+    </svg>
+  );
+}
+
+// Exported so the scoreboard and the list beside the court show the same jerseys.
 export function KitSwatch({ kit, size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="-1.6 -1.6 3.2 3.2" style={{ verticalAlign: '-2px' }}>

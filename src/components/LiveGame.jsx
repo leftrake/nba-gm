@@ -4,7 +4,7 @@ import { safeAccent, courtKit } from '../engine/colorUtils.js';
 import {
   buildFrames, placeHighlights, periodBreaks, liveBox, pregame, teamFoulsByPlay, floorOrder,
 } from './liveFrames.js';
-import ArenaCourt, { KitSwatch } from './ArenaCourt.jsx';
+import ArenaCourt, { KitSwatch, JerseyDot } from './ArenaCourt.jsx';
 import { TipOffCard, BreakCard, FinalCard, HighlightBanner } from './LiveCards.jsx';
 import { BoxTable } from './BoxScore.jsx';
 import { useLivePrefs, getLivePrefs, setLivePrefs, LIVE_SPEEDS } from './livePrefs.js';
@@ -70,6 +70,28 @@ const SHORTCUTS = [
   ['Esc', 'Close at the final'],
   ['?', 'This list'],
 ];
+
+// The ten on the floor, beside the court: [key, label, wide, value]. The
+// columns marked wide only show when the panel has room (a container query).
+const FLOOR_COLS = [
+  ['pts', 'PTS', false, (l) => l.pts],
+  ['reb', 'REB', false, (l) => l.reb],
+  ['ast', 'AST', false, (l) => l.ast],
+  ['stl', 'STL', true, (l) => l.stl],
+  ['blk', 'BLK', true, (l) => l.blk],
+  ['tov', 'TO', true, (l) => l.tov],
+  ['fg', 'FG', false, (l) => `${l.fgm}-${l.fga}`],
+  ['tp', '3P', true, (l) => `${l.tpm}-${l.tpa}`],
+  ['ft', 'FT', true, (l) => `${l.ftm}-${l.fta}`],
+  ['pf', 'PF', false, (l) => l.pf],
+  ['pm', '+/-', true, (l) => (l.pm > 0 ? `+${l.pm}` : l.pm)],
+];
+// Someone who's yet to do anything has no line in the live box.
+const BLANK_FLOOR_LINE = {
+  pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, pf: 0, pm: 0,
+};
+// Plays in the ticker beside the court; it shows as many as fit.
+const TICKER_PLAYS = 40;
 
 const playMs = (play, gapSec, speed) =>
   Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, (gapSec ?? 4) * MS_PER_GAME_SEC))
@@ -310,15 +332,12 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   const court = useMemo(() => {
     const f = frames[Math.min(stage.k, frames.length - 1)];
     if (!f?.players?.length) return null;
-    const teamFor = (side) => (side === 'home' ? home : away);
     return {
       ...f,
       // Made or missed is the play's result: it waits for the reveal.
       shot: frames[idx - 1]?.shot ?? null,
-      offenseTeam: teamFor(f.offSide),
-      defenseTeam: teamFor(f.defSide),
     };
-  }, [frames, stage.k, idx, home, away]);
+  }, [frames, stage.k, idx]);
 
   // The box as of the last play revealed — built only while it's on screen.
   const liveLines = useMemo(() => {
@@ -329,6 +348,13 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
       .map((id) => ({ ...box.get(id), min: Math.floor(box.get(id).min + 1e-9) }));
     return { home: side('home'), away: side('away') };
   }, [view, plays, idx, frames, game, order]);
+  // The lines beside the court: everyone's numbers as of the last play
+  // revealed, for the ten on the floor. +/- needs the frames; minutes would
+  // need the lineups, and aren't shown.
+  const floorBox = useMemo(
+    () => (view === 'court' ? liveBox(plays, idx, { frames }) : null),
+    [view, plays, idx, frames],
+  );
   // Injuries reach the box score as they happen, not before.
   const hurtSoFar = useMemo(() => {
     if (view !== 'box') return [];
@@ -439,6 +465,32 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   );
   const onFloor = new Set((frames[Math.max(0, idx - 1)]?.players ?? []).map((x) => x.id));
   const teamFor = (side) => (side === 'home' ? home : away);
+  // Home in white, away in colour, as on the court (courtKit).
+  const kitFor = (side) => courtKit(teamFor(side).color, side === 'home');
+  // A side's five as the court shows them, in the order they took the floor
+  // (floorOrder) so the list doesn't reshuffle with every basket.
+  const floorIds = (side) => {
+    const rank = (id) => { const r = order[side].indexOf(id); return r < 0 ? Infinity : r; };
+    return (court?.players ?? []).filter((x) => x.side === side).map((x) => x.id).sort((a, b) => rank(a) - rank(b));
+  };
+  // The scoreboard's badge carries the jersey the team wears on the court —
+  // the legend the court needs, without a line of its own under it.
+  const badge = (side) => (
+    <span className="live-badge" title={`${teamFor(side).name}: ${side === 'home' ? 'white' : 'team colors'} on the court`}>
+      <TeamBadge team={teamFor(side)} />
+      <span className="live-kit"><KitSwatch kit={kitFor(side)} size={14} /></span>
+    </span>
+  );
+  // Possession, scorebug-style: a ball beside the score of the team that has it.
+  const poss = !done && court ? court.offSide : null;
+  const possDot = (side) => (
+    <span
+      className={`live-poss${poss === side ? ' is-on' : ''}`}
+      role={poss === side ? 'img' : undefined}
+      aria-label={poss === side ? `${teamFor(side).name} ball` : undefined}
+      title={poss === side ? `${teamFor(side).name} have the ball` : undefined}
+    />
+  );
   const sideOfPlayer = (id) => (home.roster.some((p) => p.id === id) ? 'home' : 'away');
   const nameOf = (id) => rosterById.get(id)?.name ?? '';
 
@@ -503,12 +555,13 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
             and the pop plays. */}
         <div className="live-scoreboard">
           <div className="live-team live-team--away">
-            <TeamBadge team={away} />
+            {badge('away')}
             <div className="live-team-text">
               <div className="live-city">{away.city}</div>
               <div className="live-name">{away.name}</div>
               {foulLine('away')}
             </div>
+            {possDot('away')}
             <div
               key={`a${score.away}`}
               className={`live-score${score.away > 0 ? ' live-score--pop' : ''}`}
@@ -520,11 +573,11 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
 
           <div className="live-clock">
             {done ? (
-              <div style={{ fontWeight: 800, letterSpacing: 1, color: 'var(--text-primary)' }}>FINAL</div>
+              <span className="live-clock-final">FINAL</span>
             ) : (
               <>
-                <div style={{ fontWeight: 700 }}>{idx > 0 ? cur.q : 'Q1'}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>{idx > 0 ? cur.t : '12:00'}</div>
+                <span className="live-clock-q">{idx > 0 ? cur.q : 'Q1'}</span>
+                <span className="live-clock-t">{idx > 0 ? cur.t : '12:00'}</span>
               </>
             )}
           </div>
@@ -537,35 +590,37 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
             >
               {score.home}
             </div>
+            {possDot('home')}
             <div className="live-team-text">
               <div className="live-city">{home.city}</div>
               <div className="live-name">{home.name}</div>
               {foulLine('home')}
             </div>
-            <TeamBadge team={home} />
+            {badge('home')}
           </div>
-        </div>
 
-        {/* Line score — a quarter fills in once play moves past it, and each
-            one jumps to its start */}
-        {periodOrder.length > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-2) 0', borderBottom: '1px solid var(--border)', fontSize: 'var(--text-sm)' }}>
-            {shownPeriods.map(({ q, i, at }) => (
-              <button
-                key={q} type="button" className="live-period" onClick={() => seekTo(at)}
-                title={`Jump to the start of ${q}`}
-                style={{ opacity: i <= curPeriodIdx ? 1 : 0.3 }}
-              >
-                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{q}</div>
-                <div style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {i < curPeriodIdx || done
-                    ? `${game.awayQtrs?.[i] ?? '–'}–${game.homeQtrs?.[i] ?? '–'}`
-                    : i === curPeriodIdx ? '·' : '–'}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+          {/* Line score — a quarter fills in once play moves past it, and each
+              one jumps to its start. Under the clock on a computer, a row of
+              its own on a phone (CSS). */}
+          {periodOrder.length > 0 && (
+            <div className="live-linescore">
+              {shownPeriods.map(({ q, i, at }) => (
+                <button
+                  key={q} type="button" className="live-period" onClick={() => seekTo(at)}
+                  title={`Jump to the start of ${q}`}
+                  style={{ opacity: i <= curPeriodIdx ? 1 : 0.3 }}
+                >
+                  <div className="live-period-q">{q}</div>
+                  <div className="live-period-score">
+                    {i < curPeriodIdx || done
+                      ? `${game.awayQtrs?.[i] ?? '–'}–${game.homeQtrs?.[i] ?? '–'}`
+                      : i === curPeriodIdx ? '·' : '–'}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="live-stage">
           {/* Court */}
@@ -598,30 +653,62 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
                     color={safeAccent(teamFor(banner.events[0].side ?? (sideOfPlayer(banner.events[0].p)))?.color)}
                   />
                 )}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--sp-4)', marginTop: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
-                  <span style={{ fontWeight: 700 }}>
-                    <KitSwatch kit={courtKit(court.offenseTeam.color, court.offenseTeam.id === home.id)} /> {court.offenseTeam.name} on offense
-                  </span>
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    <KitSwatch kit={courtKit(court.defenseTeam.color, court.defenseTeam.id === home.id)} /> {court.defenseTeam.name}
-                  </span>
-                </div>
               </div>
-              {/* last few plays, so the court has a caption */}
-              <div className="live-ticker">
-                {plays.slice(Math.max(0, idx - 9), idx).reverse().map((e, i) => (
-                  <div
-                    key={idx - i}
-                    style={{
-                      padding: '4px 0', fontSize: 13, opacity: i === 0 ? 1 : 0.5,
-                      fontWeight: i === 0 ? 600 : 400,
-                      borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)',
-                    }}
-                  >
-                    <span style={{ color: 'var(--text-muted)', marginRight: 6 }}>{e.q} {e.t}</span>
-                    {e.text}
-                  </div>
-                ))}
+              {/* Beside the court: who the numbers on the floor are and how
+                  they're doing, then the plays so far, so the court has a
+                  caption. */}
+              <div className="live-side">
+                {floorBox && (
+                  <table className="live-floor" aria-label="On the floor">
+                    <thead>
+                      <tr>
+                        <th colSpan={2} className="live-floor-title">On the floor</th>
+                        {FLOOR_COLS.map(([k, label, wide]) => (
+                          <th key={k} className={wide ? 'is-wide' : undefined}>{label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    {['away', 'home'].map((s) => (
+                      <tbody key={s}>
+                        <tr className="live-floor-team">
+                          <th colSpan={2 + FLOOR_COLS.length}>
+                            <KitSwatch kit={kitFor(s)} /> {teamFor(s).name}
+                            {court.offSide === s && <span className="live-floor-ball">ball</span>}
+                          </th>
+                        </tr>
+                        {floorIds(s).map((id) => {
+                          const p = rosterById.get(id);
+                          const l = floorBox.get(id);
+                          return (
+                            <tr key={id} className={id === court.holderId ? 'has-ball' : undefined}>
+                              <td className="live-floor-num"><JerseyDot kit={kitFor(s)} number={p?.jerseyNumber ?? ''} /></td>
+                              <td className="live-floor-name">
+                                {p?.name ?? id}<span className="live-floor-pos">{p?.pos}</span>
+                              </td>
+                              {FLOOR_COLS.map(([k, , wide, show]) => (
+                                <td
+                                  key={k}
+                                  className={wide ? 'is-wide' : undefined}
+                                  {...(k === 'pf' && l?.pf >= 5 ? { style: { color: 'var(--color-warning)', fontWeight: 700 }, title: 'One foul from fouling out' } : {})}
+                                >
+                                  {show(l ?? BLANK_FLOOR_LINE)}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    ))}
+                  </table>
+                )}
+                <div className="live-ticker">
+                  {plays.slice(Math.max(0, idx - TICKER_PLAYS), idx).reverse().map((e, i) => (
+                    <div key={idx - i} className={`live-ticker-play${i === 0 ? ' is-latest' : ''}`}>
+                      <span className="live-ticker-clock">{e.q} {e.t}</span>
+                      {e.text}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -699,20 +786,51 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
           )}
         </div>
 
-        {/* Timeline: drag or click to move through the game, quarters marked.
-            The range input carries the keyboard too (arrows, Home, End). */}
-        <div className="live-timeline">
-          <input
-            type="range" min={0} max={timelineMax} step={1} value={Math.min(idx, timelineMax)}
-            onChange={(e) => seekTo(+e.target.value)}
-            aria-label="Game timeline" aria-valuetext={idx > 0 ? `${cur.q} ${cur.t}` : 'Tip-off'}
-          />
-          <div className="live-timeline-ticks" aria-hidden="true">
-            {shownPeriods.filter((pd) => pd.at > 0 && pd.at < timelineMax).map((pd) => (
-              <span key={pd.q} style={{ left: `${(pd.at / timelineMax) * 100}%` }}>{pd.q}</span>
-            ))}
+        {/* Transport, video-player style: play, speed, then the timeline —
+            drag or click to move through the game, quarters marked — and
+            skip. The range input carries the keyboard too (arrows, Home,
+            End). On a phone the timeline takes a row of its own (CSS). */}
+        <div className="live-bar">
+          {done ? (
+            <button className="ui-btn ui-btn--primary ui-btn--md" onClick={finish}>{ctx?.replay ? 'Close' : 'Continue'}</button>
+          ) : (
+            <>
+              <button className="ui-btn ui-btn--secondary ui-btn--md live-play" onClick={togglePause}>
+                {speed === 0 ? '▶ Play' : '❙❙ Pause'}
+              </button>
+              <div className="live-speeds">
+                {SPEEDS.map((s) => (
+                  <button
+                    key={s}
+                    className={`ui-btn ui-btn--md ${speed === s ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
+                    onClick={() => chooseSpeed(s)}
+                  >
+                    {s}x
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="live-timeline">
+            <input
+              type="range" min={0} max={timelineMax} step={1} value={Math.min(idx, timelineMax)}
+              onChange={(e) => seekTo(+e.target.value)}
+              aria-label="Game timeline" aria-valuetext={idx > 0 ? `${cur.q} ${cur.t}` : 'Tip-off'}
+            />
+            <div className="live-timeline-ticks" aria-hidden="true">
+              {shownPeriods.filter((pd) => pd.at > 0 && pd.at < timelineMax).map((pd) => (
+                <span key={pd.q} style={{ left: `${(pd.at / timelineMax) * 100}%` }}>{pd.q}</span>
+              ))}
+            </div>
           </div>
+          {!done && (
+            <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={skipToEnd} title="Skip to final">
+              {/* one child: the button spaces its children apart */}
+              <span>Skip<span className="live-long"> to final</span> ▸▸</span>
+            </button>
+          )}
         </div>
+
         <div className="live-tools">
           <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={replay} disabled={idx === 0} title="Instant replay: the last possession again (R)">⟲ Replay</button>
           <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={nextBasket} disabled={done} title="Next basket (N)">Next basket ▸</button>
@@ -730,47 +848,19 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
             {prefs.sound ? 'Sound on' : 'Sound off'}
           </button>
           <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setHelp((h) => !h)} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
-        </div>
-
-        {/* Transport */}
-        <div className="controls" style={{ paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--border)', marginBottom: 0 }}>
-          {done ? (
-            <button className="ui-btn ui-btn--primary ui-btn--md" onClick={finish}>{ctx?.replay ? 'Close' : 'Continue'}</button>
-          ) : (
-            <>
-              <button
-                className="ui-btn ui-btn--secondary ui-btn--md"
-                onClick={togglePause}
-              >
-                {speed === 0 ? '▶ Play' : '❙❙ Pause'}
-              </button>
-              {SPEEDS.map((s) => (
-                <button
-                  key={s}
-                  className={`ui-btn ui-btn--md ${speed === s ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
-                  onClick={() => chooseSpeed(s)}
-                >
-                  {s}x
-                </button>
-              ))}
-              <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={skipToEnd}>Skip to final ▸▸</button>
-            </>
-          )}
           <div className="live-views">
             {[['court', 'Court'], ['box', 'Box score'], ['feed', 'Play-by-play']].map(([v, label]) => (
               <button
                 key={v}
                 aria-pressed={view === v}
-                className={`ui-btn ui-btn--md ${view === v ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
+                className={`ui-btn ui-btn--sm ${view === v ? 'ui-btn--primary' : 'ui-btn--secondary'}`}
                 onClick={() => setView(v)}
               >
                 {label}
               </button>
             ))}
           </div>
-          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            {idx} / {plays.length} plays
-          </span>
+          <span className="live-count">{idx} / {plays.length} plays</span>
         </div>
       </div>
     </div>

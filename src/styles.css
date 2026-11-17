@@ -1337,28 +1337,114 @@ button.slot-pick:hover { border-color: var(--accent); }
    players, and clipped the away team's name.
    The modal overrides are two-class selectors on purpose: ui.css loads after
    this file (main.jsx), so a lone .live-modal loses to .ui-modal. */
-.ui-modal.live-modal { display: flex; flex-direction: column; max-height: 88vh; }
-.live-scoreboard {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--sp-4); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--border);
+/* The viewer fills the window — on a computer all but a 12px margin, up to
+   2200px wide; on a phone all of it. It used to be a 1040px box with the
+   court fixed at 520px, which left a big screen mostly empty, and on a
+   laptop's shorter window ran the court down over the controls. The height
+   is definite all the way down (the overlay stretches the modal), and that
+   is what lets the court size itself to the room it actually has. */
+.ui-modal-overlay.live-overlay { padding: 10px; align-items: stretch; }
+.ui-modal.live-modal {
+  display: flex; flex-direction: column;
+  max-width: 2200px; max-height: none;
+  padding: var(--sp-3) var(--sp-5);
 }
-.live-team { display: flex; align-items: center; gap: var(--sp-3); flex: 1; min-width: 0; }
-.live-team--home { justify-content: flex-end; }
+/* Scoreboard: the teams either side, the clock and the line score between. */
+.live-scoreboard {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "away clock home" "away line home";
+  align-items: center; column-gap: var(--sp-4);
+  padding-bottom: var(--sp-3); border-bottom: 1px solid var(--border);
+}
+.live-team { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.live-team--away { grid-area: away; }
+.live-team--home { grid-area: home; justify-content: flex-end; }
 .live-team-text { min-width: 0; }
 .live-team--home .live-team-text { text-align: right; }
 .live-city { font-size: var(--text-sm); color: var(--text-muted); }
 .live-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-score { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.live-team--away .live-score { margin-left: auto; }
-.live-team--home .live-score { margin-right: auto; }
-.live-clock { text-align: center; min-width: 96px; }
-.live-court-row { display: flex; gap: var(--sp-4); padding: var(--sp-3) 0; flex: 1; min-height: 0; }
-.live-court { flex: 0 0 58%; max-width: 520px; position: relative; }
-.live-ticker { flex: 1; overflow-y: auto; min-width: 0; }
+.live-clock {
+  grid-area: clock; min-width: 96px;
+  display: flex; align-items: baseline; justify-content: center; gap: 8px; white-space: nowrap;
+}
+.live-clock-q { font-size: var(--text-sm); font-weight: 700; color: var(--text-muted); }
+.live-clock-t { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.live-clock-final { font-weight: 800; letter-spacing: 1px; }
+.live-linescore { grid-area: line; display: flex; justify-content: center; gap: var(--sp-2); font-size: var(--text-sm); }
+.live-period-q { color: var(--text-muted); font-size: var(--text-xs); }
+.live-period-score { font-variant-numeric: tabular-nums; }
+/* The jersey the team wears on the court, pinned to its badge. */
+.live-badge { position: relative; display: inline-flex; flex: none; }
+.live-kit { position: absolute; right: -6px; bottom: -6px; line-height: 0; }
+/* Possession: a ball beside the score of the team that has it. Always in the
+   layout, so the score doesn't shift when it changes hands. */
+.live-poss {
+  flex: none; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--court-ball); box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.25);
+  opacity: 0; transition: opacity 150ms;
+}
+.live-poss.is-on { opacity: 1; }
+.live-team--away .live-poss { margin-left: auto; }
+.live-team--home .live-poss { margin-right: auto; }
 
-/* The area the court (or play-by-play) occupies — tip-off, break and final
-   cards sit over it. */
-.live-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The area the court (or box score, or play-by-play) occupies — tip-off,
+   break and final cards sit over it. A size container: its shape decides
+   whether the court sits beside the list or above it. */
+.live-stage {
+  position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column;
+  container: live-stage / size;
+}
+/* The court is the largest that fits: the row's full height, unless that
+   would leave the list beside it under 300px. 53/50 is the court's own
+   shape (ArenaCourt's viewBox). Sized from the row rather than from the
+   court's own width, it can't run over what's below it any more. */
+.live-court-row {
+  display: flex; gap: var(--sp-4); padding: var(--sp-2) 0; flex: 1; min-height: 0;
+  container: live-row / size;
+}
+.live-court { position: relative; flex: none; align-self: flex-start; width: min(100cqw - 300px - var(--sp-4), 100cqh * 53 / 50); }
+.live-side {
+  flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3);
+  container: live-side / inline-size;
+}
+.live-ticker { flex: 1; min-height: 0; overflow-y: auto; }
+.live-ticker-play {
+  padding: 4px 0; font-size: 13px; opacity: 0.5;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+.live-ticker-play.is-latest { opacity: 1; font-weight: 600; }
+.live-ticker-clock { color: var(--text-muted); margin-right: 6px; }
+/* A tall, narrow space (a phone, a tablet upright): the court on top at the
+   full width, the plays under it. */
+@container live-stage (max-aspect-ratio: 4 / 3) {
+  .live-court-row { flex-direction: column; gap: var(--sp-2); }
+  .live-court { align-self: center; width: min(100cqw, (100cqh - 120px) * 53 / 50); }
+  .live-floor { display: none; }
+}
+
+/* Who the numbers on the floor are: the ten playing, with their lines so
+   far. Fewer columns when the list is narrow. */
+.live-floor { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.live-floor th, .live-floor td { padding: 2px 6px; text-align: right; white-space: nowrap; }
+.live-floor thead th {
+  font-size: var(--text-xs); font-weight: 600; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); padding-bottom: 4px;
+}
+.live-floor thead .live-floor-title { text-align: left; text-transform: uppercase; letter-spacing: 1px; }
+.live-floor-team th { text-align: left; padding-top: var(--sp-2); font-weight: 700; color: var(--text-primary); }
+.live-floor-ball {
+  margin-left: 8px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--court-ball);
+}
+.live-floor td.live-floor-num { width: 22px; padding: 1px 2px 1px 0; }
+.live-floor td.live-floor-name { text-align: left; width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.live-floor-pos { margin-left: 6px; color: var(--text-muted); font-size: var(--text-xs); }
+.live-floor tr.has-ball td { background: color-mix(in srgb, var(--court-ball) 14%, transparent); }
+.live-floor tr.has-ball td.live-floor-name { font-weight: 700; }
+@container live-side (max-width: 540px) {
+  .live-floor .is-wide { display: none; }
+}
 .live-card-scrim {
   position: absolute; inset: 0; z-index: 2;
   display: flex; align-items: center; justify-content: center; padding: var(--sp-3);
@@ -1435,6 +1521,7 @@ button.slot-pick:hover { border-color: var(--accent); }
 }
 /* Court, box score, play-by-play. */
 .live-views { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.live-count { color: var(--text-muted); font-size: var(--text-sm); }
 /* The live box: both teams, scrolling inside the viewer rather than the page. */
 .live-box { overflow-y: auto; flex: 1; min-height: 240px; display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-3) 0; }
 .live-box .ui-table td, .live-box .ui-table th { white-space: nowrap; }
@@ -1453,17 +1540,23 @@ button.slot-pick:hover { border-color: var(--accent); }
   color: inherit; font: inherit; cursor: pointer;
 }
 .live-period:hover, .live-period:focus-visible { background: var(--surface-2, rgba(255,255,255,.06)); }
-/* Timeline: a scrubber the width of the viewer, quarters ticked under it. */
-.live-timeline { position: relative; padding: var(--sp-2) 0 14px; }
+/* Transport, like a video player's: play, speed, the timeline, skip. */
+.live-bar {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding-top: var(--sp-2); border-top: 1px solid var(--border);
+}
+.live-speeds { display: flex; gap: 4px; }
+/* Timeline: a scrubber filling the bar, quarters ticked under it. */
+.live-timeline { position: relative; flex: 1; min-width: 120px; padding: 4px 6px 14px; }
 .live-timeline input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.live-timeline-ticks { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; pointer-events: none; }
+.live-timeline-ticks { position: absolute; left: 6px; right: 6px; bottom: 0; height: 12px; pointer-events: none; }
 .live-timeline-ticks span {
   position: absolute; transform: translateX(-50%); font-size: 10px; line-height: 12px; color: var(--text-muted);
 }
 .live-timeline-ticks span::before {
   content: ''; position: absolute; left: 50%; top: -9px; width: 1px; height: 6px; background: var(--text-muted);
 }
-.live-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: var(--sp-2); }
+.live-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: var(--sp-2); }
 .live-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; padding: 0 4px; }
 .live-help-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: var(--text-sm); }
 .live-help-list dt { text-align: right; white-space: nowrap; }
@@ -1505,12 +1598,14 @@ button.slot-pick:hover { border-color: var(--accent); }
 
 @media (max-width: 640px) {
   /* Full screen on a phone — every pixel goes to the court. */
-  .ui-modal-overlay.live-overlay { padding: 0; align-items: stretch; }
+  .ui-modal-overlay.live-overlay { padding: 0; }
   .ui-modal.live-modal {
-    max-width: none; width: 100%; max-height: none; height: 100%;
+    max-width: none; width: 100%; height: 100%;
     border: none; border-radius: 0; padding: var(--sp-3) 16px;
   }
-  .live-scoreboard { gap: var(--sp-2); }
+  /* The line score gets a row of its own under the scorebug. */
+  .live-scoreboard { grid-template-areas: "away clock home" "line line line"; column-gap: var(--sp-2); }
+  .live-linescore { padding-top: var(--sp-2); }
   /* The badge already carries the abbreviation, scorebug-style — leaving
      room for just the fouls. */
   .live-city, .live-name { display: none; }
@@ -1518,9 +1613,12 @@ button.slot-pick:hover { border-color: var(--accent); }
   .live-team--home .live-fouls { align-items: flex-end; }
   .live-score { font-size: 28px; }
   .live-clock { min-width: 56px; }
-  .live-court-row { flex-direction: column; gap: var(--sp-2); }
-  .live-court { flex: none; max-width: none; width: 100%; }
-  .live-ticker { flex: none; max-height: 132px; }
+  /* The timeline across the top of the transport, the buttons under it. */
+  .live-bar { flex-wrap: wrap; row-gap: var(--sp-1); }
+  .live-bar .live-timeline { order: -1; flex-basis: 100%; }
+  /* "Skip ▸▸", so the transport is one row of buttons. */
+  .live-long { display: none; }
+  .live-count { display: none; }
   .live-card-cols { grid-template-columns: 1fr; gap: var(--sp-3); }
   .live-card-big { font-size: 24px; }
 }

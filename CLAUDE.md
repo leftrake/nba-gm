@@ -218,6 +218,13 @@ The hard split is **engine vs. UI**:
     Next basket, instant replay and rewinding from the final all just move
     that position and play carries on from it. Its waits count playing
     time only, so a pause freezes the game mid-play.
+
+    The viewer fills the window, and the court is sized from the room its
+    row has — container query units in `styles.css`, both directions —
+    never from its own width: a fixed-width court ran down over the
+    controls on a laptop's shorter window. Beside it, the ten on the floor
+    with their live lines (`liveBox`), then the plays; a tall, narrow space
+    (a phone) stacks the court over the plays instead.
   - `livePrefs.js` — how the user likes to watch: starting speed, condensed
     games, pausing at breaks, sound, auto-watch (a sim never runs past one
     of the user's games), reduce motion. A browser preference under its own
