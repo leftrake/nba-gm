@@ -1,4 +1,4 @@
-import { rand, randInt, pick, gauss, clamp } from './rng.js';
+import { rand, randInt, pick, gauss, clamp, makeRng } from './rng.js';
 import { MIN_SALARY, MAX_SALARY } from '../data/teams.js';
 import { initMorale } from './morale.js';
 import { NATIONALITIES, NATIONALITY_W } from './names.js';
@@ -253,20 +253,84 @@ export function formatHeight(heightIn) {
   return `${Math.floor(heightIn / 12)}'${heightIn % 12}"`;
 }
 
+// Jersey numbers, weighted the way a modern NBA league wears them: most in
+// 0–35, some in the 40s and 50s, a handful higher. #6 has been retired
+// league-wide since 2022 (Bill Russell) and the league doesn't issue #69.
+//
+// They used to be drawn uniformly from 0–99, which put nearly half the league
+// in the 50s and up and more than a quarter in the 70s–90s — about ten times
+// the real share — while only 42% wore 0–35 (about 85% do).
+const JERSEY_WEIGHTS = (() => {
+  const w = new Array(100).fill(0.5); // anything 56–99: rare
+  const set = (nums, weight) => { for (const n of nums) w[n] = weight; };
+  set([0, 1, 3, 11], 18);
+  set([2, 4, 5, 7, 23], 16);
+  set([8, 9, 10, 12, 13, 20, 22, 24, 25, 30], 14);
+  set([14, 15, 21], 12);
+  set([31, 32, 33, 34, 35], 10);
+  set([17, 18, 27, 44], 8);
+  set([16, 19, 26, 28, 29, 40, 41, 42, 45, 55], 5);
+  set([36, 37, 38, 39, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54], 2);
+  set([77, 88, 99], 1.5);
+  w[6] = 0;
+  w[69] = 0;
+  return w;
+})();
+
+// A number from that spread, never one in `taken`. Always exactly one draw
+// from the rng, whatever's taken — so swapping it in for the old uniform draw
+// leaves everything generated after it in a player exactly as it was.
+export function pickJerseyNumber(rng = rand, taken = null) {
+  let total = 0;
+  for (let n = 0; n < 100; n++) if (!taken?.has(n)) total += JERSEY_WEIGHTS[n];
+  let r = rng() * total;
+  for (let n = 0; n < 100; n++) {
+    if (taken?.has(n) || !JERSEY_WEIGHTS[n]) continue;
+    r -= JERSEY_WEIGHTS[n];
+    if (r < 0) return n;
+  }
+  for (let n = 0; n < 100; n++) if (!taken?.has(n) && JERSEY_WEIGHTS[n]) return n;
+  return 0;
+}
+
+// Whether a number belongs to the old uniform draw rather than a real league:
+// 56 and up, or one the NBA doesn't hand out.
+export const unrealisticJersey = (n) => n == null || n >= 56 || n === 6 || n === 69;
+
+// A player's own stream for picking numbers, seeded by his id: the same
+// player lands on the same number every time, without threading an rng
+// through every call site.
+const jerseyRng = (id) => makeRng((Math.abs(id) * 2654435761) >>> 0);
+
 // Keeps jersey numbers unique across a team's active roster + two-way
-// slots. Deterministic (lowest free number) so call sites never need to
-// thread an rng through — call after any roster/twoWay mutation that adds
-// a player (signings, trades, draft picks, two-way moves).
+// slots — call after any roster/twoWay mutation that adds a player
+// (signings, trades, draft picks, two-way moves). Whoever had a number first
+// keeps it; a newcomer whose number is taken picks another from the
+// realistic spread. (Taking the lowest free number, as it did, piled every
+// clash onto 0, 1 and 2: #0 was the most worn number in the league.)
 export function ensureUniqueJerseys(team) {
   const pool = [...team.roster, ...(team.twoWay || [])];
   const used = new Set();
   for (const p of pool) {
     if (p.jerseyNumber != null && !used.has(p.jerseyNumber)) { used.add(p.jerseyNumber); continue; }
-    let n = 0;
-    while (used.has(n) && n <= 99) n++;
-    p.jerseyNumber = n;
-    used.add(n);
+    p.jerseyNumber = pickJerseyNumber(jerseyRng(p.id), used);
+    used.add(p.jerseyNumber);
   }
+}
+
+// Saves from before realistic numbers: re-pick only the unrealistic ones,
+// leaving anyone in a normal range his number. `pool` shares numbers (a
+// team), or not (free agents, a draft class) when `unique` is false.
+export function renumberUnrealistic(pool, unique = true) {
+  const used = new Set(unique ? pool.filter((p) => !unrealisticJersey(p.jerseyNumber)).map((p) => p.jerseyNumber) : []);
+  let changed = 0;
+  for (const p of pool) {
+    if (!unrealisticJersey(p.jerseyNumber)) continue;
+    p.jerseyNumber = pickJerseyNumber(jerseyRng(p.id), unique ? used : null);
+    if (unique) used.add(p.jerseyNumber);
+    changed++;
+  }
+  return changed;
 }
 
 export function durabilityNote(p) {
@@ -349,7 +413,7 @@ export function generatePlayer(rng = rand, opts = {}) {
     heightIn,
     weightLbs: opts.weightLbs ?? generateWeight(pos, heightIn, rng),
     wingspanIn: opts.wingspanIn ?? generateWingspan(pos, heightIn, rng),
-    jerseyNumber: opts.jerseyNumber ?? randInt(0, 99, rng), // provisional; de-duped on roster join, see ensureUniqueJerseys
+    jerseyNumber: opts.jerseyNumber ?? pickJerseyNumber(rng), // provisional; de-duped on roster join, see ensureUniqueJerseys
     injury: null, // { type, tier, daysLeft } while hurt — see engine/injuries.js
     // Hidden personality archetype — see engine/backstory.js. `scout` tracks
     // pre-draft/pre-roster scouting investment (engine/scoutingTrips.js).

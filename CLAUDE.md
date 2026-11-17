@@ -66,7 +66,8 @@ The hard split is **engine vs. UI**:
     `startNewSeason`), free-agency signings, AI extension offers, and
     cap-projection helpers (`projectedPayroll`, `projectedPayrollLimit`).
   - `players.js` — player generation, `overall()`, development curve, salary
-    formulas, and the global player-ID counter.
+    formulas, jersey numbers (weighted like a real league, unique per team),
+    and the global player-ID counter.
   - `sim.js` — single-game simulation (possession-by-possession), box scores,
     and play-by-play event generation. Each play carries both the display
     text and a structured form of it, flat on the play object, enough to

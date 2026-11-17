@@ -1,7 +1,7 @@
 import { TEAMS, SALARY_CAP, LUXURY_TAX, FIRST_APRON, APRON, MIN_SALARY, MAX_SALARY, MLE_AMOUNT, TAXPAYER_MLE, BAE_AMOUNT, ROSTER_MAX, TWO_WAY_MAX, TWO_WAY_SALARY, TWO_WAY_MAX_EXP } from '../data/teams.js';
 import { initCup, updateCupGroupGame, determineCupBracket, simCupGame, cupComplete, CUP_GROUP_DAYS } from './cup.js';
 import { makeRng, randInt, clamp, gauss } from './rng.js';
-import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
+import { generatePlayer, resetPlayerIds, getNextPlayerId, emptyStats, developPlayer, overall, salaryFor, assignOrigin, shouldRetire, generateStamina, supportedMinutes, generateDurability, generateHeight, generateWeight, generateWingspan, ensureUniqueJerseys, renumberUnrealistic, pickJerseyNumber, snapshotRatings, ratingRow, recordContract, recordTransaction, FRINGE_OVR_MEAN, FRINGE_OVR_SPREAD, FRINGE_OVR_FLOOR, FRINGE_OVR_CEIL } from './players.js';
 import { ZONE_STAT_COLS } from './shotZones.js';
 import { rollGameInjuries, tickInjuries, injuryTimeline } from './injuries.js';
 import { simGame, applyBoxToStats, encodeBox, decodeBox, starLines, simGLeagueGame, injuryMoment } from './sim.js';
@@ -91,6 +91,7 @@ export function createLeague(userTeamId, seed = Date.now(), opts = {}) {
     recordBook: { singleSeason: {}, career: {}, gameHighs: {} },
     hallOfFame: [],
     dynasties: [],
+    jerseysRealistic: true, // numbers drawn the realistic way — see backfillPlayers
     teamSeasonRecords: [], // { season, teamId, wins, losses } — one row/team/season
     recordPaceFlags: {}, // { [season]: { [playerId]: { [category]: true } } }
     recordBreakingMoment: null,
@@ -429,7 +430,7 @@ export function backfillPlayers(league) {
     if (p.heightIn == null) p.heightIn = generateHeight(p.pos, rng);
     if (p.weightLbs == null) p.weightLbs = generateWeight(p.pos, p.heightIn, rng);
     if (p.wingspanIn == null) p.wingspanIn = generateWingspan(p.pos, p.heightIn, rng);
-    if (p.jerseyNumber == null) p.jerseyNumber = randInt(0, 99, rng);
+    if (p.jerseyNumber == null) p.jerseyNumber = pickJerseyNumber(rng);
     // saves predating the morale system
     if (p.morale == null) p.morale = initMorale(p.id);
     if (p.moraleLowStreak == null) p.moraleLowStreak = 0;
@@ -539,6 +540,17 @@ export function backfillPlayers(league) {
   if (league.allStar && !league.allStar.shown && league.phase === 'regular'
       && league.dayIndex > ALL_STAR_DAYS[ALL_STAR_DAYS.length - 1]) {
     league.allStar.shown = true;
+  }
+  // Saves from before realistic jersey numbers drew them uniformly from
+  // 0–99. Once per save, anyone in an unrealistic number (56 and up, #6,
+  // #69) gets a realistic one, free on his team; everyone already in a
+  // normal range keeps his.
+  if (!league.jerseysRealistic) {
+    for (const team of league.teams) renumberUnrealistic([...team.roster, ...(team.twoWay ?? [])]);
+    renumberUnrealistic(league.freeAgents ?? [], false);
+    if (league.scouting?.prospects) renumberUnrealistic(league.scouting.prospects, false);
+    if (league.draft?.prospects) renumberUnrealistic(league.draft.prospects, false);
+    league.jerseysRealistic = true;
   }
   // Saves that reached the break before the eligibility fix have this
   // season's event with no one on it — unplayable, and the calendar won't sim
