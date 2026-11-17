@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node scripts/test-suite.mjs",
-    "test:stats": "node scripts/stats-sanity.mjs"
+    "test:stats": "node scripts/stats-sanity.mjs",
+    "test:live": "node .claude/skills/run-nba-gm/checks/run-all.mjs --only headless"
   },
   "dependencies": {
     "country-flag-emoji-polyfill": "^0.1.8",

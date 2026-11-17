@@ -19,7 +19,17 @@ npm test             # consolidated sanity suite: sims 4 seasons headless and
 npm run test:stats   # focused stats check: sims 5 seasons headless, verifies
                      # league stat distributions plus an in-game fatigue
                      # experiment (scripts/stats-sanity.mjs [seasons] [seed])
+npm run test:live    # live game viewer: builds its own states, then checks
+                     # liveFrames.js / watchGame.js over a month of games plus
+                     # playoffs, play-in, Cup, All-Star and replays
+                     # (.claude/skills/run-nba-gm/checks/run-all.mjs; --grep TEXT)
 ```
+
+Run `npm run test:live` after touching the live viewer (`LiveGame.jsx`,
+`liveFrames.js`, `watchGame.js`) or the play-by-play, lineups and events it
+reads in `sim.js`. Only its headless half exists so far; the browser half
+(`checks/browser.mjs`) isn't written yet, so `run-all.mjs` without
+`--only headless` stops with an error saying so.
 
 There is no unit-test framework and no linter configured. These two headless
 sim scripts are the regression checks — run them after touching `sim.js`,
