@@ -89,7 +89,21 @@ Stop the dev server when done: `pkill -f vite`.
 
 ## Test
 
-No automated assertions here by design — this is a visual/console-error smoke driver, not a test suite. Look at the screenshots and check the script's exit code / printed console errors. For actual regression testing of game logic, use the repo's headless sim scripts instead (`npm test`, `npm run test:stats`, etc. — see root `CLAUDE.md`).
+`driver.mjs` itself makes no assertions — it's a visual/console-error smoke driver. Look at the screenshots and check the script's exit code / printed console errors. For regression testing of game logic, use the repo's headless sim scripts (`npm test`, `npm run test:stats`, etc. — see root `CLAUDE.md`).
+
+The one exception is the live game viewer, which has a regression suite in `checks/`:
+
+```bash
+npm run test:live                                              # from the repo root
+node .claude/skills/run-nba-gm/checks/run-all.mjs --only headless   # no browser, ~5s
+node .claude/skills/run-nba-gm/checks/run-all.mjs --grep "box score" --headed
+```
+
+It builds its own states with `scripts/build-state.mjs` into a fresh temp folder, starts its own Vite server from this checkout on a free port (not 5173, which may be another checkout's), and prints PASS/FAIL per check plus any console errors. It exits non-zero if anything failed.
+- `headless.mjs` checks `liveFrames.js` and `watchGame.js` over a month of games plus the playoffs, play-in, Cup, All-Star Game and replays.
+- `browser.mjs` drives the viewer itself: Watch entry points, cards, pacing, keyboard, condensed games, auto-watch, reduced motion and phone width.
+
+The suite's code says how it reads the viewer: through the DOM, plus the watched game straight from LiveGame's props.
 
 ## Gotchas
 

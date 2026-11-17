@@ -81,9 +81,6 @@ try {
     process.env.NBA_GM_URL = url;
     console.log(`Browser checks against ${url}${server ? ' (started for this run)' : ''}`);
     const browser = await import('./browser.mjs').catch((e) => {
-      if (/browser\.mjs/.test(e.message) && e.code === 'ERR_MODULE_NOT_FOUND') {
-        throw new Error('The browser checks (checks/browser.mjs) are not written yet — run with --only headless.');
-      }
       if (/Cannot find (package|module) 'playwright'/.test(e.message)) {
         throw new Error('Playwright is not installed for the run-nba-gm skill: run `npm install` in .claude/skills/run-nba-gm (see SKILL.md).');
       }

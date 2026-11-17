@@ -19,20 +19,16 @@ npm test             # consolidated sanity suite: sims 4 seasons headless and
 npm run test:stats   # focused stats check: sims 5 seasons headless, verifies
                      # league stat distributions plus an in-game fatigue
                      # experiment (scripts/stats-sanity.mjs [seasons] [seed])
-npm run test:live    # live game viewer: builds its own states, then checks
-                     # liveFrames.js / watchGame.js over a month of games plus
-                     # playoffs, play-in, Cup, All-Star and replays
-                     # (.claude/skills/run-nba-gm/checks/run-all.mjs; --grep TEXT)
+npm run test:live    # live game viewer: builds its own states, checks
+                     # liveFrames.js / watchGame.js headlessly over a month of
+                     # games plus playoffs, play-in, Cup, All-Star and replays,
+                     # then drives the viewer in headless Chromium on its own
+                     # dev server (.claude/skills/run-nba-gm/checks/run-all.mjs;
+                     # --only headless|browser, --grep TEXT, --headed)
 ```
 
-Run `npm run test:live` after touching the live viewer (`LiveGame.jsx`,
-`liveFrames.js`, `watchGame.js`) or the play-by-play, lineups and events it
-reads in `sim.js`. Only its headless half exists so far; the browser half
-(`checks/browser.mjs`) isn't written yet, so `run-all.mjs` without
-`--only headless` stops with an error saying so.
-
-There is no unit-test framework and no linter configured. These two headless
-sim scripts are the regression checks — run them after touching `sim.js`,
+There is no unit-test framework and no linter configured. `npm test` and
+`npm run test:stats` are the headless sim regression checks — run them after touching `sim.js`,
 player development/aging/stamina in `players.js`, draft-class generation,
 rotation logic in `lineup.js`, or roster generation: the league's stat
 distributions are an equilibrium of all of those.
@@ -41,6 +37,14 @@ Skip `npm test` / `npm run test:stats` for UI-only changes, display logic,
 new screens, and cosmetic updates — only run them when a change touches
 `src/engine/` (sim, player generation, ratings, development, salaries,
 fatigue).
+
+Run `npm run test:live` after touching the live viewer (`LiveGame.jsx`,
+`ArenaCourt.jsx`, `LiveCards.jsx`, `liveFrames.js`, `watchGame.js`,
+`livePrefs.js`, `liveSound.js`, the viewer's CSS, or a Watch entry point) or
+the play-by-play, lineups and events it reads in `sim.js`. The browser half
+needs the run-nba-gm skill's Playwright (`npm install` in
+`.claude/skills/run-nba-gm` once) and takes about two minutes; `--only headless`
+takes seconds.
 
 `scripts/` also has a few targeted, non-npm-wired headless checks for
 specific systems — run the relevant one directly with `node` when touching
