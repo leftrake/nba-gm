@@ -415,6 +415,42 @@ export function teamFoulsByPlay(plays) {
   return out;
 }
 
+// Who checked in and who went out between two frames, a team at a time —
+// null if nobody did. The frames carry the ten on the floor at every play,
+// from the sim's lineups (foul-outs included), so this is exact. Between
+// consecutive frames it's one substitution; across a jump, everything that
+// changed over it.
+export function lineupChange(a, b) {
+  if (!a || !b) return null;
+  const out = {};
+  for (const side of ['away', 'home']) {
+    const before = a.players.filter((x) => x.side === side).map((x) => x.id);
+    const now = b.players.filter((x) => x.side === side).map((x) => x.id);
+    const ins = now.filter((id) => !before.includes(id));
+    const outs = before.filter((id) => !now.includes(id));
+    if (ins.length || outs.length) out[side] = { ins, outs };
+  }
+  return out.away || out.home ? out : null;
+}
+
+// The game's flow through the first `upto` plays: the margin (away minus
+// home) as an SVG step path — x is the play count, y the margin flipped so an
+// away lead is up — and a scale for it. Built from those plays alone, the
+// scale included (the biggest lead so far, with room, in steps of 5, never
+// under ±10): a scale sized for a lead still to come would give it away.
+export function flowLine(scoreAt, upto) {
+  let d = 'M0 0';
+  let prev = 0;
+  let big = 0;
+  for (let v = 1; v <= upto; v++) {
+    const s = scoreAt[v - 1];
+    const m = s.away - s.home;
+    if (m !== prev) { d += `H${v}V${-m}`; prev = m; }
+    big = Math.max(big, Math.abs(m));
+  }
+  return { d: `${d}H${upto}`, scale: Math.max(10, Math.ceil((big + 2) / 5) * 5) };
+}
+
 // The order a side's players took the floor: the starting five, then everyone
 // else as they first checked in. A live box in points order would reshuffle
 // with every basket.

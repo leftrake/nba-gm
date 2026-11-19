@@ -1338,15 +1338,17 @@ button.slot-pick:hover { border-color: var(--accent); }
    The modal overrides are two-class selectors on purpose: ui.css loads after
    this file (main.jsx), so a lone .live-modal loses to .ui-modal. */
 /* The viewer fills the window — on a computer all but a 12px margin, up to
-   2200px wide; on a phone all of it. It used to be a 1040px box with the
-   court fixed at 520px, which left a big screen mostly empty, and on a
-   laptop's shorter window ran the court down over the controls. The height
-   is definite all the way down (the overlay stretches the modal), and that
-   is what lets the court size itself to the room it actually has. */
+   2600px wide (a 2560 screen's whole width, which the floor on its side
+   needs to keep its scale there); on a phone all of it. It used to be a
+   1040px box with the court fixed at 520px, which left a big screen mostly
+   empty, and on a laptop's shorter window ran the court down over the
+   controls. The height is definite all the way down (the overlay stretches
+   the modal), and that is what lets the court size itself to the room it
+   actually has. */
 .ui-modal-overlay.live-overlay { padding: 10px; align-items: stretch; }
 .ui-modal.live-modal {
   display: flex; flex-direction: column;
-  max-width: 2200px; max-height: none;
+  max-width: 2600px; max-height: none;
   padding: var(--sp-3) var(--sp-5);
 }
 /* Scoreboard: the teams either side, the clock and the line score between. */
@@ -1396,14 +1398,21 @@ button.slot-pick:hover { border-color: var(--accent); }
   container: live-stage / size;
 }
 /* The court is the largest that fits: the row's full height, unless that
-   would leave the list beside it under 300px. 53/50 is the court's own
-   shape (ArenaCourt's viewBox). Sized from the row rather than from the
-   court's own width, it can't run over what's below it any more. */
+   would leave the list beside it under 300px. 53/50 is one end upright,
+   97/53 the whole floor on its side (ArenaCourt's COURT_SHAPE) — which one
+   is LiveGame's call (courtView), from the same 300px and gaps. Sized from
+   the row rather than from the court's own width, it can't run over what's
+   below it any more. */
 .live-court-row {
   display: flex; gap: var(--sp-4); padding: var(--sp-2) 0; flex: 1; min-height: 0;
   container: live-row / size;
 }
-.live-court { position: relative; flex: none; align-self: flex-start; width: min(100cqw - 300px - var(--sp-4), 100cqh * 53 / 50); }
+.live-court {
+  position: relative; flex: none; align-self: flex-start;
+  width: min(100cqw - 300px - var(--sp-4), 100cqh * 53 / 50);
+  container: live-court / inline-size;
+}
+.live-court-row.is-full .live-court { width: min(100cqw - 300px - var(--sp-4), 100cqh * 97 / 53); }
 .live-side {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3);
   container: live-side / inline-size;
@@ -1481,15 +1490,64 @@ button.slot-pick:hover { border-color: var(--accent); }
 .live-card-notes { margin: var(--sp-3) 0 0; padding-left: var(--sp-4); font-size: var(--text-sm); }
 .live-card-actions { display: flex; justify-content: center; margin-top: var(--sp-4); }
 
-/* A highlight riding along with play, over the top of the court. */
+/* Callouts over the court — a highlight, a substitution — where the play
+   isn't (LiveGame's calloutSpot): upright, along the end by half court; the
+   whole floor showing, in the half nobody's in, a highlight at its top and
+   substitutions at its bottom. */
+.live-callouts {
+  position: absolute; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.live-callouts.is-top { top: 8px; left: 8px; right: 8px; }
+.live-callouts.is-bottom { bottom: 8px; left: 8px; right: 8px; }
+.live-callouts.is-left, .live-callouts.is-right { top: 8px; bottom: 8px; width: calc(50% - 16px); }
+.live-callouts.is-left { left: 8px; }
+.live-callouts.is-right { right: 8px; }
+.live-callouts.is-left .live-subs, .live-callouts.is-right .live-subs { margin-top: auto; }
+
+/* A highlight riding along with play. */
 .live-banner {
-  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 1;
-  max-width: calc(100% - 16px); padding: 6px 12px;
+  max-width: 100%; padding: 6px 12px;
   background: color-mix(in srgb, var(--surface-1) 92%, transparent);
   border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius-md);
   font-size: var(--text-sm); font-weight: 600; box-shadow: var(--shadow-lg);
   animation: live-banner-in 260ms ease-out;
 }
+
+/* Substitutions, a card a team (away first): side by side while they fit,
+   one over the other when not, and gone in a few seconds. */
+.live-subs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 100%; }
+.live-sub {
+  max-width: 100%; padding: 6px 10px;
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm); animation: live-sub-in 220ms ease-out;
+}
+.live-sub-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
+}
+.live-sub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; }
+.live-sub-row + .live-sub-row { margin-top: 3px; }
+.live-sub-tag {
+  width: 26px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.live-sub-tag--in { color: var(--color-success); }
+.live-sub-player { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; white-space: nowrap; }
+/* A small court (a phone, a tablet upright): tighter cards without the team
+   line — the jerseys on the numbers say whose they are. */
+@container live-court (max-width: 560px) {
+  .live-sub { padding: 4px 8px; font-size: var(--text-xs); }
+  .live-sub-head { display: none; }
+  .live-sub-row + .live-sub-row { margin-top: 2px; }
+}
+@keyframes live-sub-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* …and beside the court, whoever just came on, marked for as long as the
+   banner is up — a tag beside the name would be the first thing a long name
+   cut off. The ball-handler's mark wins. */
+.live-floor tr.is-in:not(.has-ball) td { background: color-mix(in srgb, var(--color-success) 12%, transparent); }
+.live-floor tr.is-in td:first-child { box-shadow: inset 2px 0 0 var(--color-success); }
 
 /* The moment a shot lands, and the score taking it. */
 .live-score--pop { display: inline-block; animation: live-score-pop 520ms ease-out; }
@@ -1505,7 +1563,7 @@ button.slot-pick:hover { border-color: var(--accent); }
   100% { transform: translateY(-3.5px); opacity: 0; }
 }
 @keyframes live-score-pop { 0% { transform: scale(1); } 35% { transform: scale(1.22); } 100% { transform: scale(1); } }
-@keyframes live-banner-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes live-banner-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @keyframes live-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Team fouls and the bonus, under each team's name. */
@@ -1546,15 +1604,62 @@ button.slot-pick:hover { border-color: var(--accent); }
   padding-top: var(--sp-2); border-top: 1px solid var(--border);
 }
 .live-speeds { display: flex; gap: 4px; }
-/* Timeline: a scrubber filling the bar, quarters ticked under it. */
-.live-timeline { position: relative; flex: 1; min-width: 120px; padding: 4px 6px 14px; }
-.live-timeline input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.live-timeline-ticks { position: absolute; left: 6px; right: 6px; bottom: 0; height: 12px; pointer-events: none; }
+/* Timeline: a scrubber filling the bar, with the game's flow drawn along it
+   (LiveTimeline) — a legend before it, the quarters named under it. */
+.live-timeline { flex: 1; min-width: 160px; display: flex; align-items: flex-start; gap: 6px; }
+.live-flow-key {
+  flex: none; height: 32px; display: flex; flex-direction: column; justify-content: space-between;
+  padding: 1px 0; font-size: 10px; line-height: 12px; font-weight: 700; color: var(--text-muted);
+}
+.live-flow-key span { display: inline-flex; align-items: center; gap: 3px; }
+.live-flow-main { position: relative; flex: 1; min-width: 0; padding-bottom: 13px; }
+.live-flow {
+  position: relative; height: 32px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+.live-flow-graph { position: absolute; top: 2px; height: calc(100% - 4px); overflow: visible; pointer-events: none; }
+.live-flow-grid { stroke: var(--border); stroke-width: 1px; }
+.live-flow-zero { stroke: color-mix(in srgb, var(--text-muted) 55%, transparent); stroke-width: 1px; }
+.live-flow-area { fill-opacity: 0.2; }
+.live-flow-line { stroke-width: 2px; stroke-linejoin: round; }
+/* The control laid over it: no track of its own, and a playhead for a thumb,
+   with a knob where it crosses the tie line. */
+.live-flow input[type="range"] {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  padding: 0; border: 0; border-radius: 0;   /* not the app's padded inputs */
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+.live-flow input[type="range"]:focus { outline: none; }
+.live-flow input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.live-flow input[type="range"]::-webkit-slider-runnable-track { height: 100%; background: transparent; border: 0; }
+.live-flow input[type="range"]::-moz-range-track { height: 100%; background: transparent; border: 0; }
+.live-flow input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 32px; border: 0; border-radius: 0;
+  background:
+    radial-gradient(circle, var(--accent) 0 4.5px, transparent 5px),
+    linear-gradient(var(--text-primary), var(--text-primary)) center / 2px 100% no-repeat;
+}
+.live-flow input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 32px; border: 0; border-radius: 0;
+  background:
+    radial-gradient(circle, var(--accent) 0 4.5px, transparent 5px),
+    linear-gradient(var(--text-primary), var(--text-primary)) center / 2px 100% no-repeat;
+}
+/* Hovering: a hairline at the moment, and the score then. */
+.live-flow-cross {
+  position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px;
+  background: var(--text-secondary); pointer-events: none;
+}
+.live-flow-tip {
+  position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; white-space: nowrap; pointer-events: none;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+.live-flow-tip strong { font-size: var(--text-sm); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.live-timeline-ticks { position: absolute; bottom: 0; height: 12px; pointer-events: none; }
 .live-timeline-ticks span {
   position: absolute; transform: translateX(-50%); font-size: 10px; line-height: 12px; color: var(--text-muted);
-}
-.live-timeline-ticks span::before {
-  content: ''; position: absolute; left: 50%; top: -9px; width: 1px; height: 6px; background: var(--text-muted);
 }
 .live-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: var(--sp-2); }
 .live-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; padding: 0 4px; }
@@ -1591,7 +1696,7 @@ button.slot-pick:hover { border-color: var(--accent); }
 .reduce-motion .court-swish, .reduce-motion .court-clank { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-score--pop, .live-banner, .live-card, .court-points, .court-tag { animation: none; }
+  .live-score--pop, .live-banner, .live-sub, .live-card, .court-points, .court-tag { animation: none; }
   /* A ring that only means something while it expands — without the motion, drop it. */
   .court-swish, .court-clank { display: none; }
 }

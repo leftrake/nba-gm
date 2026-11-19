@@ -2,11 +2,12 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { TeamBadge } from './TeamDisplay.jsx';
 import { safeAccent, courtKit } from '../engine/colorUtils.js';
 import {
-  buildFrames, placeHighlights, periodBreaks, liveBox, pregame, teamFoulsByPlay, floorOrder,
+  buildFrames, placeHighlights, periodBreaks, liveBox, pregame, teamFoulsByPlay, floorOrder, lineupChange,
 } from './liveFrames.js';
-import ArenaCourt, { KitSwatch, JerseyDot } from './ArenaCourt.jsx';
-import { TipOffCard, BreakCard, FinalCard, HighlightBanner } from './LiveCards.jsx';
+import ArenaCourt, { KitSwatch, JerseyDot, COURT_SHAPE } from './ArenaCourt.jsx';
+import { TipOffCard, BreakCard, FinalCard, HighlightBanner, SubBanner } from './LiveCards.jsx';
 import { BoxTable } from './BoxScore.jsx';
+import LiveTimeline from './LiveTimeline.jsx';
 import { useLivePrefs, getLivePrefs, setLivePrefs, LIVE_SPEEDS } from './livePrefs.js';
 import { playSound, primeSound } from './liveSound.js';
 
@@ -56,6 +57,16 @@ const dwellMs = (p, next) => (
 const TIPOFF_MS = 4500;
 const BREAK_MS = 3000;
 const BANNER_MS = 2600;
+const SUB_MS = 3000;
+
+// Where a callout (a highlight, a substitution) goes on the court: away from
+// the basket under attack, so it never sits on the play — the other half of
+// the floor when the whole floor shows, the end by half court when one end
+// does. Fixed when the callout appears: one that jumped across the court
+// with a change of possession would be harder to read than one that stays.
+const calloutSpot = (way, attackTop) => (
+  way === 'full' ? (attackTop ? 'left' : 'right') : (attackTop ? 'bottom' : 'top')
+);
 
 // The keyboard, as the help card lists it.
 const SHORTCUTS = [
@@ -92,6 +103,28 @@ const BLANK_FLOOR_LINE = {
 };
 // Plays in the ticker beside the court; it shows as many as fit.
 const TICKER_PLAYS = 40;
+
+// Which way the court goes, from the room the stage has: the whole floor on
+// its side when that shows it at nearly the scale one end gets upright — a
+// computer's window, as a rule — else one end upright, panning. Both ways
+// leave the list beside the court at least SIDE_MIN wide (styles.css sizes
+// the court with the same numbers), and a tall, narrow stage stacks the
+// court over the plays, upright.
+//
+// A laptop's browser window (1440x790) gets the floor on its side at 94% of
+// the upright scale, a 1920x1080 one 92%. A squarer window keeps one end
+// upright: at 1440x900 the floor on its side would be 80%, at 1024x700 70%.
+const SIDE_MIN = 300;      // px — .live-court's width rule in styles.css
+const ROW_GAP = 16;        // .live-court-row's gap, var(--sp-4)
+const ROW_PAD = 16;        // .live-court-row's padding, var(--sp-2) top and bottom
+const FULL_FROM = 0.85;    // on its side at 85% of the upright scale or more
+function courtView(w, h) {
+  if (!(w > 0 && h > 0) || w / h <= 4 / 3) return 'half';
+  const room = w - SIDE_MIN - ROW_GAP;
+  const rowH = h - ROW_PAD;
+  const scale = ({ w: cw, h: ch }) => Math.min(room, (rowH * cw) / ch) / cw;   // px per foot
+  return scale(COURT_SHAPE.full) >= FULL_FROM * scale(COURT_SHAPE.half) ? 'full' : 'half';
+}
 
 const playMs = (play, gapSec, speed) =>
   Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, (gapSec ?? 4) * MS_PER_GAME_SEC))
@@ -244,7 +277,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
           while (j < plays.length && !keyRef.current.has(j)) j++;
           posRef.current = j;
           setIdx(j);
-          setStage({ k: Math.max(0, Math.min(plays.length - 1, j - 1)), ms: 200 });
+          setStage({ k: Math.max(0, Math.min(plays.length - 1, j - 1)), ms: 200, auto: true });
           await delay(220 / s); // a beat, so the jump reads as a cut
           continue;
         }
@@ -252,7 +285,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
         // and the court spends it acting the play out; motion gets 90% so it
         // has landed by the reveal.
         const wait = playMs(plays[k], framesRef.current[k]?.gap, s);
-        setStage({ k, ms: wait * 0.9 });
+        setStage({ k, ms: wait * 0.9, auto: true });
         if (!(await playFor(wait, k))) { if (cancelled) return; continue; } // moved: carry on from there
         posRef.current = k + 1;
         setIdx(k + 1);
@@ -306,6 +339,20 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   const modalRef = useRef(null);
   useEffect(() => { modalRef.current?.focus(); }, []);
 
+  // The stage's shape decides which way the court goes (courtView) — measured
+  // before paint, so the viewer never opens one way and then flips.
+  const stageRef = useRef(null);
+  const [courtWay, setCourtWay] = useState('half');
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return undefined;
+    const measure = () => { const r = el.getBoundingClientRect(); setCourtWay(courtView(r.width, r.height)); };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+
   // A highlight rides along for a couple of seconds without stopping play.
   // Its timer isn't tied to `idx`: the next play usually lands well before
   // the banner should go.
@@ -313,10 +360,31 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     const evs = highlights.byPlay.get(idx - 1);
     if (!evs?.length) return;
     clearTimeout(bannerTimer.current);
-    setBanner({ key: idx - 1, events: evs });
+    const f = frames[Math.min(stage.k, frames.length - 1)];
+    setBanner({ key: idx - 1, events: evs, spot: calloutSpot(courtWay, f?.attackTop) });
     bannerTimer.current = setTimeout(() => setBanner(null), Math.max(1200, BANNER_MS / Math.max(1, speedRef.current)));
   }, [idx, highlights]);
   useEffect(() => () => clearTimeout(bannerTimer.current), []);
+
+  // Substitutions, announced as the new five take the floor — which is when
+  // the court stages the play they're in for, a beat before it's revealed.
+  // Only when the game moves on by itself (or you step a play forward): a
+  // seek that lands across the game isn't a substitution. A condensed game's
+  // skip ahead counts, and says everything that changed over it.
+  const [subs, setSubs] = useState(null);
+  const subTimer = useRef(null);
+  const stagedRef = useRef(stage.k);
+  useEffect(() => {
+    const prev = stagedRef.current;
+    stagedRef.current = stage.k;
+    if (!(stage.k === prev + 1 || (stage.auto && stage.k > prev))) return; // a seek (seekTo clears the banner)
+    const change = lineupChange(frames[prev], frames[stage.k]);
+    if (!change) return;
+    clearTimeout(subTimer.current);
+    setSubs({ key: stage.k, ...change, spot: calloutSpot(courtWay, frames[stage.k]?.attackTop) });
+    subTimer.current = setTimeout(() => setSubs(null), Math.max(1400, SUB_MS / Math.max(1, speedRef.current)));
+  }, [stage, frames]);
+  useEffect(() => () => clearTimeout(subTimer.current), []);
 
   useLayoutEffect(() => {
     const el = feedRef.current;
@@ -385,6 +453,10 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     posRef.current = t;
     endHold();
     setCard(null);
+    // Callouts are about the moment just left. (A step forward onto a
+    // substitution, or onto a highlight, puts its own back up.)
+    setBanner(null);
+    setSubs(null);
     setIdx(t);
     setStage({ k: Math.max(0, Math.min(plays.length - 1, t - 1)), ms });
   };
@@ -622,12 +694,13 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
           )}
         </div>
 
-        <div className="live-stage">
+        <div className="live-stage" ref={stageRef}>
           {/* Court */}
           {view === 'court' && court && (
-            <div className="live-court-row">
+            <div className={`live-court-row${courtWay === 'full' ? ' is-full' : ''}`}>
               <div className="live-court">
                 <ArenaCourt
+                  view={courtWay}
                   players={court.players}
                   holderId={court.holderId}
                   actorId={court.actorId}
@@ -646,13 +719,32 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
                   // possessions is the run up the floor.
                   moveMs={stage.ms}
                 />
-                {banner && !card && (
-                  <HighlightBanner
-                    key={banner.key}
-                    events={banner.events}
-                    color={safeAccent(teamFor(banner.events[0].side ?? (sideOfPlayer(banner.events[0].p)))?.color)}
-                  />
-                )}
+                {/* Callouts — a highlight, a substitution — each where it
+                    was put when it appeared (calloutSpot), sharing a spot
+                    when they land on the same one. Keyed by the play, so a
+                    new one comes in fresh. */}
+                {!card && ['top', 'bottom', 'left', 'right'].map((spot) => {
+                  const here = [
+                    banner?.spot === spot && (
+                      <HighlightBanner
+                        key={`h${banner.key}`}
+                        events={banner.events}
+                        color={safeAccent(teamFor(banner.events[0].side ?? (sideOfPlayer(banner.events[0].p)))?.color)}
+                      />
+                    ),
+                    subs?.spot === spot && (
+                      <div className="live-subs" key={`s${subs.key}`}>
+                        {['away', 'home'].filter((s) => subs[s]).map((s) => (
+                          <SubBanner
+                            key={s} side={s} team={teamFor(s)} kit={kitFor(s)}
+                            ins={subs[s].ins} outs={subs[s].outs} playerById={(id) => rosterById.get(id)}
+                          />
+                        ))}
+                      </div>
+                    ),
+                  ].filter(Boolean);
+                  return here.length > 0 && <div key={spot} className={`live-callouts is-${spot}`}>{here}</div>;
+                })}
               </div>
               {/* Beside the court: who the numbers on the floor are and how
                   they're doing, then the plays so far, so the court has a
@@ -679,8 +771,11 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
                         {floorIds(s).map((id) => {
                           const p = rosterById.get(id);
                           const l = floorBox.get(id);
+                          // Just checked in, while the sub banner is up.
+                          const justIn = !!(subs && !card && subs[s]?.ins.includes(id));
+                          const cls = [id === court.holderId && 'has-ball', justIn && 'is-in'].filter(Boolean).join(' ');
                           return (
-                            <tr key={id} className={id === court.holderId ? 'has-ball' : undefined}>
+                            <tr key={id} className={cls || undefined} title={justIn ? 'Just checked in' : undefined}>
                               <td className="live-floor-num"><JerseyDot kit={kitFor(s)} number={p?.jerseyNumber ?? ''} /></td>
                               <td className="live-floor-name">
                                 {p?.name ?? id}<span className="live-floor-pos">{p?.pos}</span>
@@ -811,18 +906,14 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
               </div>
             </>
           )}
-          <div className="live-timeline">
-            <input
-              type="range" min={0} max={timelineMax} step={1} value={Math.min(idx, timelineMax)}
-              onChange={(e) => seekTo(+e.target.value)}
-              aria-label="Game timeline" aria-valuetext={idx > 0 ? `${cur.q} ${cur.t}` : 'Tip-off'}
-            />
-            <div className="live-timeline-ticks" aria-hidden="true">
-              {shownPeriods.filter((pd) => pd.at > 0 && pd.at < timelineMax).map((pd) => (
-                <span key={pd.q} style={{ left: `${(pd.at / timelineMax) * 100}%` }}>{pd.q}</span>
-              ))}
-            </div>
-          </div>
+          {/* The timeline doubles as the game's flow: the margin so far,
+              drawn along it (LiveTimeline). */}
+          <LiveTimeline
+            idx={idx} max={timelineMax} plays={plays} scoreAt={scoreAt} periods={shownPeriods}
+            home={home} away={away} kits={{ home: kitFor('home'), away: kitFor('away') }}
+            onSeek={seekTo}
+            valuetext={idx > 0 ? `${cur.q} ${cur.t}, ${away.name} ${score.away}, ${home.name} ${score.home}` : 'Tip-off'}
+          />
           {!done && (
             <button className="ui-btn ui-btn--secondary ui-btn--md" onClick={skipToEnd} title="Skip to final">
               {/* one child: the button spaces its children apart */}

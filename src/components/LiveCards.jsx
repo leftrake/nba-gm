@@ -1,5 +1,6 @@
 import React from 'react';
 import { TeamBadge } from './TeamDisplay.jsx';
+import { JerseyDot, KitSwatch, surname } from './ArenaCourt.jsx';
 
 // The moments around the play itself: the matchup before tip-off, a beat at
 // each break, the result at the end, and the sim's own highlights as they
@@ -17,6 +18,28 @@ export function HighlightBanner({ events, color }) {
           {e.text.replace(/^🩹\s*/, '')}
         </div>
       ))}
+    </div>
+  );
+}
+
+// A substitution, as the new five take the floor — lower-third style, one
+// per team that changed: who's in, who's out, numbers drawn the way the court
+// draws them so each disc that appears or goes finds its name.
+export function SubBanner({ side, team, kit, ins, outs, playerById }) {
+  const who = (ids) => ids.map((id) => {
+    const p = playerById(id);
+    return (
+      <span key={id} className="live-sub-player">
+        <JerseyDot kit={kit} number={p?.jerseyNumber ?? ''} size={18} />
+        {surname(p?.name ?? '')}
+      </span>
+    );
+  });
+  return (
+    <div className={`live-sub live-sub--${side}`} role="status" aria-label={`${team.name} substitution`}>
+      <div className="live-sub-head"><KitSwatch kit={kit} size={10} /> {team.name}</div>
+      {ins.length > 0 && <div className="live-sub-row"><span className="live-sub-tag live-sub-tag--in">In</span>{who(ins)}</div>}
+      {outs.length > 0 && <div className="live-sub-row"><span className="live-sub-tag">Out</span>{who(outs)}</div>}
     </div>
   );
 }

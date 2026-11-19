@@ -15,7 +15,7 @@ import { simAllStarGame } from '../../../../src/engine/allstar.js';
 import { BOX_COLS, decodeBox } from '../../../../src/engine/sim.js';
 import { checkSave } from '../../../../src/engine/save.js';
 import {
-  buildFrames, liveBox, teamFoulsByPlay, placeHighlights, periodBreaks, pregame,
+  buildFrames, liveBox, teamFoulsByPlay, placeHighlights, periodBreaks, pregame, lineupChange, flowLine,
 } from '../../../../src/components/liveFrames.js';
 import { canWatch, forViewer, asPlayed, playoffContext, REPLAY } from '../../../../src/components/watchGame.js';
 import { Violations, assert } from './harness.mjs';
@@ -87,6 +87,9 @@ function newTally() {
     runs: 0,
     injuries: 0,
     faced: 0,
+    subs: 0,             // substitutions announced
+    shortStints: 0,      // logged fives no play fell in (their change shows with the next)
+    flows: 0,            // flow lines checked
     skippedPlays: 0,     // see movedSince
     skippedStarters: 0,
     V: {
@@ -102,6 +105,8 @@ function newTally() {
       defender: new Violations('defenders in the play more than 3.5ft from their man'),
       faced: new Violations('shots, blocks and fouls whose defender the court does not single out'),
       pregame: new Violations('pre-game numbers that still include tonight'),
+      subs: new Violations('substitutions the court gets wrong'),
+      flow: new Violations('flow lines that misdraw the game or read ahead of it'),
     },
   };
 }
@@ -138,6 +143,82 @@ function checkGame(T, label, game, home, away, moved = NOBODY) {
       if (id != null && !on.has(id)) V.onCourt.add(`${where(label, plays, i)}: ${role}=${id} is not on the court`);
     }
   });
+
+  // Substitutions. Five a side at every play, and the fives come in the
+  // order the sim logged them (game.lineups), none invented — one so short
+  // that no play falls in it is skipped, its change showing with the next.
+  // Each one the viewer announces (lineupChange) brings on as many as it
+  // takes off, all of them that side's, on as the new frame has them.
+  const fiveKey = (ids) => [...ids].sort((a, b) => a - b).join(',');
+  for (const side of ['away', 'home']) {
+    const logged = [];
+    for (const ln of game.lineups ?? []) {
+      const k = fiveKey(ln[side] ?? []);
+      if (logged[logged.length - 1] !== k) logged.push(k);
+    }
+    let j = -1;
+    let shown = null;
+    frames.forEach((f, i) => {
+      const ids = f.players.filter((x) => x.side === side).map((x) => x.id);
+      if (ids.length !== 5) V.subs.add(`${where(label, plays, i)}: ${ids.length} ${side} players on the court`);
+      const k = fiveKey(ids);
+      if (k === shown) return;
+      shown = k;
+      const at = logged.indexOf(k, j + 1);
+      if (at < 0) { V.subs.add(`${where(label, plays, i)}: the ${side} five [${k}] isn't a later one the sim logged`); return; }
+      if (i === 0 && at !== 0) V.subs.add(`${label}: the ${side} five at tip-off isn't the first one logged`);
+      T.shortStints += Math.max(0, at - (j + 1));
+      j = at;
+    });
+  }
+  for (let i = 1; i < frames.length; i++) {
+    const c = lineupChange(frames[i - 1], frames[i]);
+    if (!c) continue;
+    T.subs += 1;
+    const was = new Set(frames[i - 1].players.map((x) => x.id));
+    const now = new Set(frames[i].players.map((x) => x.id));
+    for (const side of ['away', 'home']) {
+      if (!c[side]) continue;
+      const { ins, outs } = c[side];
+      const say = (msg) => V.subs.add(`${where(label, plays, i)}: ${side} in [${ins}] out [${outs}] — ${msg}`);
+      if (!ins.length || ins.length !== outs.length) say('as many must come on as go off');
+      if ([...ins, ...outs].some((id) => sideOf.has(id) && sideOf.get(id) !== side)) say('a player from the other team');
+      if (ins.some((id) => !now.has(id) || was.has(id)) || outs.some((id) => now.has(id) || !was.has(id))) say('not who changed on the court');
+    }
+  }
+
+  // The game's flow on the timeline, at the start, every 25 plays, each break
+  // and the end: the step line lands on the margin after every play that
+  // changed it, ends where the game is, and reads nothing past it — the same
+  // with the rest of the game cut off, scale included.
+  const at = new Set([0, plays.length, ...periodBreaks(plays).map((b) => b.i + 1)]);
+  for (let v = 25; v < plays.length; v += 25) at.add(v);
+  const margin = (v) => (v > 0 ? score[v - 1].away - score[v - 1].home : 0);
+  for (const v of at) {
+    T.flows += 1;
+    const fl = flowLine(score, v);
+    const blind = flowLine(score.slice(0, v), v);
+    const say = (msg) => V.flow.add(`${label} after ${v} plays: ${msg}`);
+    if (fl.d !== blind.d || fl.scale !== blind.scale) { say('changes when the plays after it are cut off'); continue; }
+    let x = 0;
+    let y = 0;
+    let big = 0;
+    let bad = null;
+    for (const [, cmd, a, b] of fl.d.matchAll(/([MHV])(-?\d+)(?: (-?\d+))?/g)) {
+      if (cmd === 'M') { x = +a; y = +b; } else if (cmd === 'H') {
+        if (+a < x) bad ??= `runs backwards to x=${a}`;
+        for (let u = x + 1; u < +a; u++) if (margin(u) !== -y) bad ??= `flat through play ${u}, where the margin is ${margin(u)}`;
+        x = +a;
+      } else {
+        y = +a;
+        if (margin(x) !== -y) bad ??= `steps to ${-y} at play ${x}, where the margin is ${margin(x)}`;
+      }
+    }
+    for (let u = 1; u <= v; u++) big = Math.max(big, Math.abs(margin(u)));
+    if (bad) say(bad);
+    else if (x !== v || -y !== margin(v)) say(`ends at play ${x} on ${-y}, should end at ${v} on ${margin(v)}`);
+    if (fl.scale < big || fl.scale < 10 || fl.scale % 5) say(`scale ±${fl.scale} for a biggest lead of ${big}`);
+  }
 
   // The live box at the final whistle is the box score, column for column.
   const box = liveBox(plays, plays.length, { frames, lineups: game.lineups });
@@ -474,6 +555,21 @@ export function headlessChecks(states) {
         T.V.defender.assertNone();
         T.V.onCourt.assertNone();
         return `${T.faced} contests, blocks and fouls; every play's players on the court${knownGap(T.skippedPlays, 'play')}`;
+      }),
+    },
+    {
+      name: 'substitutions (lineupChange): five a side, the sim\'s fives in order, as many on as off',
+      run: m(({ T }) => {
+        T.V.subs.assertNone();
+        assert(T.subs > T.games * 10, `too few substitutions to mean anything: ${T.subs} in ${T.games} games`);
+        return `${T.subs} substitutions in ${T.games} games${T.shortStints ? `; ${plural(T.shortStints, 'stint')} too short for a play, shown with the next change` : ''}`;
+      }),
+    },
+    {
+      name: 'flowLine: the timeline\'s margin line lands on every margin, ends where the game is, reads nothing past it',
+      run: m(({ T }) => {
+        T.V.flow.assertNone();
+        return `${T.flows} positions in ${T.games} games`;
       }),
     },
     {

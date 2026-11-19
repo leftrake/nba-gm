@@ -4,9 +4,14 @@ import { motionReduced } from './livePrefs.js';
 
 // The court. Frames arrive in full-court feet (liveFrames.js): x -25..25
 // across, y 0..94 from the bottom baseline, each team attacking one basket.
-// The camera shows one half at a time — at the scale a half court gets on a
-// phone — and pans to the other end when the ball changes hands, the way a
-// broadcast follows play up the floor.
+//
+// Two ways to show it, by the room there is (LiveGame decides):
+//   - Upright, one end at a time — the scale a half court gets on a phone —
+//     with a camera that pans to the other end when the ball changes hands,
+//     the way a broadcast follows play up the floor.
+//   - The whole floor on its side, baskets left and right, like a TV wide
+//     shot: on a computer's wide window it fits at about the same scale as
+//     one end upright, so both ends show at once and nothing has to pan.
 //
 // It used to be a single half court with both teams attacking the same
 // basket, which made every change of possession the whole floor rearranging
@@ -24,14 +29,27 @@ const ARC = 23.75;
 const CORNER_X = 22;
 const LANE_W = 16;
 const LANE_D = 19;
+const PAD = 1.5;     // margin round the lines, feet
+
+// The picture's shape each way, margin included — LiveGame sizes the court
+// from these.
+export const COURT_SHAPE = {
+  half: { w: W + 2 * PAD, h: HALF + 2 * PAD },
+  full: { w: LEN + 2 * PAD, h: W + 2 * PAD },
+};
 
 // One end's markings, drawn in half-court SVG units (baseline at y=47).
 const sx = (x) => x + W / 2;
 const sy = (y) => HALF - y;
-// Full-court feet -> SVG: x to 0..50, y flipped so the bottom baseline (y=0)
-// is at the bottom of the picture.
-const wx = (x) => x + W / 2;
-const wy = (y) => LEN - y;
+// Full-court feet -> SVG. Upright: x to 0..50, y flipped so the bottom
+// baseline (y=0) is at the bottom of the picture. On its side, that picture
+// turned a quarter clockwise: the bottom basket on the left, the top one on
+// the right. A turn, not a mirror, so a shot from the right of the lane is
+// still on the shooter's right.
+const PROJECT = {
+  half: (x, y) => [x + W / 2, LEN - y],
+  full: (x, y) => [y, x + W / 2],
+};
 
 // Where the corner three meets the arc: 22ft out, on a 23.75ft radius.
 const CORNER_Y = RIM_Y + Math.sqrt(ARC * ARC - CORNER_X * CORNER_X);
@@ -79,7 +97,7 @@ function Player({ at, kit, number, name, ring, act, dimmed, ms }) {
   return (
     <g
       style={{
-        transform: `translate(${wx(at.x)}px, ${wy(at.y)}px)`,
+        transform: `translate(${at[0]}px, ${at[1]}px)`,
         transition: `transform ${ms}ms cubic-bezier(.4,0,.2,1)`,
         opacity: dimmed && !actRing ? 0.55 : 1,
       }}
@@ -105,13 +123,19 @@ function Player({ at, kit, number, name, ring, act, dimmed, ms }) {
   );
 }
 
-const ballXY = (w) => [wx(w.x) + (w.held ? BESIDE.x : 0), wy(w.y) + (w.held ? BESIDE.y : 0)];
+// Where the ball is drawn: beside the holder in screen terms (up and to the
+// right) whichever way the court is turned.
+const ballXY = (w, project) => {
+  const [X, Y] = project(w.x, w.y);
+  return [X + (w.held ? BESIDE.x : 0), Y + (w.held ? BESIDE.y : 0)];
+};
 
 // The ball, flown along this play's route — a pass, the release, an arc to
 // the rim — with the Web Animations API. From directly overhead height can
 // only show as size, so the ball swells toward the top of an arc while its
 // shadow stays on the floor and slides out from under it.
-function Ball({ path, ms }) {
+function Ball({ path, ms, project }) {
+  const at = (w) => ballXY(w, project);
   const ballRef = useRef(null);
   const shadowRef = useRef(null);
   // Read when a play starts, not a dependency: pausing changes the playback
@@ -134,20 +158,20 @@ function Ball({ path, ms }) {
     const offsets = [0, ...legs.map((d) => Math.min(1, (acc += d) / total))];
     const opts = { duration: Math.max(1, msRef.current), fill: 'forwards', easing: 'linear' };
     const flight = ballRef.current.animate(path.map((w, i) => {
-      const [X, Y] = ballXY(w);
+      const [X, Y] = at(w);
       return { transform: `translate(${X}px, ${Y}px) scale(${1 + (w.h || 0) * 0.9})`, offset: offsets[i] };
     }), opts);
     const shadow = shadowRef.current.animate(path.map((w, i) => {
-      const [X, Y] = ballXY(w);
+      const [X, Y] = at(w);
       const lift = (w.h || 0) * 1.6;
       return { transform: `translate(${X + lift}px, ${Y + lift}px)`, opacity: 0.35 - (w.h || 0) * 0.15, offset: offsets[i] };
     }), opts);
     return () => { flight.cancel(); shadow.cancel(); };
-  }, [path]);
+  }, [path, project]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resting place, for anywhere the animation isn't running.
   const end = path?.[path.length - 1];
-  const [X, Y] = end ? ballXY(end) : [0, 0];
+  const [X, Y] = end ? at(end) : [0, 0];
   return (
     <g>
       <ellipse ref={shadowRef} rx="0.6" ry="0.4" fill="#000" style={{ transform: `translate(${X}px, ${Y}px)`, opacity: 0.35 }} />
@@ -162,7 +186,7 @@ function Ball({ path, ms }) {
 // Name tags. Hover tooltips can't be read while the game is playing, so the
 // two players the play is about — whoever has the ball, and the defender on
 // him — carry their names.
-const surname = (name = '') => {
+export const surname = (name = '') => {
   const parts = name.trim().split(/\s+/);
   return parts.length > 1 ? parts.slice(1).join(' ') : parts[0] ?? '';
 };
@@ -183,17 +207,15 @@ const covers = (box, x, y, r) => Math.hypot(
 // usually stands between his man and the rim, but at the rim he squares up
 // beside him, and a blocked shot's loose ball lands right where the
 // shooter's tag would go. Preferences only break ties: the ball handler's
-// tag away from the basket, the defender's away from the ball handler.
-function placeTags(tags, players, ballAt, attackTop) {
-  const camY = attackTop ? 0 : HALF;
-  const view = { x0: -1.5, x1: W + 1.5, y0: camY - 1.5, y1: camY + HALF + 1.5 };
+// tag away from the basket (upright) or above him (on its side), the
+// defender's away from the ball handler. `view` is what's on screen, in
+// SVG units.
+function placeTags(tags, players, ballAt, { project, view, up }) {
   const placed = [];
   for (const t of tags) {
-    const X = wx(t.pl.x);
-    const Y = wy(t.pl.y);
+    const [X, Y] = project(t.pl.x, t.pl.y);
     const other = tags.find((o) => o !== t);
-    // Up the screen is away from the basket when attacking the bottom end.
-    const awayUp = other ? wy(other.pl.y) > Y : !attackTop;
+    const awayUp = other ? project(other.pl.x, other.pl.y)[1] > Y : up;
     const sides = [
       { dx: 0, dy: awayUp ? -1 : 1 }, { dx: 0, dy: awayUp ? 1 : -1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
     ];
@@ -208,7 +230,7 @@ function placeTags(tags, players, ballAt, attackTop) {
       if (box.y0 < view.y0 || box.y1 > view.y1) cost += 1000;
       if (ballAt && covers(box, ballAt[0], ballAt[1], 0.8)) cost += 100;
       for (const p of placed) if (overlaps(box, p.box)) cost += 100;
-      for (const pl of players) if (pl.id !== t.id && covers(box, wx(pl.x), wy(pl.y), 1.3)) cost += 10;
+      for (const pl of players) if (pl.id !== t.id && covers(box, ...project(pl.x, pl.y), 1.3)) cost += 10;
       if (!best || cost < best.cost) best = { cost, dx, dy, box };
     });
     placed.push({ ...t, ...best });
@@ -219,7 +241,7 @@ function placeTags(tags, players, ballAt, attackTop) {
 function NameTag({ at, kit, text, w, h, dx, dy, font, ms }) {
   const ease = 'cubic-bezier(.4,0,.2,1)';
   return (
-    <g style={{ transform: `translate(${wx(at.x)}px, ${wy(at.y)}px)`, transition: `transform ${ms}ms ${ease}`, pointerEvents: 'none' }}>
+    <g style={{ transform: `translate(${at[0]}px, ${at[1]}px)`, transition: `transform ${ms}ms ${ease}`, pointerEvents: 'none' }}>
       <g className="court-tag" style={{ transform: `translate(${dx}px, ${dy}px)`, transition: `transform 180ms ${ease}` }}>
         <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill={kit.fill} stroke={kit.ring} strokeWidth={Math.max(0.12, kit.ringWidth * 0.7)} />
         <text y={font * 0.36} textAnchor="middle" fill={kit.text} style={{ fontSize: font, fontWeight: 700 }}>{text}</text>
@@ -251,7 +273,11 @@ export function KitSwatch({ kit, size = 12 }) {
 
 export default function ArenaCourt({
   players, holderId, actorId = null, act = null, ballPath, shot, attackTop, homeTeam, awayTeam, playerById, moment, moveMs = 320,
+  view = 'half',
 }) {
+  const full = view === 'full';
+  const project = PROJECT[full ? 'full' : 'half'];
+  const shape = COURT_SHAPE[full ? 'full' : 'half'];
   // Home in white, away in colour — see courtKit for why colours alone won't do.
   const kits = { home: courtKit(homeTeam.color, true), away: courtKit(awayTeam.color, false) };
   const label = (id) => {
@@ -268,35 +294,49 @@ export default function ArenaCourt({
   useLayoutEffect(() => {
     const el = svgRef.current;
     if (!el) return undefined;
-    const measure = () => { const w = el.getBoundingClientRect().width; if (w > 0) setPxPerFt(w / (W + 3)); };
+    const measure = () => { const w = el.getBoundingClientRect().width; if (w > 0) setPxPerFt(w / shape.w); };
     measure();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     ro?.observe(el);
     return () => ro?.disconnect();
-  }, []);
+  }, [shape.w]);
   const tagFont = Math.max(1.15, 11 / pxPerFt);
-  const restAt = ballPath?.length ? ballXY(ballPath[ballPath.length - 1]) : null;
+  const restAt = ballPath?.length ? ballXY(ballPath[ballPath.length - 1], project) : null;
+  // What's on screen, in SVG units: upright, the end the camera is on.
+  const camY = full || attackTop ? 0 : HALF;
+  const onScreen = { x0: -PAD, x1: shape.w - PAD, y0: camY - PAD, y1: camY + shape.h - PAD };
   const tags = placeTags(
     [holderId, actorId]
       .map((id, i) => ({ id, role: i ? 'd' : 'h', pl: players.find((x) => x.id === id) }))
       .filter((t) => t.id != null && t.pl)
       .map((t) => ({ ...t, text: surname(playerById(t.id)?.name), ...tagSize(surname(playerById(t.id)?.name), tagFont) })),
-    players, restAt, attackTop,
+    // Upright, up the screen is away from the basket when attacking the
+    // bottom end; on its side, a lone tag goes above its man.
+    players, restAt, { project, view: onScreen, up: full || !attackTop },
   );
+  const rim = project(0, moment?.top ? LEN - RIM_Y : RIM_Y);
 
   return (
-    <svg ref={svgRef} viewBox={`-1.5 -1.5 ${W + 3} ${HALF + 3}`} style={{ width: '100%', display: 'block' }}>
-      {/* The camera: the bottom half sits 47 units down the world, so showing
-          it means sliding everything up by that much. */}
-      <g style={{ transform: `translate(0px, ${attackTop ? 0 : -HALF}px)`, transition: `transform ${moveMs}ms ${ease}` }}>
-        {/* Both ends from one set of geometry: the top end is the bottom one turned 180°. */}
-        <g transform={`translate(0 ${HALF})`}><EndMarkings /></g>
-        <g transform={`rotate(180 ${W / 2} ${HALF}) translate(0 ${HALF})`}><EndMarkings /></g>
+    <svg
+      ref={svgRef} viewBox={`${-PAD} ${-PAD} ${shape.w} ${shape.h}`} style={{ width: '100%', display: 'block' }}
+      data-view={full ? 'full' : 'half'}
+    >
+      {/* The camera, upright: the bottom half sits 47 units down the world,
+          so showing it means sliding everything up by that much. On its side
+          the whole floor is in the picture and the camera never moves. */}
+      <g style={{ transform: `translate(0px, ${-camY}px)`, transition: full ? 'none' : `transform ${moveMs}ms ${ease}` }}>
+        {/* Both ends from one set of geometry: the top end is the bottom one
+            turned 180°. On its side, the whole upright floor turned a quarter
+            — the lines have no text to keep upright, unlike everything below. */}
+        <g transform={full ? `translate(${LEN} 0) rotate(90)` : undefined}>
+          <g transform={`translate(0 ${HALF})`}><EndMarkings /></g>
+          <g transform={`rotate(180 ${W / 2} ${HALF}) translate(0 ${HALF})`}><EndMarkings /></g>
+        </g>
 
         {/* the shot that just went up, left on the floor as a marker */}
         {shot && (
           <circle
-            cx={wx(shot.x)} cy={wy(shot.y)} r="1"
+            cx={project(shot.x, shot.y)[0]} cy={project(shot.x, shot.y)[1]} r="1"
             fill="none"
             stroke={shot.made ? 'var(--color-success)' : 'var(--color-danger)'}
             strokeWidth="0.3"
@@ -308,7 +348,7 @@ export default function ArenaCourt({
             — and appear at the other end without running there. */}
         {[...players].sort((a, b) => a.id - b.id).map((pl) => (
           <Player
-            key={pl.id} at={pl} kit={kits[pl.side]} dimmed={!pl.off} ms={moveMs}
+            key={pl.id} at={project(pl.x, pl.y)} kit={kits[pl.side]} dimmed={!pl.off} ms={moveMs}
             ring={pl.id === holderId} act={pl.id === actorId ? act : null} {...label(pl.id)}
           />
         ))}
@@ -317,7 +357,7 @@ export default function ArenaCourt({
             a tag that stays with its player moves with him, a new one fades in. */}
         {tags.map((t) => (
           <NameTag
-            key={`${t.role}${t.id}`} at={t.pl} kit={kits[t.pl.side]} text={t.text}
+            key={`${t.role}${t.id}`} at={project(t.pl.x, t.pl.y)} kit={kits[t.pl.side]} text={t.text}
             w={t.w} h={t.h} dx={t.dx} dy={t.dy} font={tagFont} ms={moveMs}
           />
         ))}
@@ -326,7 +366,7 @@ export default function ArenaCourt({
             off the iron on a miss. Keyed by play, so each one replays; drawn
             under the ball so the ball stays on top. */}
         {moment && (
-          <g key={moment.key} transform={`translate(${wx(0)} ${wy(moment.top ? LEN - RIM_Y : RIM_Y)})`}>
+          <g key={moment.key} transform={`translate(${rim[0]} ${rim[1]})`}>
             {moment.made ? (
               <>
                 <circle className="court-swish" r="1.2" fill="none" stroke={moment.color} strokeWidth="0.35" />
@@ -343,7 +383,7 @@ export default function ArenaCourt({
           </g>
         )}
 
-        <Ball path={ballPath} ms={moveMs} />
+        <Ball path={ballPath} ms={moveMs} project={project} />
       </g>
     </svg>
   );

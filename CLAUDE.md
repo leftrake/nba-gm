@@ -39,7 +39,7 @@ new screens, and cosmetic updates — only run them when a change touches
 fatigue).
 
 Run `npm run test:live` after touching the live viewer (`LiveGame.jsx`,
-`ArenaCourt.jsx`, `LiveCards.jsx`, `liveFrames.js`, `watchGame.js`,
+`ArenaCourt.jsx`, `LiveCards.jsx`, `LiveTimeline.jsx`, `liveFrames.js`, `watchGame.js`,
 `livePrefs.js`, `liveSound.js`, the viewer's CSS, or a Watch entry point) or
 the play-by-play, lineups and events it reads in `sim.js`. The browser half
 needs the run-nba-gm skill's Playwright (`npm install` in
@@ -209,11 +209,16 @@ The hard split is **engine vs. UI**:
     `liveBox` rebuilds every box-score column from the plays — +/- from the
     frames, minutes from the lineups, credited the box score's way (a
     stint's minutes go to the five who started it) — so at the final
-    whistle it equals the real box line for line. Plain JS rather than JSX
-    so headless checks import the code the viewer actually runs;
-    `LiveGame.jsx`, `ArenaCourt.jsx` (name tags included) and `LiveCards.jsx`
-    (tip-off, break and final cards, highlight banners) render it, and the
-    live box is `BoxScore.jsx`'s own `BoxTable` in its `live` mode.
+    whistle it equals the real box line for line. `lineupChange` says who
+    checked in and out between two frames (the substitution banners), and
+    `flowLine` draws the margin through the plays watched so far — on a
+    scale from those plays alone, since one sized for a lead still to come
+    would give it away. Plain JS rather than JSX so headless checks import
+    the code the viewer actually runs; `LiveGame.jsx`, `ArenaCourt.jsx`
+    (name tags included), `LiveCards.jsx` (tip-off, break and final cards,
+    highlight and substitution banners) and `LiveTimeline.jsx` (the
+    timeline, with the margin drawn along it as its track) render it, and
+    the live box is `BoxScore.jsx`'s own `BoxTable` in its `live` mode.
   - `watchGame.js` — turns a game the app already has into what the viewer
     needs: whether it can be watched at all (structured plays and lineups),
     box lines decoded, and for a replay each side's roster as it took the
@@ -238,7 +243,13 @@ The hard split is **engine vs. UI**:
     never from its own width: a fixed-width court ran down over the
     controls on a laptop's shorter window. Beside it, the ten on the floor
     with their live lines (`liveBox`), then the plays; a tall, narrow space
-    (a phone) stacks the court over the plays instead.
+    (a phone) stacks the court over the plays instead. The court is drawn
+    one of two ways, which `LiveGame`'s `courtView` picks from the stage's
+    size: the whole floor on its side (a wide window, where that keeps 85%
+    or more of the upright scale) or one end upright with a camera that
+    pans. `ArenaCourt` projects the same full-court frames either way, and
+    callouts (highlights, substitutions) go where the play isn't — the
+    empty half, or the end by half court (`calloutSpot`).
   - `livePrefs.js` — how the user likes to watch: starting speed, condensed
     games, pausing at breaks, sound, auto-watch (a sim never runs past one
     of the user's games), reduce motion. A browser preference under its own

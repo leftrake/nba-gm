@@ -21,7 +21,9 @@
 
 import { chromium } from 'playwright';
 import { loadState, dismissOverlay, gotoNav } from '../driver.mjs';
-import { periodBreaks, placeHighlights, buildFrames, liveBox } from '../../../../src/components/liveFrames.js';
+import {
+  periodBreaks, placeHighlights, buildFrames, liveBox, lineupChange, flowLine,
+} from '../../../../src/components/liveFrames.js';
 import { CheckFailure, assert, waitFor, sleep } from './harness.mjs';
 
 export async function launch({ headed = false } = {}) {
@@ -320,6 +322,12 @@ const surname = (name = '') => {
   return parts.length > 1 ? parts.slice(1).join(' ') : parts[0] ?? '';
 };
 const record = (t) => `${t.wins}–${t.losses}`;
+// Full-court feet to the court's SVG units, each way it's drawn (ArenaCourt's
+// PROJECT): upright, and on its side — the bottom basket left, a turn rather
+// than a mirror.
+const PROJECT = { half: (x, y) => [x + 25, 94 - y], full: (x, y) => [y, x + 25] };
+// Where callouts go: away from the basket under attack (LiveGame's calloutSpot).
+const calloutSpot = (view, attackTop) => (view === 'full' ? (attackTop ? 'left' : 'right') : (attackTop ? 'bottom' : 'top'));
 const ppgText = (p) => (p && p.gp > 0 ? `${(p.pts / p.gp).toFixed(1)} ppg` : '—');
 const clockSecs = (t) => { const m = /^(\d+):(\d+)$/.exec(t ?? ''); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
@@ -541,8 +549,13 @@ export function browserChecks(states, handle) {
       return out.join(', ');
     }),
 
-    check('name tags on the ball handler and the defender in the play; the floor list beside the court', {}, async (page) => {
+    // Both ways the court can be drawn: one end upright (1440x900 gives the
+    // upright court a bigger scale than the whole floor would get), and the
+    // whole floor on its side (1600x900).
+    ...[['one end upright', {}, 'half'], ['the whole floor on its side', { viewport: { width: 1600, height: 900 } }, 'full']].map(([way, opts, want]) => check(`name tags on the ball handler and the defender in the play; the floor list beside the court — ${way}`, opts, async (page) => {
       await openFromCalendar(page, states.regular.file);
+      const drawn = await page.evaluate(() => document.querySelector('.live-court > svg')?.dataset.view);
+      assert(drawn === want, `the court is drawn "${drawn}" at this size, expected "${want}"`);
       const g = await viewerGame(page);
       const plays = g.game.playByPlay;
       const frames = buildFrames(plays, g.game.lineups, g.home, g.away);
@@ -605,6 +618,184 @@ export function browserChecks(states, handle) {
         seen.push(kind);
       }
       return seen.join(', ');
+    })),
+
+    check('court view: the whole floor on its side on a wide window, one end upright on a narrower one, and back', { viewport: { width: 1600, height: 900 } }, async (page) => {
+      await openFromCalendar(page, states.regular.file);
+      const g = await viewerGame(page);
+      const plays = g.game.playByPlay;
+      const frames = buildFrames(plays, g.game.lineups, g.home, g.away);
+      const name = new Map([...g.home.roster, ...g.away.roster].map((p) => [p.id, p.name]));
+      await tipOff(page);
+      await pause(page);
+      const read = () => page.evaluate(() => {
+        const svg = document.querySelector('.live-court > svg');
+        const box = (el) => { const r = el?.getBoundingClientRect(); return r ? { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height } : null; };
+        return {
+          view: svg.dataset.view,
+          viewBox: svg.getAttribute('viewBox'),
+          cam: svg.firstElementChild.style.transform,
+          players: [...svg.querySelectorAll('g')].filter((x) => x.querySelector(':scope > title')).map((x) => ({
+            name: x.querySelector(':scope > title').textContent.split(' · ')[0],
+            at: (x.style.transform.match(/translate\(([-\d.e]+)px, ([-\d.e]+)px\)/) ?? []).slice(1).map(Number),
+          })),
+          svg: box(svg), side: box(document.querySelector('.live-side')), bar: box(document.querySelector('.live-bar')),
+        };
+      });
+      // One play with the offense attacking each basket.
+      const picks = [frames.findIndex((f, i) => i > 30 && f.attackTop), frames.findIndex((f, i) => i > 30 && !f.attackTop)];
+      const at = async (view, size) => {
+        const out = [];
+        for (const i of picks) {
+          await seek(page, i + 1); // the court acts out the last play revealed
+          const c = await read();
+          const f = frames[i];
+          const where = `${size}, play ${i} (offense attacking the ${f.attackTop ? 'top' : 'bottom'} basket)`;
+          assert(c.view === view, `${where}: drawn "${c.view}", expected "${view}"`);
+          const [w, h] = view === 'full' ? [97, 53] : [53, 50];
+          assert(c.viewBox === `-1.5 -1.5 ${w} ${h}`, `${where}: viewBox ${c.viewBox}`);
+          assert(Math.abs(c.svg.w / c.svg.h - w / h) < 0.01, `${where}: drawn ${c.svg.w.toFixed(0)}x${c.svg.h.toFixed(0)}, not the ${w}:${h} court`);
+          // The camera: never moves on its side; upright, on the end under attack.
+          const camY = view === 'full' || f.attackTop ? 0 : 47;
+          assert(c.cam === `translate(0px, ${-camY}px)`, `${where}: camera at ${c.cam}`);
+          assert(c.players.length === 10, `${where}: ${c.players.length} players drawn`);
+          for (const pl of f.players) {
+            const d = c.players.find((x) => x.name === name.get(pl.id));
+            const [X, Y] = PROJECT[view](pl.x, pl.y);
+            assert(d && Math.abs(d.at[0] - X) < 0.01 && Math.abs(d.at[1] - Y) < 0.01, `${where}: ${name.get(pl.id)} drawn at ${d?.at}, expected ${X.toFixed(2)},${Y.toFixed(2)}`);
+          }
+          // Beside the list, above the controls.
+          assert(c.svg.r <= c.side.l + 1 && c.svg.b <= c.bar.t + 1, `${where}: the court runs into ${c.svg.r > c.side.l + 1 ? 'the list beside it' : 'the controls'}`);
+          out.push(c.svg.w);
+        }
+        return Math.round(out[0]);
+      };
+      const wide = await at('full', '1600x900');
+      await page.setViewportSize({ width: 1100, height: 800 });
+      await waitFor(() => page.evaluate(() => document.querySelector('.live-court > svg').dataset.view === 'half'), { timeout: 3000, what: 'the upright court at 1100x800' });
+      const narrow = await at('half', '1100x800');
+      await page.setViewportSize({ width: 1600, height: 900 });
+      await waitFor(() => page.evaluate(() => document.querySelector('.live-court > svg').dataset.view === 'full'), { timeout: 3000, what: 'the floor on its side again at 1600x900' });
+      await at('full', '1600x900 again');
+      return `on its side ${wide}px wide at 1600x900, upright ${narrow}px at 1100x800, both baskets each way`;
+    }),
+
+    ...[['one end upright', {}], ['the whole floor on its side', { viewport: { width: 1600, height: 900 } }]].map(([way, opts]) => check(`substitutions: as the new five take the floor, a banner says who came in and who went out, off the play — ${way}`, opts, async (page) => {
+      await openFromCalendar(page, states.regular.file);
+      const g = await viewerGame(page);
+      const plays = g.game.playByPlay;
+      const frames = buildFrames(plays, g.game.lineups, g.home, g.away);
+      const byId = new Map([...g.home.roster, ...g.away.roster].map((p) => [p.id, p]));
+      const team = { home: g.home, away: g.away };
+      // The first substitution after the opening minutes.
+      const k = frames.findIndex((f, i) => i > 20 && lineupChange(frames[i - 1], f));
+      assert(k > 0, 'no substitution in the game to watch');
+      const change = lineupChange(frames[k - 1], frames[k]);
+      await tipOff(page);
+      await pause(page);
+      await seek(page, k - 1); // the court on play k-2; playing on stages k-1, then k — the new five
+      await play(page);
+      const seen = await waitFor(() => page.evaluate(() => {
+        const cards = [...document.querySelectorAll('.live-sub')];
+        if (!cards.length) return null;
+        return {
+          idx: Number(document.querySelector('.live-count').textContent.match(/^(\d+)/)[1]),
+          view: document.querySelector('.live-court > svg').dataset.view,
+          spot: [...document.querySelector('.live-subs').parentElement.classList].find((c) => c.startsWith('is-'))?.slice(3),
+          cards: cards.map((c) => ({
+            label: c.getAttribute('aria-label'),
+            rows: Object.fromEntries([...c.querySelectorAll('.live-sub-row')].map((r) => [
+              r.querySelector('.live-sub-tag').textContent,
+              [...r.querySelectorAll('.live-sub-player')].map((p) => `${p.querySelector('svg text').textContent} ${p.lastChild.textContent}`),
+            ])),
+          })),
+          court: [...document.querySelectorAll('.live-court > svg title')].map((t) => t.textContent.split(' · ')[0]),
+          floorIn: [...document.querySelectorAll('.live-floor tr.is-in .live-floor-name')].map((td) => td.firstChild.textContent),
+        };
+      }), { timeout: 15_000, interval: 30, what: `the substitution before play ${k}` });
+      await pause(page);
+      const where = `substitution at play ${k} (${plays[k].q} ${plays[k].t})`;
+      assert(seen.idx >= k, `${where}: the banner showed with ${seen.idx} plays in, before the new five were on`);
+      const sides = ['away', 'home'].filter((s) => change[s]);
+      assert(seen.cards.length === sides.length, `${where}: ${seen.cards.length} cards for ${sides.length} teams that changed`);
+      const dot = (id) => `${byId.get(id)?.jerseyNumber} ${surname(byId.get(id)?.name)}`;
+      sides.forEach((s, n) => {
+        const c = seen.cards[n];
+        assert(c.label === `${team[s].name} substitution`, `${where}: card ${n} is "${c.label}", expected the ${team[s].name}`);
+        assert((c.rows.In ?? []).join('|') === change[s].ins.map(dot).join('|'), `${where}: ${team[s].name} in [${c.rows.In}], expected [${change[s].ins.map(dot)}]`);
+        assert((c.rows.Out ?? []).join('|') === change[s].outs.map(dot).join('|'), `${where}: ${team[s].name} out [${c.rows.Out}], expected [${change[s].outs.map(dot)}]`);
+      });
+      // What the banner says is what the court shows: everyone in is on it, nobody out is.
+      for (const s of sides) {
+        for (const id of change[s].ins) assert(seen.court.includes(byId.get(id).name), `${where}: ${byId.get(id).name} came in but isn't on the court`);
+        for (const id of change[s].outs) assert(!seen.court.includes(byId.get(id).name), `${where}: ${byId.get(id).name} went out but is still on the court`);
+      }
+      const ins = sides.flatMap((s) => change[s].ins).map((id) => byId.get(id).name);
+      assert(seen.floorIn.sort().join('|') === ins.sort().join('|'), `${where}: the list marks [${seen.floorIn}] as just in, expected [${ins}]`);
+      const spot = calloutSpot(seen.view, frames[k].attackTop);
+      assert(seen.spot === spot, `${where}: the banner is at the ${seen.spot}, expected the ${spot} (away from the basket under attack)`);
+      // A seek isn't a substitution: back to the start clears it, and jumping
+      // across a change announces nothing.
+      await seek(page, 3);
+      assert(!(await page.$('.live-sub')), `${where}: the banner stayed up after seeking back`);
+      await seek(page, k + 5);
+      await sleep(300);
+      assert(!(await page.$('.live-sub')), `${where}: seeking across it announced a substitution`);
+      return `${sides.map((s) => `${team[s].id} ${change[s].ins.length} in/${change[s].outs.length} out`).join(', ')} at ${plays[k].q} ${plays[k].t}, at the ${seen.spot}`;
+    })),
+
+    check('timeline: the margin is drawn only as far as the game has been watched, and hovering reads the score then', {}, async (page) => {
+      await openFromCalendar(page, states.regular.file);
+      const g = await viewerGame(page);
+      const plays = g.game.playByPlay;
+      const score = scoresAfter(plays);
+      const readFlow = () => page.evaluate(() => {
+        const svg = document.querySelector('.live-flow-graph');
+        const range = document.querySelector('.live-timeline input[type="range"]');
+        const r = svg.getBoundingClientRect();
+        return {
+          viewBox: svg.getAttribute('viewBox'),
+          d: svg.querySelector('.live-flow-line')?.getAttribute('d') ?? null,
+          max: Number(range.max),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          tip: document.querySelector('.live-flow-tip')?.textContent ?? null,
+          key: [...document.querySelectorAll('.live-flow-key span')].map((s) => s.textContent),
+        };
+      });
+      let f = await readFlow();
+      assert(f.d === null, `at tip-off a margin line is already drawn: ${f.d}`);
+      assert(f.key.join() === `${g.away.id},${g.home.id}`, `the graph's key reads ${f.key}, expected ${g.away.id} over ${g.home.id}`);
+      await tipOff(page);
+      await pause(page);
+      const hover = async (v) => {
+        await page.mouse.move(f.rect.left + (v / f.max) * f.rect.width, f.rect.top + f.rect.height / 2);
+        await sleep(120);
+        return (await readFlow()).tip;
+      };
+      const checked = [];
+      for (const i of [40, 160, Math.floor(plays.length * 0.8)]) {
+        await seek(page, i);
+        f = await readFlow();
+        const want = flowLine(score, i);
+        assert(f.d === want.d, `after ${i} plays the line is ${f.d?.slice(-40)}, expected …${want.d.slice(-40)}`);
+        assert(f.viewBox === `0 ${-want.scale} ${f.max} ${2 * want.scale}`, `after ${i} plays the graph spans ${f.viewBox}, expected ±${want.scale} over ${f.max} plays`);
+        const v = Math.floor(i / 2);
+        const s = score[v - 1];
+        const tip = await hover(v);
+        assert(tip === `${g.away.id} ${s.away}–${s.home} ${g.home.id}${plays[v - 1].q} ${plays[v - 1].t}`, `hovering play ${v} reads "${tip}"`);
+        const ahead = await hover(Math.min(f.max, i + 15));
+        assert(ahead === null, `hovering ahead of where the game is reads "${ahead}"`);
+        await page.mouse.move(5, 5);
+        checked.push(`${i} (±${want.scale})`);
+      }
+      // The keyboard gets what hovering does: the score at the timeline's spot.
+      const v = await viewer(page);
+      const last = plays[v.idx - 1];
+      assert(v.range.valuetext === `${last.q} ${last.t}, ${g.away.name} ${v.away}, ${g.home.name} ${v.home}`, `the timeline's value text is "${v.range.valuetext}"`);
+      await skipToFinal(page);
+      f = await readFlow();
+      assert(f.d === flowLine(score, plays.length).d, 'at the final the line doesn\'t run to the last play');
+      return `after ${checked.join(', ')} plays and at the final; nothing read ahead of the game`;
     }),
 
     check('Box score view: totals equal the scoreboard; at the final every line equals the box score', {}, async (page) => {
@@ -712,12 +903,15 @@ export function browserChecks(states, handle) {
       await tipOff(page);
       await pause(page);
 
-      // The timeline: a drag lands on the play, and says where it is.
+      // The timeline: a drag lands on the play, and says where it is and the
+      // score then.
+      const score = scoresAfter(plays);
       for (const i of [37, 150]) {
         const v = await seek(page, i);
         const p = plays[i - 1];
+        const s = score[i - 1];
         assert(v.q === p.q && v.t === p.t, `timeline at ${i}: clock ${v.q} ${v.t}, expected ${p.q} ${p.t}`);
-        assert(v.range.value === i && v.range.valuetext === `${p.q} ${p.t}`, `timeline at ${i}: range ${JSON.stringify(v.range)}`);
+        assert(v.range.value === i && v.range.valuetext === `${p.q} ${p.t}, ${g.away.name} ${s.away}, ${g.home.name} ${s.home}`, `timeline at ${i}: range ${JSON.stringify(v.range)}`);
       }
       // The line score: Q3 jumps to just before Q3's first play, so the last
       // play shown is still Q2's — Q2 is current (·) until Q3 begins, and a
