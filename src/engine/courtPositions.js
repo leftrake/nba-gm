@@ -190,6 +190,29 @@ export function reboundSpot(shotX, shotY, hash) {
   };
 }
 
+// Free throws: the shooter on the line and everyone else where the rules put
+// them — the defense on the low lane spaces and one more higher up, the
+// offense on the second spaces, the rest behind the three-point line. Bigs
+// take the lane, guards stay back. Returns { O, D }, { [id]: { x, y } } each.
+const LANE_X = 9.3;                 // just outside the 16ft lane
+const LANE_Y = [7.5, 11, 14.5];     // the first three lane spaces, out from the baseline
+const SIZE = { C: 0, PF: 1, SF: 2, SG: 3, PG: 4 };
+export function freeThrowFormation(offense, defense, shooterId) {
+  const bySize = (xs) => [...xs].sort((a, b) => (SIZE[a.pos] ?? 2) - (SIZE[b.pos] ?? 2));
+  const offSpots = [
+    { x: -LANE_X, y: LANE_Y[1] }, { x: LANE_X, y: LANE_Y[1] }, { x: -16, y: 27 }, { x: 16, y: 27 },
+  ];
+  const defSpots = [
+    { x: -LANE_X, y: LANE_Y[0] }, { x: LANE_X, y: LANE_Y[0] }, { x: LANE_X, y: LANE_Y[2] },
+    { x: -9, y: 29 }, { x: 10, y: 31 },
+  ];
+  const O = { [shooterId]: { x: 0, y: 19 } };
+  bySize(offense.filter((p) => p.id !== shooterId)).forEach((p, i) => { O[p.id] = offSpots[i] ?? { x: 0, y: 31 }; });
+  const D = {};
+  bySize(defense).forEach((p, i) => { D[p.id] = defSpots[i] ?? { x: 0, y: 33 }; });
+  return { O, D };
+}
+
 // Pair defenders to offensive players by listed position — the default
 // matchup when nothing better is known.
 export function positionMatchups(defenders, attackers) {

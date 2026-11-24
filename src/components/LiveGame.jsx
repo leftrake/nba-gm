@@ -33,8 +33,9 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 //
 // On the clock alone (45ms a game second, as it was) half of all plays were
 // over in under 140ms, some shots in 70, and a whole game in two minutes:
-// too fast to watch. This puts a game at about eight minutes at 1x, every
-// shot on screen for at least a second, and 4x at about the old pace.
+// too fast to watch. This put a game at about eight minutes at 1x, every
+// shot on screen for at least a second, and 4x at about the old pace — and
+// the sets below take it to about ten.
 const MS_PER_GAME_SEC = 90;
 const MAX_PLAY_MS = 2400;   // a dead-ball stretch shouldn't stall
 const FLOOR_MS = { shot: 1100, ft: 950, reb: 650, blk: 650, stl: 700, tov: 700, foul: 800 };
@@ -126,9 +127,22 @@ function courtView(w, h) {
   return scale(COURT_SHAPE.full) >= FULL_FROM * scale(COURT_SHAPE.half) ? 'full' : 'half';
 }
 
-const playMs = (play, gapSec, speed) =>
-  Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, (gapSec ?? 4) * MS_PER_GAME_SEC))
-    / Math.max(speed, 0.25);
+// A set — a possession acted out from the inbound to the shot (liveFrames'
+// actOut) — gets more room than its share of the clock alone would give it:
+// up the floor, a pass or two, the shot. At 90ms a game second a typical
+// possession had 1.1s, too quick to see as anything but the ball being shot;
+// this gives it about 1.75s at 1x, and puts a game at about ten minutes.
+const SET_MS_PER_GAME_SEC = 140;
+const SET_MIN_MS = 1400;
+const SET_MAX_MS = 2500;
+
+const playMs = (play, frame, speed) => {
+  const gap = frame?.gap ?? 4;
+  const ms = frame?.set
+    ? Math.max(SET_MIN_MS, Math.min(SET_MAX_MS, gap * SET_MS_PER_GAME_SEC))
+    : Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, gap * MS_PER_GAME_SEC));
+  return ms / Math.max(speed, 0.25);
+};
 
 // Frames — who's where, who has it, the ball's route — come from liveFrames.js,
 // kept free of React so headless checks can run the same code.
@@ -284,7 +298,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
         // The wait before a play is that play's own share of the game clock,
         // and the court spends it acting the play out; motion gets 90% so it
         // has landed by the reveal.
-        const wait = playMs(plays[k], framesRef.current[k]?.gap, s);
+        const wait = playMs(plays[k], framesRef.current[k], s);
         setStage({ k, ms: wait * 0.9, auto: true });
         if (!(await playFor(wait, k))) { if (cancelled) return; continue; } // moved: carry on from there
         posRef.current = k + 1;
@@ -702,13 +716,18 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
                 <ArenaCourt
                   view={courtWay}
                   players={court.players}
+                  paths={court.paths}
                   holderId={court.holderId}
                   actorId={court.actorId}
                   act={court.act}
-                  // Held at its starting point until tip-off: the court is
-                  // already staged on the opening play, and its flight would
-                  // otherwise run (and finish) behind the tip-off card.
-                  ballPath={card?.kind === 'tipoff' ? court.ballPath.slice(0, 1) : court.ballPath}
+                  ballPath={court.ballPath}
+                  playT={court.set ? court.playT : null}
+                  panT={court.panT}
+                  // Held at the start until tip-off: the court is already
+                  // staged on the opening play, and it would otherwise run
+                  // (and finish) behind the tip-off card.
+                  hold={card?.kind === 'tipoff'}
+                  paused={speed === 0}
                   shot={court.shot}
                   attackTop={court.attackTop}
                   homeTeam={home}

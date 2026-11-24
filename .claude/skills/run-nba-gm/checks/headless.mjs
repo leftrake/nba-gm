@@ -87,6 +87,8 @@ function newTally() {
     runs: 0,
     injuries: 0,
     faced: 0,
+    sets: 0,             // possessions acted out (actOut)
+    passes: 0,           // passes in them
     subs: 0,             // substitutions announced
     shortStints: 0,      // logged fives no play fell in (their change shows with the next)
     flows: 0,            // flow lines checked
@@ -107,6 +109,8 @@ function newTally() {
       pregame: new Violations('pre-game numbers that still include tonight'),
       subs: new Violations('substitutions the court gets wrong'),
       flow: new Violations('flow lines that misdraw the game or read ahead of it'),
+      routes: new Violations('routes that jump, or end somewhere the play doesn\'t'),
+      sets: new Violations('sets that lose the ball or end somewhere the result doesn\'t'),
     },
   };
 }
@@ -141,6 +145,63 @@ function checkGame(T, label, game, home, away, moved = NOBODY) {
     for (const role of ['p', 'a', 'v', 'd']) {
       const id = plays[i][role];
       if (id != null && !on.has(id)) V.onCourt.add(`${where(label, plays, i)}: ${role}=${id} is not on the court`);
+    }
+  });
+
+  // How everyone gets there. Every route picks up where the last play left
+  // that player — a sub from the scorer's table, a period's opening tip from
+  // the circle — and ends where this play has him, in order; the ball's does
+  // the same from where it was.
+  const near = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 0.05;
+  const tipAt = (i) => i === 0 || (plays[i].q !== plays[i - 1].q && !plays[i].q.startsWith('Q'));
+  frames.forEach((f, i) => {
+    const prev = frames[i - 1];
+    for (const pl of f.players) {
+      const r = f.paths?.[pl.id];
+      const say = (msg) => V.routes.add(`${where(label, plays, i)}: ${pl.id}'s route ${msg}`);
+      if (!r || r.length < 2) { say('is missing'); continue; }
+      if (r[0].t !== 0 || r[r.length - 1].t !== 1 || r.some((q, k) => k && !(q.t > r[k - 1].t))) { say(`runs out of order: ${r.map((q) => q.t.toFixed(2))}`); continue; }
+      if (!near(r[r.length - 1], pl)) say(`ends at (${r[r.length - 1].x},${r[r.length - 1].y}), the play has him at (${pl.x},${pl.y})`);
+      const was = prev?.players.find((x) => x.id === pl.id);
+      if (was && !tipAt(i) && !near(r[0], was)) say(`starts at (${r[0].x},${r[0].y}), he was at (${was.x},${was.y})`);
+    }
+    const b = f.ballPath;
+    if (b.some((q, k) => k && !(q.t > b[k - 1].t))) V.routes.add(`${where(label, plays, i)}: the ball's route runs out of order`);
+    if (prev && !tipAt(i) && !near(b[0], prev.ballPath[prev.ballPath.length - 1])) V.routes.add(`${where(label, plays, i)}: the ball starts away from where it was`);
+  });
+
+  // The sets (actOut). The ball is in someone's hands but for passes and the
+  // shot, and wherever it's held the man holding it is right there; it's
+  // passed between teammates only; at the moment it's with the man the play
+  // is about, where the play has him — the last pass to an assisted shot
+  // from the man credited with the assist — and a shot that isn't blocked
+  // ends at the rim.
+  frames.forEach((f, i) => {
+    if (!f.set) return;
+    T.sets += 1;
+    const p = plays[i];
+    const say = (msg) => V.sets.add(`${where(label, plays, i)}: ${msg}`);
+    const held = f.ballPath.filter((q) => q.held && q.by != null);
+    for (const q of held) {
+      const r = f.paths[q.by] ?? [];
+      const at = r.find((x) => Math.abs(x.t - q.t) < 1e-9);
+      if (!at) say(`the ball is with ${q.by} at t=${q.t.toFixed(2)}, when his route isn't anywhere in particular`);
+      else if (!near(at, q)) say(`the ball is with ${q.by} at (${q.x.toFixed(1)},${q.y.toFixed(1)}) but he's at (${at.x.toFixed(1)},${at.y.toFixed(1)})`);
+    }
+    for (let k = 1; k < held.length; k++) {
+      if (held[k].by === held[k - 1].by) continue;
+      T.passes += 1;
+      if (sideOf.has(held[k].by) && sideOf.get(held[k].by) !== sideOf.get(held[k - 1].by)) say(`a pass from ${held[k - 1].by} to ${held[k].by}, on the other team`);
+    }
+    const atMoment = held.find((q) => Math.abs(q.t - f.playT) < 1e-9);
+    const who = f.players.find((x) => x.id === f.holderId);
+    if (!atMoment || atMoment.by !== f.holderId || !who || !near(atMoment, who)) say(`at the moment the ball is with ${atMoment?.by ?? 'nobody'}; the play is about ${f.holderId}`);
+    if (p.k === 'shot' && p.a != null && f.paths[p.a]) {
+      const last = held.filter((q) => q.t < f.playT - 1e-9).pop();
+      if (last?.by !== p.a) say(`the last pass to an assisted shot comes from ${last?.by}, not ${p.a}, who has the assist`);
+    }
+    if (p.k === 'shot' && !f.blocked && !near(f.ballPath[f.ballPath.length - 1], f.attackTop ? { x: 0, y: 94 - 5.25 } : { x: 0, y: 5.25 })) {
+      say('the shot never gets to the rim');
     }
   });
 
@@ -555,6 +616,21 @@ export function headlessChecks(states) {
         T.V.defender.assertNone();
         T.V.onCourt.assertNone();
         return `${T.faced} contests, blocks and fouls; every play's players on the court${knownGap(T.skippedPlays, 'play')}`;
+      }),
+    },
+    {
+      name: 'buildFrames routes: everyone, and the ball, pick up where the last play left them and end where this one has them',
+      run: m(({ T }) => {
+        T.V.routes.assertNone();
+        return `${T.plays} plays`;
+      }),
+    },
+    {
+      name: 'actOut sets: the ball always with the man holding it, passed between teammates, to the man the play is about',
+      run: m(({ T }) => {
+        T.V.sets.assertNone();
+        assert(T.sets > T.games * 150 && T.passes > T.sets, `too few sets to mean anything: ${T.sets} in ${T.games} games, ${T.passes} passes`);
+        return `${T.sets} possessions acted out, ${T.passes} passes`;
       }),
     },
     {

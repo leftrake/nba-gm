@@ -171,8 +171,8 @@ The hard split is **engine vs. UI**:
   - `names.js` — per-nationality name pools for player generation.
   - `courtPositions.js` — plausible floor positions for all ten players
     (offensive spacing, defensive shading, clearing space around the ball,
-    where a miss comes down) in `shotZones.js`'s half-court coordinate
-    space. Unlike everything else in `src/engine/`, this is **not
+    where a miss comes down, the lane lined up for free throws) in
+    `shotZones.js`'s half-court coordinate space. Unlike everything else in `src/engine/`, this is **not
     simulated**: the sim never models off-ball movement, so these are
     invented for rendering. Nothing in it feeds a rating, probability or
     box score, and nothing in the sim reads it.
@@ -209,7 +209,14 @@ The hard split is **engine vs. UI**:
     `liveBox` rebuilds every box-score column from the plays — +/- from the
     frames, minutes from the lineups, credited the box score's way (a
     stint's minutes go to the five who started it) — so at the final
-    whistle it equals the real box line for line. `lineupChange` says who
+    whistle it equals the real box line for line. Each possession's first
+    play is acted out (`actOut`): the ball brought up the floor, passed or
+    driven, screened for, and worked to the man the result is about by the
+    route it implies (an assist is the last pass), so every frame carries
+    routes — `paths` for each player and a timed `ballPath`, as
+    `[{ x, y, t }]` over the play's time on screen — not just where everyone
+    ends up. Invented like the positions, fixed per play, never the game
+    rng. `lineupChange` says who
     checked in and out between two frames (the substitution banners), and
     `flowLine` draws the margin through the plays watched so far — on a
     scale from those plays alone, since one sized for a lead still to come
@@ -247,8 +254,10 @@ The hard split is **engine vs. UI**:
     one of two ways, which `LiveGame`'s `courtView` picks from the stage's
     size: the whole floor on its side (a wide window, where that keeps 85%
     or more of the upright scale) or one end upright with a camera that
-    pans. `ArenaCourt` projects the same full-court frames either way, and
-    callouts (highlights, substitutions) go where the play isn't — the
+    pans. `ArenaCourt` projects the same full-court frames either way and
+    runs everyone, and the ball, along the frame's routes with the Web
+    Animations API — which is how a pause freezes the court mid-play — and
+    callouts (highlights, substitutions) go where the play isn't: the
     empty half, or the end by half court (`calloutSpot`).
   - `livePrefs.js` — how the user likes to watch: starting speed, condensed
     games, pausing at breaks, sound, auto-watch (a sim never runs past one

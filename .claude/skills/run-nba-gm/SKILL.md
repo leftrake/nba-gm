@@ -100,8 +100,8 @@ node .claude/skills/run-nba-gm/checks/run-all.mjs --grep "box score" --headed
 ```
 
 It builds its own states with `scripts/build-state.mjs` into a fresh temp folder, starts its own Vite server from this checkout on a free port (not 5173, which may be another checkout's), and prints PASS/FAIL per check plus any console errors. It exits non-zero if anything failed.
-- `headless.mjs` checks `liveFrames.js` and `watchGame.js` over a month of games plus the playoffs, play-in, Cup, All-Star Game and replays — substitutions (`lineupChange`) and the timeline's margin line (`flowLine`) included.
-- `browser.mjs` drives the viewer itself: Watch entry points, cards, pacing, keyboard, condensed games, auto-watch, reduced motion and phone width; the court both ways (one end upright at 1440x900, the whole floor on its side at 1600x900, and switching on a resize), substitution banners in both, and the margin graph on the timeline.
+- `headless.mjs` checks `liveFrames.js` and `watchGame.js` over a month of games plus the playoffs, play-in, Cup, All-Star Game and replays — the acted-out possessions (`actOut`: routes that pick up where the last play left off, the ball always in the hands of whoever holds it), substitutions (`lineupChange`) and the timeline's margin line (`flowLine`) included.
+- `browser.mjs` drives the viewer itself: Watch entry points, cards, pacing, keyboard, condensed games, auto-watch, reduced motion and phone width; the court both ways (one end upright at 1440x900, the whole floor on its side at 1600x900, and switching on a resize), substitution banners in both, the margin graph on the timeline, and a pause freezing a possession mid-set.
 
 The suite's code says how it reads the viewer: through the DOM, plus the watched game straight from LiveGame's props.
 

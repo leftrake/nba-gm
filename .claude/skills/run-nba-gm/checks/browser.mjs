@@ -580,8 +580,9 @@ export function browserChecks(states, handle) {
           const players = [...svg.querySelectorAll('g')].filter((x) => x.querySelector(':scope > title')).map((x) => ({
             name: x.querySelector(':scope > title').textContent.split(' · ')[0],
             at: x.style.transform,
-            holder: !!x.querySelector(':scope > circle[r="1.95"]'),
-            act: x.querySelector(':scope > circle.court-act')?.getAttribute('class').match(/court-act--(\w+)/)?.[1] ?? null,
+            // The rings sit in a group of their own, which fades them in at the play's moment.
+            holder: !!x.querySelector('circle[r="1.95"]'),
+            act: x.querySelector('circle.court-act')?.getAttribute('class').match(/court-act--(\w+)/)?.[1] ?? null,
           }));
           const tags = [...svg.querySelectorAll('g.court-tag')].map((x) => ({ text: x.textContent.trim(), at: x.parentElement.style.transform }));
           const floor = [...document.querySelectorAll('table.live-floor tbody')].map((tb) => [...tb.querySelectorAll('tr:not(.live-floor-team)')].map((tr) => ({
@@ -1260,15 +1261,16 @@ export function browserChecks(states, handle) {
     // to see motion when it's there), from the system setting, and from the
     // app's own preference.
     ...[
-      ['reduced motion, control: without it, players glide and the ball flies', {}, false],
-      ['reduced motion from the system setting stops player transitions and the ball\'s flight', { reducedMotion: true }, true],
-      ['reduced motion from the nba-gm-live preference stops player transitions and the ball\'s flight', { prefs: { speed: 4, reduceMotion: true } }, true],
+      ['reduced motion, control: without it, players run and the ball flies', {}, false],
+      ['reduced motion from the system setting stops the players\' runs and the ball\'s flight', { reducedMotion: true }, true],
+      ['reduced motion from the nba-gm-live preference stops the players\' runs and the ball\'s flight', { prefs: { speed: 4, reduceMotion: true } }, true],
     ].map(([name, opts, reduced]) => check(name, opts, async (page) => {
       await openFromCalendar(page, states.regular.file);
       await tipOff(page);
       const m = await page.evaluate(async () => {
         const svg = () => document.querySelector('.live-court > svg');
         let flights = 0;
+        let runs = 0;
         let glide = 0;
         let rings = 0;
         let visibleRings = 0;
@@ -1276,9 +1278,14 @@ export function browserChecks(states, handle) {
         while (performance.now() < until) {
           const s = svg();
           if (s) {
-            // The ball flies on the Web Animations API (element.animate):
-            // plain Animations, not the CSS transitions and keyframes.
-            flights = Math.max(flights, document.getAnimations().filter((a) => a.constructor === Animation && a.playState === 'running' && s.contains(a.effect?.target)).length);
+            // The ball and the players move on the Web Animations API
+            // (element.animate): plain Animations, not the CSS transitions
+            // and keyframes. The ball is the group holding its circle; a
+            // player, a group carrying his name as a <title>.
+            const live = document.getAnimations().filter((a) => a.constructor === Animation && a.playState === 'running' && s.contains(a.effect?.target));
+            const ball = s.querySelector('circle[r="0.62"]')?.parentElement;
+            flights = Math.max(flights, live.filter((a) => ball?.contains(a.effect.target)).length);
+            runs = Math.max(runs, live.filter((a) => a.effect.target.querySelector?.(':scope > title')).length);
             for (const g of s.querySelectorAll('g')) {
               if (!g.querySelector(':scope > title')) continue;
               glide = Math.max(glide, parseFloat(getComputedStyle(g).transitionDuration) || 0);
@@ -1290,19 +1297,54 @@ export function browserChecks(states, handle) {
           }
           await new Promise((r) => setTimeout(r, 40));
         }
-        return { flights, glide, rings, visibleRings, htmlClass: document.documentElement.className };
+        return { flights, runs, glide, rings, visibleRings, htmlClass: document.documentElement.className };
       });
       if (!reduced) {
         assert(m.flights > 0, 'the ball never flew — the measurement can\'t see motion');
-        assert(m.glide >= 0.05, `players' transitions are ${m.glide}s — the measurement can't see motion`);
-        return `ball flights seen, player transitions up to ${m.glide.toFixed(2)}s`;
+        assert(m.runs >= 5, `at most ${m.runs} players ran at once — the measurement can't see motion`);
+        return `ball flights seen, up to ${m.runs} players running at once`;
       }
-      assert(m.flights === 0, `the ball flew (${m.flights} running flight animations) with reduced motion on`);
-      assert(m.glide <= 0.001, `players still glide (transition ${m.glide}s) with reduced motion on`);
+      assert(m.flights === 0, `the ball flew (${m.flights} running animations) with reduced motion on`);
+      assert(m.runs === 0, `players still run (${m.runs} at once) with reduced motion on`);
+      assert(m.glide <= 0.001, `players glide (transition ${m.glide}s) with reduced motion on`);
       assert(m.visibleRings === 0, `${m.visibleRings} swish/clank rings showed with reduced motion on`);
       if (opts.prefs?.reduceMotion) assert(/\breduce-motion\b/.test(m.htmlClass), '<html> lacks the reduce-motion class');
-      return `no flights, transitions ≤ 1ms, ${m.rings ? 'rings hidden' : 'no rings'}`;
+      return `no flights, no runs, ${m.rings ? 'rings hidden' : 'no rings'}`;
     })),
+
+    check('a pause freezes a possession mid-set — every runner and the ball — and Play picks it up there', { prefs: { speed: 1 } }, async (page) => {
+      await openFromCalendar(page, states.regular.file);
+      await tipOff(page);
+      // A set well under way: most of the floor running at once.
+      await page.waitForFunction(() => {
+        const s = document.querySelector('.live-court > svg');
+        return s && s.getAnimations({ subtree: true }).filter((a) => a.playState === 'running' && a.currentTime > 200).length >= 12;
+      }, null, { timeout: 30_000, polling: 30 });
+      const read = () => page.evaluate(() => {
+        const s = document.querySelector('.live-court > svg');
+        const at = (el) => { const m = new DOMMatrix(getComputedStyle(el).transform); return `${m.e.toFixed(2)},${m.f.toFixed(2)}`; };
+        const players = [...s.querySelectorAll('g')].filter((g) => g.querySelector(':scope > title')).map(at);
+        return {
+          pos: [...players, at(s.querySelector('circle[r="0.62"]').parentElement)].join(' '),
+          running: s.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length,
+          idx: Number(document.querySelector('.live-count').textContent.match(/^(\d+)/)[1]),
+        };
+      });
+      const before = await read();
+      await press(page, 'Space');
+      await sleep(100);
+      const a = await read();
+      await sleep(900);
+      const b = await read();
+      assert(a.running === 0 && b.running === 0, `${a.running} animations still running after the pause`);
+      assert(a.pos === b.pos, 'players or the ball moved while paused');
+      assert(a.idx === b.idx, `the game went on while paused (${a.idx} → ${b.idx} plays)`);
+      await press(page, 'Space');
+      await sleep(250);
+      const c = await read();
+      assert(c.pos !== b.pos && c.running > 0, 'nothing moved after Play');
+      return `${before.running} animations frozen for 0.9s, the same play carrying on after`;
+    }),
 
     check('phone width (375px): no sideways scroll on any view or card', { viewport: { width: 375, height: 812 } }, async (page) => {
       await openFromCalendar(page, states.regular.file);

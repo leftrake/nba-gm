@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { courtKit } from '../engine/colorUtils.js';
 import { motionReduced } from './livePrefs.js';
 
@@ -92,23 +92,71 @@ const ACT_RING = {
   foul: { stroke: 'var(--color-warning)', width: 0.3, dash: '0.55 0.4', opacity: 1 },
 };
 
-function Player({ at, kit, number, name, ring, act, dimmed, ms }) {
+// Each leg of a run eased like a player getting going and pulling up.
+const RUN_EASE = 'cubic-bezier(.45,.05,.55,.95)';
+
+// Moves an element along `route` ([{ X, Y, t }], screen units) over the
+// play's time on screen, with the Web Animations API: a set is several legs
+// (liveFrames' actOut), anything else one. Held (before tip-off), it waits at
+// the start; with reduced motion it doesn't move at all — it's simply where
+// the route ends. `ms` is read when a play starts, not a dependency: it only
+// changes with a new play, and re-running on it would restart the old one.
+function useRoute(ref, route, ms, hold) {
+  const msRef = useRef(ms);
+  msRef.current = ms;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el?.animate || !route || route.length < 2 || hold || motionReduced()) return undefined;
+    const run = el.animate(
+      route.map((q) => ({ transform: `translate(${q.X}px, ${q.Y}px)`, offset: q.t, easing: RUN_EASE })),
+      { duration: Math.max(1, msRef.current), fill: 'forwards' },
+    );
+    return () => run.cancel();
+  }, [route, hold]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+const routeRest = (route, hold) => (hold ? route[0] : route[route.length - 1]);
+
+// A player's rings — the ball-handler's, the defender's in the play — say
+// who the play is about, so in a set they wait for it: up the floor and
+// through the passes the ball is with someone else.
+function useRingsAt(ref, at, ms, hold) {
+  const msRef = useRef(ms);
+  msRef.current = ms;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el?.animate || at == null || hold || motionReduced()) return undefined;
+    const show = el.animate(
+      [{ opacity: 0, offset: 0 }, { opacity: 0, offset: Math.max(0, at - 0.03) }, { opacity: 1, offset: at }],
+      { duration: Math.max(1, msRef.current), fill: 'forwards' },
+    );
+    return () => show.cancel();
+  }, [at, hold]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+function Player({ route, kit, number, name, ring, act, dimmed, ms, hold, ringsAt }) {
   const actRing = act && ACT_RING[act];
+  const ref = useRef(null);
+  const ringsRef = useRef(null);
+  useRoute(ref, route, ms, hold);
+  useRingsAt(ringsRef, (ring || actRing) ? ringsAt : null, ms, hold);
+  const rest = routeRest(route, hold);
   return (
     <g
+      ref={ref}
       style={{
-        transform: `translate(${at[0]}px, ${at[1]}px)`,
-        transition: `transform ${ms}ms cubic-bezier(.4,0,.2,1)`,
+        transform: `translate(${rest.X}px, ${rest.Y}px)`,
         opacity: dimmed && !actRing ? 0.55 : 1,
       }}
     >
-      {ring && <circle r="1.95" fill="none" stroke="var(--court-ball)" strokeWidth="0.3" opacity="0.9" />}
-      {actRing && (
-        <circle
-          className={`court-act court-act--${act}`} r="1.75" fill="none"
-          stroke={actRing.stroke} strokeWidth={actRing.width} strokeDasharray={actRing.dash ?? undefined} opacity={actRing.opacity}
-        />
-      )}
+      <g ref={ringsRef}>
+        {ring && <circle r="1.95" fill="none" stroke="var(--court-ball)" strokeWidth="0.3" opacity="0.9" />}
+        {actRing && (
+          <circle
+            className={`court-act court-act--${act}`} r="1.75" fill="none"
+            stroke={actRing.stroke} strokeWidth={actRing.width} strokeDasharray={actRing.dash ?? undefined} opacity={actRing.opacity}
+          />
+        )}
+      </g>
       {/* 1.3ft radius, not a true ~2ft shoulder width: defenders legitimately
           stand 3ft off their man, and at real scale the two discs merge. */}
       <circle r="1.3" fill={kit.fill} stroke={kit.ring} strokeWidth={kit.ringWidth} />
@@ -123,61 +171,85 @@ function Player({ at, kit, number, name, ring, act, dimmed, ms }) {
   );
 }
 
-// Where the ball is drawn: beside the holder in screen terms (up and to the
-// right) whichever way the court is turned.
-const ballXY = (w, project) => {
-  const [X, Y] = project(w.x, w.y);
-  return [X + (w.held ? BESIDE.x : 0), Y + (w.held ? BESIDE.y : 0)];
-};
+// The ball's route on screen, from the frame's (liveFrames): beside whoever
+// holds it, in screen terms (up and to the right) whichever way the court is
+// turned.
+function screenBall(route, project) {
+  return route.map((w) => {
+    const [X, Y] = project(w.x, w.y);
+    return { ...w, X: X + (w.held ? BESIDE.x : 0), Y: Y + (w.held ? BESIDE.y : 0) };
+  });
+}
 
-// The ball, flown along this play's route — a pass, the release, an arc to
-// the rim — with the Web Animations API. From directly overhead height can
-// only show as size, so the ball swells toward the top of an arc while its
-// shadow stays on the floor and slides out from under it.
-function Ball({ path, ms, project }) {
-  const at = (w) => ballXY(w, project);
-  const ballRef = useRef(null);
+// How high the ball is through the play, for drawing — from directly
+// overhead height can only show as size. In the hand it's at waist height;
+// dribbled, it drops to the floor and back a few times a second; passed, it
+// lifts a little; shot, it goes up the arc the route gives it.
+const HAND = 0.1;
+const BOUNCE_MS = 230;
+function heights(route, ms) {
+  const out = [];
+  route.forEach((w, i) => {
+    const h = w.held ? HAND : (w.h || 0);
+    const prev = route[i - 1];
+    if (prev && prev.held && w.held) {
+      const span = w.t - prev.t;
+      const dist = Math.hypot(w.x - prev.x, w.y - prev.y);
+      if (prev.by === w.by && dist > 3) {
+        // Dribbled: down to the floor and back up, all the way.
+        const n = Math.max(1, Math.round((span * ms) / BOUNCE_MS));
+        for (let k = 0; k < n; k++) {
+          out.push({ h: 0, t: prev.t + (span * (k + 0.5)) / n });
+          if (k < n - 1) out.push({ h: HAND, t: prev.t + (span * (k + 1)) / n });
+        }
+      } else if (prev.by !== w.by) {
+        out.push({ h: HAND + 0.12, t: prev.t + span / 2 });   // a pass, a little above the hands
+      }
+    }
+    out.push({ h, t: w.t });
+  });
+  return out;
+}
+
+// The ball along its route, with the Web Animations API. Where it moves with
+// someone — dribbled up the floor, carried on a drive — it moves as he does;
+// passed or shot it flies straight. Its height is a separate animation, of
+// its size and its shadow's slide out from under it, so a dribble can bounce
+// while the ball moves with the man.
+function Ball({ route, ms, hold }) {
+  const posRef = useRef(null);
+  const sizeRef = useRef(null);
   const shadowRef = useRef(null);
-  // Read when a play starts, not a dependency: pausing changes the playback
-  // speed, and re-running on that would replay the last play's flight.
   const msRef = useRef(ms);
   msRef.current = ms;
-
   useLayoutEffect(() => {
-    // A single point is a ball at rest — nothing to fly. With reduced motion
-    // it doesn't fly either: it's simply where the play left it.
-    if (!path || path.length < 2 || !ballRef.current?.animate || motionReduced()) return undefined;
-    // Time is shared out by distance so the ball keeps a steady pace; time in
-    // the air counts extra, or a short jumper's arc is over before it's seen.
-    const legs = path.slice(1).map((w, i) => {
-      const a = path[i];
-      return Math.hypot(w.x - a.x, w.y - a.y) + ((w.h || a.h) ? 4 : 0) + 0.01;
-    });
-    const total = legs.reduce((s, d) => s + d, 0);
-    let acc = 0;
-    const offsets = [0, ...legs.map((d) => Math.min(1, (acc += d) / total))];
-    const opts = { duration: Math.max(1, msRef.current), fill: 'forwards', easing: 'linear' };
-    const flight = ballRef.current.animate(path.map((w, i) => {
-      const [X, Y] = at(w);
-      return { transform: `translate(${X}px, ${Y}px) scale(${1 + (w.h || 0) * 0.9})`, offset: offsets[i] };
+    if (!route || route.length < 2 || hold || !posRef.current?.animate || motionReduced()) return undefined;
+    const opts = { duration: Math.max(1, msRef.current), fill: 'forwards' };
+    const moves = posRef.current.animate(route.map((w, i) => {
+      const next = route[i + 1];
+      const carried = next && w.held && next.held && w.by != null && w.by === next.by;
+      return { transform: `translate(${w.X}px, ${w.Y}px)`, offset: w.t, easing: carried ? RUN_EASE : 'linear' };
     }), opts);
-    const shadow = shadowRef.current.animate(path.map((w, i) => {
-      const [X, Y] = at(w);
-      const lift = (w.h || 0) * 1.6;
-      return { transform: `translate(${X + lift}px, ${Y + lift}px)`, opacity: 0.35 - (w.h || 0) * 0.15, offset: offsets[i] };
-    }), opts);
-    return () => { flight.cancel(); shadow.cancel(); };
-  }, [path, project]); // eslint-disable-line react-hooks/exhaustive-deps
+    const hs = heights(route, msRef.current);
+    const size = sizeRef.current.animate(hs.map((q) => ({ transform: `scale(${1 + q.h * 0.9})`, offset: q.t })), opts);
+    const shadow = shadowRef.current.animate(hs.map((q) => ({
+      transform: `translate(${q.h * 1.6}px, ${q.h * 1.6}px)`, opacity: 0.35 - q.h * 0.15, offset: q.t,
+    })), opts);
+    return () => { moves.cancel(); size.cancel(); shadow.cancel(); };
+  }, [route, hold]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resting place, for anywhere the animation isn't running.
-  const end = path?.[path.length - 1];
-  const [X, Y] = end ? at(end) : [0, 0];
+  const rest = route?.length ? routeRest(route, hold) : { X: 0, Y: 0, h: 0 };
+  const h = rest.held ? HAND : (rest.h || 0);
   return (
-    <g>
-      <ellipse ref={shadowRef} rx="0.6" ry="0.4" fill="#000" style={{ transform: `translate(${X}px, ${Y}px)`, opacity: 0.35 }} />
+    <g ref={posRef} style={{ transform: `translate(${rest.X}px, ${rest.Y}px)` }}>
+      <ellipse
+        ref={shadowRef} rx="0.6" ry="0.4" fill="#000"
+        style={{ transform: `translate(${h * 1.6}px, ${h * 1.6}px)`, opacity: 0.35 - h * 0.15 }}
+      />
       <circle
-        ref={ballRef} r="0.62" fill="var(--court-ball)" stroke="rgba(0,0,0,.5)" strokeWidth="0.12"
-        style={{ transform: `translate(${X}px, ${Y}px)` }}
+        ref={sizeRef} r="0.62" fill="var(--court-ball)" stroke="rgba(0,0,0,.5)" strokeWidth="0.12"
+        style={{ transform: `scale(${1 + h * 0.9})` }}
       />
     </g>
   );
@@ -238,10 +310,14 @@ function placeTags(tags, players, ballAt, { project, view, up }) {
   return placed;
 }
 
-function NameTag({ at, kit, text, w, h, dx, dy, font, ms }) {
+// A tag runs with its player, along the same route.
+function NameTag({ route, kit, text, w, h, dx, dy, font, ms, hold }) {
   const ease = 'cubic-bezier(.4,0,.2,1)';
+  const ref = useRef(null);
+  useRoute(ref, route, ms, hold);
+  const rest = routeRest(route, hold);
   return (
-    <g style={{ transform: `translate(${at[0]}px, ${at[1]}px)`, transition: `transform ${ms}ms ${ease}`, pointerEvents: 'none' }}>
+    <g ref={ref} style={{ transform: `translate(${rest.X}px, ${rest.Y}px)`, pointerEvents: 'none' }}>
       <g className="court-tag" style={{ transform: `translate(${dx}px, ${dy}px)`, transition: `transform 180ms ${ease}` }}>
         <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill={kit.fill} stroke={kit.ring} strokeWidth={Math.max(0.12, kit.ringWidth * 0.7)} />
         <text y={font * 0.36} textAnchor="middle" fill={kit.text} style={{ fontSize: font, fontWeight: 700 }}>{text}</text>
@@ -271,13 +347,30 @@ export function KitSwatch({ kit, size = 12 }) {
   );
 }
 
+// `paths` and `ballPath` are the frame's routes (liveFrames' buildFrames):
+// how everyone, and the ball, get to where the play has them, over `moveMs`.
+// `playT` is when the play itself happens in a set — the rings wait for it —
+// and `panT` how much of the time the camera takes to follow the ball up the
+// floor, upright. `hold` keeps everything at its start (behind the tip-off
+// card); `paused` freezes whatever is moving where it is.
 export default function ArenaCourt({
-  players, holderId, actorId = null, act = null, ballPath, shot, attackTop, homeTeam, awayTeam, playerById, moment, moveMs = 320,
-  view = 'half',
+  players, paths = null, holderId, actorId = null, act = null, ballPath, shot, attackTop, homeTeam, awayTeam,
+  playerById, moment, moveMs = 320, view = 'half', playT = null, panT = 1, hold = false, paused = false,
 }) {
   const full = view === 'full';
   const project = PROJECT[full ? 'full' : 'half'];
   const shape = COURT_SHAPE[full ? 'full' : 'half'];
+  // The routes on screen. Kept while the frame and the view are, so a render
+  // for anything else (the clock, the score) doesn't restart a run.
+  const routes = useMemo(() => {
+    const out = {};
+    for (const pl of players) {
+      const pts = paths?.[pl.id] ?? [{ x: pl.x, y: pl.y, t: 1 }];
+      out[pl.id] = pts.map((q) => { const [X, Y] = project(q.x, q.y); return { X, Y, t: q.t }; });
+    }
+    return out;
+  }, [paths, players, project]);
+  const ballRoute = useMemo(() => (ballPath?.length ? screenBall(ballPath, project) : null), [ballPath, project]);
   // Home in white, away in colour — see courtKit for why colours alone won't do.
   const kits = { home: courtKit(homeTeam.color, true), away: courtKit(awayTeam.color, false) };
   const label = (id) => {
@@ -300,8 +393,25 @@ export default function ArenaCourt({
     ro?.observe(el);
     return () => ro?.disconnect();
   }, [shape.w]);
+  // A pause freezes the court mid-play — the runs, the ball, the camera —
+  // and play picks it up from there. (The playback loop's clock stops with
+  // it.) Only what was moving is frozen: a step taken while paused still
+  // plays out.
+  const frozen = useRef([]);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg?.getAnimations) return;
+    if (paused) {
+      frozen.current = svg.getAnimations({ subtree: true }).filter((a) => a.playState === 'running');
+      frozen.current.forEach((a) => a.pause());
+    } else {
+      frozen.current.forEach((a) => { if (a.playState === 'paused') a.play(); });
+      frozen.current = [];
+    }
+  }, [paused]);
+
   const tagFont = Math.max(1.15, 11 / pxPerFt);
-  const restAt = ballPath?.length ? ballXY(ballPath[ballPath.length - 1], project) : null;
+  const restAt = ballRoute ? [ballRoute[ballRoute.length - 1].X, ballRoute[ballRoute.length - 1].Y] : null;
   // What's on screen, in SVG units: upright, the end the camera is on.
   const camY = full || attackTop ? 0 : HALF;
   const onScreen = { x0: -PAD, x1: shape.w - PAD, y0: camY - PAD, y1: camY + shape.h - PAD };
@@ -324,7 +434,7 @@ export default function ArenaCourt({
       {/* The camera, upright: the bottom half sits 47 units down the world,
           so showing it means sliding everything up by that much. On its side
           the whole floor is in the picture and the camera never moves. */}
-      <g style={{ transform: `translate(0px, ${-camY}px)`, transition: full ? 'none' : `transform ${moveMs}ms ${ease}` }}>
+      <g style={{ transform: `translate(0px, ${-camY}px)`, transition: full ? 'none' : `transform ${Math.max(1, panT * moveMs)}ms ${ease}` }}>
         {/* Both ends from one set of geometry: the top end is the bottom one
             turned 180°. On its side, the whole upright floor turned a quarter
             — the lines have no text to keep upright, unlike everything below. */}
@@ -348,8 +458,8 @@ export default function ArenaCourt({
             — and appear at the other end without running there. */}
         {[...players].sort((a, b) => a.id - b.id).map((pl) => (
           <Player
-            key={pl.id} at={project(pl.x, pl.y)} kit={kits[pl.side]} dimmed={!pl.off} ms={moveMs}
-            ring={pl.id === holderId} act={pl.id === actorId ? act : null} {...label(pl.id)}
+            key={pl.id} route={routes[pl.id]} kit={kits[pl.side]} dimmed={!pl.off} ms={moveMs} hold={hold}
+            ring={pl.id === holderId} act={pl.id === actorId ? act : null} ringsAt={playT} {...label(pl.id)}
           />
         ))}
 
@@ -357,8 +467,8 @@ export default function ArenaCourt({
             a tag that stays with its player moves with him, a new one fades in. */}
         {tags.map((t) => (
           <NameTag
-            key={`${t.role}${t.id}`} at={project(t.pl.x, t.pl.y)} kit={kits[t.pl.side]} text={t.text}
-            w={t.w} h={t.h} dx={t.dx} dy={t.dy} font={tagFont} ms={moveMs}
+            key={`${t.role}${t.id}`} route={routes[t.id]} kit={kits[t.pl.side]} text={t.text}
+            w={t.w} h={t.h} dx={t.dx} dy={t.dy} font={tagFont} ms={moveMs} hold={hold}
           />
         ))}
 
@@ -383,7 +493,7 @@ export default function ArenaCourt({
           </g>
         )}
 
-        <Ball path={ballPath} ms={moveMs} project={project} />
+        <Ball route={ballRoute} ms={moveMs} hold={hold} />
       </g>
     </svg>
   );
