@@ -43,7 +43,7 @@ Run `npm run test:live` after touching the live viewer (`LiveGame.jsx`,
 `livePrefs.js`, `liveSound.js`, the viewer's CSS, or a Watch entry point) or
 the play-by-play, lineups and events it reads in `sim.js`. The browser half
 needs the run-nba-gm skill's Playwright (`npm install` in
-`.claude/skills/run-nba-gm` once) and takes about two minutes; `--only headless`
+`.claude/skills/run-nba-gm` once) and takes about three minutes; `--only headless`
 takes seconds.
 
 `scripts/` also has a few targeted, non-npm-wired headless checks for
@@ -215,8 +215,11 @@ The hard split is **engine vs. UI**:
     route it implies (an assist is the last pass), so every frame carries
     routes — `paths` for each player and a timed `ballPath`, as
     `[{ x, y, t }]` over the play's time on screen — not just where everyone
-    ends up. Invented like the positions, fixed per play, never the game
-    rng. `lineupChange` says who
+    ends up. A set is timed in real seconds (`realSec`: real running,
+    passing and shooting speeds, filling out about as long as the game
+    clock says the possession ran), and `LiveGame` plays it back at half
+    real time at 1x, so nothing races and nothing hangs. Invented like the
+    positions, fixed per play, never the game rng. `lineupChange` says who
     checked in and out between two frames (the substitution banners), and
     `flowLine` draws the margin through the plays watched so far — on a
     scale from those plays alone, since one sized for a lead still to come

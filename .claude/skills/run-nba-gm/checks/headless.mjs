@@ -197,8 +197,13 @@ function checkGame(T, label, game, home, away, moved = NOBODY) {
     const who = f.players.find((x) => x.id === f.holderId);
     if (!atMoment || atMoment.by !== f.holderId || !who || !near(atMoment, who)) say(`at the moment the ball is with ${atMoment?.by ?? 'nobody'}; the play is about ${f.holderId}`);
     if (p.k === 'shot' && p.a != null && f.paths[p.a]) {
-      const last = held.filter((q) => q.t < f.playT - 1e-9).pop();
-      if (last?.by !== p.a) say(`the last pass to an assisted shot comes from ${last?.by}, not ${p.a}, who has the assist`);
+      // The last hand-off before the release: the shooter gathers a beat
+      // after the catch, so it's the last change of hands, not the last hold.
+      const upto = held.filter((q) => q.t <= f.playT + 1e-9);
+      let k = upto.length - 1;
+      while (k > 0 && upto[k - 1].by === upto[k].by) k--;
+      const passer = k > 0 ? upto[k - 1].by : null;
+      if (passer !== p.a || upto[k]?.by !== f.holderId) say(`the last pass to an assisted shot is ${passer} to ${upto[k]?.by}, not ${p.a}, who has the assist, to the shooter`);
     }
     if (p.k === 'shot' && !f.blocked && !near(f.ballPath[f.ballPath.length - 1], f.attackTop ? { x: 0, y: 94 - 5.25 } : { x: 0, y: 5.25 })) {
       say('the shot never gets to the rim');

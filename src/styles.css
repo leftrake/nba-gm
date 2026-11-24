@@ -1721,8 +1721,10 @@ button.slot-pick:hover { border-color: var(--accent); }
   /* The timeline across the top of the transport, the buttons under it. */
   .live-bar { flex-wrap: wrap; row-gap: var(--sp-1); }
   .live-bar .live-timeline { order: -1; flex-basis: 100%; }
-  /* "Skip ▸▸", so the transport is one row of buttons. */
+  /* "Skip ▸▸", and the four speeds a little tighter, so the transport is
+     one row of buttons. */
   .live-long { display: none; }
+  .live-speeds .ui-btn { padding-left: 9px; padding-right: 9px; }
   .live-count { display: none; }
   .live-card-cols { grid-template-columns: 1fr; gap: var(--sp-3); }
   .live-card-big { font-size: 24px; }

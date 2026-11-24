@@ -92,8 +92,10 @@ const ACT_RING = {
   foul: { stroke: 'var(--color-warning)', width: 0.3, dash: '0.55 0.4', opacity: 1 },
 };
 
-// Each leg of a run eased like a player getting going and pulling up.
-const RUN_EASE = 'cubic-bezier(.45,.05,.55,.95)';
+// Each leg of a run eased like a player getting going and pulling up — gently:
+// a sharper curve peaks at nearly twice a leg's average speed, and a set's
+// legs follow one another, so it read as lurching.
+const RUN_EASE = 'cubic-bezier(.3,.1,.7,.9)';
 
 // Moves an element along `route` ([{ X, Y, t }], screen units) over the
 // play's time on screen, with the Web Animations API: a set is several legs
@@ -183,10 +185,13 @@ function screenBall(route, project) {
 
 // How high the ball is through the play, for drawing — from directly
 // overhead height can only show as size. In the hand it's at waist height;
-// dribbled, it drops to the floor and back a few times a second; passed, it
-// lifts a little; shot, it goes up the arc the route gives it.
+// dribbled — on the move, or in place while he sizes it up — it drops to the
+// floor and back a few times a second; passed, it lifts a little; shot, it
+// goes up the arc the route gives it. A look after a catch is too short to
+// dribble through.
 const HAND = 0.1;
 const BOUNCE_MS = 230;
+const DRIBBLE_IN_PLACE_MS = 420;
 function heights(route, ms) {
   const out = [];
   route.forEach((w, i) => {
@@ -195,7 +200,7 @@ function heights(route, ms) {
     if (prev && prev.held && w.held) {
       const span = w.t - prev.t;
       const dist = Math.hypot(w.x - prev.x, w.y - prev.y);
-      if (prev.by === w.by && dist > 3) {
+      if (prev.by === w.by && (dist > 3 || span * ms > DRIBBLE_IN_PLACE_MS)) {
         // Dribbled: down to the floor and back up, all the way.
         const n = Math.max(1, Math.round((span * ms) / BOUNCE_MS));
         for (let k = 0; k < n; k++) {

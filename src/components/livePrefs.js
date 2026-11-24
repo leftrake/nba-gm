@@ -10,7 +10,8 @@
 import { useSyncExternalStore } from 'react';
 
 export const LIVE_PREFS_KEY = 'nba-gm-live';
-export const LIVE_SPEEDS = [1, 2, 4];
+// 1x is half real time (LiveGame); 8x gets a game done in about three minutes.
+export const LIVE_SPEEDS = [1, 2, 4, 8];
 
 const DEFAULTS = {
   speed: 1,            // the speed a game starts at; the last one you picked

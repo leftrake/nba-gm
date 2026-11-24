@@ -26,18 +26,21 @@ import { playSound, primeSound } from './liveSound.js';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Playback is paced on the game clock — real gaps between plays run from
-// under a second to fifteen, and a flat beat per play reads as a slideshow —
-// but with a floor for each kind of play, so every one stays on screen long
-// enough to follow: a shot has to fly, a free throw has its routine.
+// Playback runs at half real time at 1x: a possession takes on screen half
+// what it took on the game clock, every move in it at the same pace — a run
+// up the floor, a pass, a shot's flight. A set (liveFrames' actOut) is timed
+// in real seconds, so it gets half its own length; anything else gets half
+// its share of the game clock, with a floor for each kind of play so it
+// stays on screen long enough to follow — the clock barely moves between
+// free throws, but each has its routine. That puts a game at about 25
+// minutes at 1x, and 8x at about three.
 //
-// On the clock alone (45ms a game second, as it was) half of all plays were
-// over in under 140ms, some shots in 70, and a whole game in two minutes:
-// too fast to watch. This put a game at about eight minutes at 1x, every
-// shot on screen for at least a second, and 4x at about the old pace — and
-// the sets below take it to about ten.
-const MS_PER_GAME_SEC = 90;
-const MAX_PLAY_MS = 2400;   // a dead-ball stretch shouldn't stall
+// It used to be paced faster than the plays it showed: a possession had about
+// 1.75s however long it was, so its run up the floor went by at five times
+// real speed — and then the shot hung in the air at real speed.
+const MS_PER_GAME_SEC = 500;
+const SET_SHARE = 0.9;      // of a play's wait, the share the court moves in (stage.ms)
+const MAX_PLAY_MS = 3000;   // a dead-ball stretch shouldn't stall
 const FLOOR_MS = { shot: 1100, ft: 950, reb: 650, blk: 650, stl: 700, tov: 700, foul: 800 };
 const FLOOR_DEFAULT_MS = 500;
 const WINDOW = 60;          // plays kept on screen; the full log is in the box score after
@@ -75,7 +78,7 @@ const SHORTCUTS = [
   ['← →', 'Back / forward a play'],
   ['N', 'Next basket'],
   ['R', 'Instant replay: the last possession again'],
-  ['1 2 3', '1x · 2x · 4x'],
+  ['1 2 3 4', '1x · 2x · 4x · 8x'],
   ['C B P', 'Court · box score · play-by-play'],
   ['M', 'Sound on / off'],
   ['Enter', 'Go on past a card; close at the final'],
@@ -127,20 +130,12 @@ function courtView(w, h) {
   return scale(COURT_SHAPE.full) >= FULL_FROM * scale(COURT_SHAPE.half) ? 'full' : 'half';
 }
 
-// A set — a possession acted out from the inbound to the shot (liveFrames'
-// actOut) — gets more room than its share of the clock alone would give it:
-// up the floor, a pass or two, the shot. At 90ms a game second a typical
-// possession had 1.1s, too quick to see as anything but the ball being shot;
-// this gives it about 1.75s at 1x, and puts a game at about ten minutes.
-const SET_MS_PER_GAME_SEC = 140;
-const SET_MIN_MS = 1400;
-const SET_MAX_MS = 2500;
-
+// A play's wait at `speed`: a set plays out in full, its moves at half real
+// time; anything else, half its share of the clock, within its floor.
 const playMs = (play, frame, speed) => {
-  const gap = frame?.gap ?? 4;
   const ms = frame?.set
-    ? Math.max(SET_MIN_MS, Math.min(SET_MAX_MS, gap * SET_MS_PER_GAME_SEC))
-    : Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, gap * MS_PER_GAME_SEC));
+    ? (frame.realSec * MS_PER_GAME_SEC) / SET_SHARE
+    : Math.max(FLOOR_MS[play?.k] ?? FLOOR_DEFAULT_MS, Math.min(MAX_PLAY_MS, (frame?.gap ?? 4) * MS_PER_GAME_SEC));
   return ms / Math.max(speed, 0.25);
 };
 
@@ -165,6 +160,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   const [banner, setBanner] = useState(null); // a highlight riding along with play
   const [help, setHelp] = useState(false);    // the keyboard card
   const speedRef = useRef(speed);
+  const resumeRef = useRef(speed || 1);       // the speed Play goes back to
   const prefs = useLivePrefs();
   const prefsRef = useRef(prefs);             // the loop reads this, not a stale closure
   prefsRef.current = prefs;
@@ -299,7 +295,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
         // and the court spends it acting the play out; motion gets 90% so it
         // has landed by the reveal.
         const wait = playMs(plays[k], framesRef.current[k], s);
-        setStage({ k, ms: wait * 0.9, auto: true });
+        setStage({ k, ms: wait * SET_SHARE, auto: true });
         if (!(await playFor(wait, k))) { if (cancelled) return; continue; } // moved: carry on from there
         posRef.current = k + 1;
         setIdx(k + 1);
@@ -454,10 +450,12 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
   const shown = plays.slice(Math.max(0, idx - WINDOW), idx);
   const curPeriodIdx = idx > 0 ? periodOrder.indexOf(cur.q) : 0;
 
-  const setSpeedBoth = (s) => { speedRef.current = s; setSpeed(s); };
+  // Play picks up at the speed you were watching — not 1x, which at half
+  // real time is a slowdown nobody asked for after pausing an 8x game.
+  const setSpeedBoth = (s) => { speedRef.current = s; if (s > 0) resumeRef.current = s; setSpeed(s); };
   // A speed you pick is the one the next game starts at.
   const chooseSpeed = (s) => { setSpeedBoth(s); setLivePrefs({ speed: s }); };
-  const togglePause = () => setSpeedBoth(speed === 0 ? 1 : 0);
+  const togglePause = () => setSpeedBoth(speed === 0 ? resumeRef.current : 0);
 
   // Move playback to just before play `i`: everything before it revealed,
   // the court on the last of those, any card holding play let go. The loop
@@ -481,12 +479,13 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     for (let i = posRef.current; i < plays.length; i++) {
       if ((plays[i].k === 'shot' || plays[i].k === 'ft') && plays[i].m) {
         seekTo(i);
-        if (speedRef.current === 0) setSpeedBoth(1);
+        if (speedRef.current === 0) setSpeedBoth(resumeRef.current);
         return;
       }
     }
   };
-  // Instant replay: back to the start of the possession just shown, at 1x.
+  // Instant replay: back to the start of the possession just shown, at 1x —
+  // half real time, slow enough to see it again properly.
   const replay = () => {
     const last = posRef.current - 1;
     if (last < 0) return;
@@ -523,7 +522,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     else if (k === 'ArrowLeft') step(-1);
     else if (k === 'n' || k === 'N') nextBasket();
     else if (k === 'r' || k === 'R') replay();
-    else if (k === '1' || k === '2' || k === '3') chooseSpeed(SPEEDS[+k - 1]);
+    else if (k >= '1' && k <= String(SPEEDS.length) && k.length === 1) chooseSpeed(SPEEDS[+k - 1]);
     else if (k === 'c' || k === 'C') setView('court');
     else if (k === 'b' || k === 'B') setView('box');
     else if (k === 'p' || k === 'P') setView('feed');

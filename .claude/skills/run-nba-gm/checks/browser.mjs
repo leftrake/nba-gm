@@ -13,7 +13,7 @@
 //     breaks fall, the next basket, who's on the floor — are computed from
 //     exactly what's on screen, with the same liveFrames.js the viewer runs.
 //   - Waits have deadlines (waitFor), never loop counts: a game runs about
-//     8 minutes at 1x and 2 at 4x, and machines differ.
+//     25 minutes at 1x and 3 at 8x, and machines differ.
 //
 // Don't call driver.mjs's dismissOverlay() or gotoNav() while the viewer is
 // open: the viewer is a .ui-modal-overlay too, and dismissOverlay would click
@@ -33,8 +33,8 @@ export async function launch({ headed = false } = {}) {
 
 // ---- Pages ----------------------------------------------------------------------
 
-// Every check watches at 4x unless it says otherwise.
-const DEFAULT_PREFS = { speed: 4 };
+// Every check watches at 8x unless it says otherwise.
+const DEFAULT_PREFS = { speed: 8 };
 
 // A check in its own browser context. `opts.prefs` become the viewer's saved
 // preferences (the `nba-gm-live` key) before the app's first script runs —
@@ -436,29 +436,46 @@ export function browserChecks(states, handle) {
       return `${g.away.id} ${awayPts}, ${g.home.id} ${homePts}; ${notes.length} post-game notes`;
     }),
 
-    check('pacing: at 1x plays land about a second apart; 4x is about four times quicker', { serial: true, prefs: { speed: 1 }, timeout: 150_000 }, async (page) => {
+    check('pacing: at 1x a possession plays out at half real time and every other play within a second or so; 8x is about eight times quicker', { serial: true, prefs: { speed: 1 }, timeout: 180_000 }, async (page) => {
       await openFromCalendar(page, states.regular.file);
+      const g = await viewerGame(page);
+      const plays = g.game.playByPlay;
+      const frames = buildFrames(plays, g.game.lineups, g.home, g.away);
+      // From one play landing to the next: the beat the first one lands with
+      // (LiveGame's dwellMs), then the next one's time on screen. A set
+      // (actOut) is timed in real seconds, and should take half of them, over
+      // the 90% of its wait the court moves in.
+      const dwell = (p, next) => (p?.k === 'shot' ? (p.m ? 0.7 : 0.25) : p?.k === 'ft' && next?.k !== 'ft' ? 0.35 : 0);
+      const timed = (log, speed) => log.slice(1).flatMap((r, k) => {
+        const prev = log[k];
+        if (r.idx !== prev.idx + 1) return [];
+        const i = r.idx - 1;
+        const secs = (r.t - prev.t) / 1000 - dwell(plays[i - 1], plays[i]) / Math.max(1, speed);
+        return [{ i, secs, set: frames[i].set, real: frames[i].realSec }];
+      });
       await page.evaluate(installRevealLog);
       await tipOff(page);
-      const slow = await collectReveals(page, 26, 60_000);
-      const gaps1 = slow.slice(1).map((r, i) => (r.t - slow[i].t) / 1000).filter((_, i) => slow[i + 1].idx === slow[i].idx + 1);
-      await press(page, '3');
-      await waitFor(async () => (await viewer(page)).speed === '4x', { timeout: 3000, what: '4x' });
-      const from = (await reveals(page)).length + 1; // the first one at 4x may straddle the change
-      const fast = (await collectReveals(page, from + 26, 30_000)).slice(from);
-      const gaps4 = fast.slice(1).map((r, i) => (r.t - fast[i].t) / 1000).filter((_, i) => fast[i + 1].idx === fast[i].idx + 1);
-      const m1 = median(gaps1);
-      const m4 = median(gaps4);
+      const slow = timed(await collectReveals(page, 14, 100_000), 1);
+      await press(page, '4');
+      await waitFor(async () => (await viewer(page)).speed === '8x', { timeout: 3000, what: '8x' });
+      const from = (await reveals(page)).length + 1; // the first one at 8x may straddle the change
+      const fast = timed((await collectReveals(page, from + 16, 30_000)).slice(from), 8);
+      const sets1 = slow.filter((x) => x.set);
+      const rest1 = slow.filter((x) => !x.set);
+      assert(sets1.length >= 4 && rest1.length >= 3, `too few plays timed at 1x: ${sets1.length} sets, ${rest1.length} others`);
       const f = (xs) => xs.map((x) => x.toFixed(2)).join(' ');
-      assert(gaps1.length >= 20 && gaps4.length >= 20, `too few plays timed: ${gaps1.length} at 1x, ${gaps4.length} at 4x`);
-      assert(m1 >= 0.75 && m1 <= 1.6, `median gap at 1x is ${m1.toFixed(2)}s, expected about a second: ${f(gaps1)}`);
-      assert(Math.min(...gaps1) >= 0.55, `a play at 1x came ${Math.min(...gaps1).toFixed(2)}s after the last — too quick to follow: ${f(gaps1)}`);
-      assert(Math.max(...gaps1) <= 3.4, `a play at 1x took ${Math.max(...gaps1).toFixed(2)}s: ${f(gaps1)}`);
-      assert(m1 / m4 >= 2.8 && m1 / m4 <= 5, `4x should be about four times quicker: median ${m1.toFixed(2)}s at 1x, ${m4.toFixed(2)}s at 4x`);
-      return `median ${m1.toFixed(2)}s a play at 1x (${Math.min(...gaps1).toFixed(2)}–${Math.max(...gaps1).toFixed(2)}s), ${m4.toFixed(2)}s at 4x`;
+      const shares = sets1.map((x) => x.secs / x.real);
+      assert(shares.every((x) => x >= 0.45 && x <= 0.7), `a possession at 1x should take half its real time (over 90% of the wait, 0.56): ${f(shares)}`);
+      assert(rest1.every((x) => x.secs >= 0.5 && x.secs <= 3.4), `other plays at 1x should take between half a second and three: ${f(rest1.map((x) => x.secs))}`);
+      const sets8 = fast.filter((x) => x.set);
+      assert(sets8.length >= 4, `too few possessions timed at 8x: ${sets8.length}`);
+      const m1 = median(shares);
+      const m8 = median(sets8.map((x) => x.secs / x.real));
+      assert(m1 / m8 >= 6 && m1 / m8 <= 10, `8x should be about eight times quicker: a possession takes ${m1.toFixed(2)} of its real time at 1x, ${m8.toFixed(3)} at 8x`);
+      return `a possession takes ${m1.toFixed(2)} of its real time at 1x (${sets1.map((x) => `${x.secs.toFixed(1)}s`).join(' ')}), ${m8.toFixed(3)} at 8x; other plays ${f(rest1.map((x) => x.secs))}s`;
     }),
 
-    check('makes swish and misses clank — on the court and in the sound', { prefs: { speed: 4, sound: true }, fakeAudio: true }, async (page) => {
+    check('makes swish and misses clank — on the court and in the sound', { prefs: { speed: 8, sound: true }, fakeAudio: true }, async (page) => {
       await openFromCalendar(page, states.regular.file);
       const g = await viewerGame(page);
       const plays = g.game.playByPlay;
@@ -977,8 +994,9 @@ export function browserChecks(states, handle) {
       await press(page, 'ArrowRight');
       await press(page, 'ArrowLeft');
       v = await waitFor(async () => { const x = await viewer(page); return x.idx === v.idx + 1 && x.paused && x; }, { timeout: 3000, what: '← a play back' });
-      // N: to just before the next basket, playing at 1x — from a play that's
-      // no basket, and from one that is (which is itself the next basket).
+      // N: to just before the next basket, playing at the speed the game was
+      // watched at (8x here) — from a play that's no basket, and from one that
+      // is (which is itself the next basket).
       const sc = scoresAfter(plays);
       const basket = (p) => (p.k === 'shot' || p.k === 'ft') && p.m;
       const nonBasket = plays.findIndex((p, i) => i > v.idx + 3 && !basket(p));
@@ -989,7 +1007,7 @@ export function browserChecks(states, handle) {
         const nb = plays.findIndex((p, i) => i >= from && basket(p));
         await press(page, 'n');
         const at = await waitFor(async () => { const x = await viewer(page); return x.playing && x; }, { timeout: 3000, what: 'N to set play going' });
-        assert(at.idx === nb && at.speed === '1x', `N from play ${from} went to ${at.idx} at ${at.speed}; the next basket is play ${nb} ("${plays[nb].text}")`);
+        assert(at.idx === nb && at.speed === '8x', `N from play ${from} went to ${at.idx} at ${at.speed}; the next basket is play ${nb} ("${plays[nb].text}"), at the 8x it was watched at`);
         const s = await waitFor(async () => { const x = await viewer(page); return x.idx === nb + 1 && x; }, { timeout: 8000, what: 'the basket to land' });
         assert(s.away === sc[nb].away && s.home === sc[nb].home, `after N's basket the scoreboard reads ${s.away}-${s.home}, expected ${sc[nb].away}-${sc[nb].home}`);
       }
@@ -1001,7 +1019,7 @@ export function browserChecks(states, handle) {
       await press(page, 'r');
       await waitFor(async () => { const x = await viewer(page); return x.idx >= j && x.idx <= j + 1 && x.playing; }, { timeout: 3000, what: `R to replay from play ${j}` });
       // Speeds, remembered for next time.
-      for (const [key, sp] of [['2', 2], ['3', 4], ['1', 1]]) {
+      for (const [key, sp] of [['2', 2], ['3', 4], ['4', 8], ['1', 1]]) {
         await press(page, key);
         await waitFor(async () => (await viewer(page)).speed === `${sp}x`, { timeout: 3000, what: `${key} for ${sp}x` });
         assert((await prefs()).speed === sp, `speed ${sp}x wasn't saved`);
@@ -1035,7 +1053,7 @@ export function browserChecks(states, handle) {
       return 'each key did its job';
     }),
 
-    check('condensed: only baskets, highlights and period ends are played out', { prefs: { speed: 2, condensed: true } }, async (page) => {
+    check('condensed: only baskets, highlights and period ends are played out', { prefs: { speed: 8, condensed: true } }, async (page) => {
       await openFromCalendar(page, states.regular.file);
       const g = await viewerGame(page);
       const plays = g.game.playByPlay;
@@ -1073,7 +1091,7 @@ export function browserChecks(states, handle) {
       return `${acted} plays acted out, ${skipped} skipped past; normal again once switched off`;
     }),
 
-    check('pause at breaks: the break card waits for Continue', { prefs: { speed: 4, pauseAtBreaks: true } }, async (page) => {
+    check('pause at breaks: the break card waits for Continue', { prefs: { speed: 8, pauseAtBreaks: true } }, async (page) => {
       await openFromCalendar(page, states.regular.file);
       const g = await viewerGame(page);
       const [q1] = periodBreaks(g.game.playByPlay);
@@ -1082,15 +1100,15 @@ export function browserChecks(states, handle) {
       await seek(page, q1.i - 1);
       await play(page);
       await waitForCard(page, 'End of Q1', { timeout: 15_000 });
-      await sleep(3500); // at 4x a break would otherwise be gone in under a second
+      await sleep(3500); // at 8x a break would otherwise be gone in under a second
       const v = await viewer(page);
       assert(v.card === 'End of Q1' && v.idx === q1.i + 1, `the break card didn't wait: card ${v.card}, play ${v.idx}`);
       await page.getByRole('button', { name: 'Continue ▸' }).click();
       await waitFor(async () => { const x = await viewer(page); return !x.card && x.idx > q1.i + 1; }, { timeout: 5000, what: 'play to resume after Continue' });
-      return 'held for 3.5s at 4x, then went on at Continue';
+      return 'held for 3.5s at 8x, then went on at Continue';
     }),
 
-    check('auto-watch: a sim stops at your next game and plays it in the viewer', { prefs: { speed: 4, autoWatch: true } }, async (page) => {
+    check('auto-watch: a sim stops at your next game and plays it in the viewer', { prefs: { speed: 8, autoWatch: true } }, async (page) => {
       await loadState(page, states.offday.file);
       const before = await readSave(page);
       const controls = await page.evaluate(() => {
@@ -1263,7 +1281,7 @@ export function browserChecks(states, handle) {
     ...[
       ['reduced motion, control: without it, players run and the ball flies', {}, false],
       ['reduced motion from the system setting stops the players\' runs and the ball\'s flight', { reducedMotion: true }, true],
-      ['reduced motion from the nba-gm-live preference stops the players\' runs and the ball\'s flight', { prefs: { speed: 4, reduceMotion: true } }, true],
+      ['reduced motion from the nba-gm-live preference stops the players\' runs and the ball\'s flight', { prefs: { speed: 8, reduceMotion: true } }, true],
     ].map(([name, opts, reduced]) => check(name, opts, async (page) => {
       await openFromCalendar(page, states.regular.file);
       await tipOff(page);

@@ -82,24 +82,37 @@ function timeRoute(route) {
 // possession drawn as everyone sliding straight into the shot looked like a
 // ball being shot, not like basketball. So the court acts one out, made up
 // the way the floor positions are (courtPositions.js): the ball brought up
-// the floor, moved for a beat or two, and worked to the man who ends the
-// possession by the route the result implies — an assist is the last pass,
-// to a shooter arriving at his spot; an unassisted shot is a player creating
-// his own; a post-up is a big fed on the block. None of it is simulated,
-// nothing but the court reads it, and it's fixed per play (playHash), never
-// the game's rng.
+// the floor, moved around, and worked to the man who ends the possession by
+// the route the result implies — an assist is the last pass, to a shooter
+// arriving at his spot; an unassisted shot is a player creating his own; a
+// post-up is a big fed on the block. None of it is simulated, nothing but
+// the court reads it, and it's fixed per play (playHash), never the game's
+// rng.
 //
 // A set is the first play of a possession — the sim's later plays in one
-// come within 2.5 seconds of the game clock, too quick to have one — and it
-// runs in fractions of the play's time on screen: up the floor first, then
-// the actions (more of them the longer the possession took on the game
-// clock), then the moment itself, and for a shot its flight takes the rest.
-// Everyone is exactly where the play's frame has them at the moment.
+// come within 2.5 seconds of the game clock, too quick to have one — and it's
+// timed in real seconds: every move takes what it would on a real floor, and
+// the possession about as long as the game clock says it did, its half-court
+// part filled out with more ball movement the longer it ran. The viewer plays
+// that back at a steady share of real time (LiveGame), so nothing on the
+// court races and nothing hangs. (Fixed shares of a play's time on screen, as
+// this was, put a 60ft run up the floor in under half a second and a jumper's
+// flight in more than one: the play raced, then the shot floated.) Everyone
+// is exactly where the play's frame has them at the moment.
 
-const PASS_T = 0.06;         // a pass in the air
-const FINAL_T = 0.13;        // the last move into the moment: the assist, or the shooter's own
-const MOMENT = { shot: 0.66, other: 0.86 };
+// Real feet per second.
+const FPS = { run: 20, push: 18, walkUp: 13, dribble: 12, drive: 16, pass: 45 };
+// Real seconds.
+const LOOK = 0.45;          // a catch and a look before the ball moves on
+const GATHER = 0.25;        // catch to release, or the rise into a jumper
+const SCREEN_SET = 0.5;     // the handler waits on the screen
+const AFTER = 0.8;          // a turnover or a whistle, before the next play
+const flightSec = (range) => 0.55 + range * 0.022;   // a layup 0.6s, a three 1.1s
+// What each part of a set takes, about, for fitting them to the clock.
+const ABOUT = { pass: 1.05, post: 1.7, drive: 1, probe: 1.9, pnr: 2.5, reversal: 2.2, keep: 1 };
 const SUB_IN = { x: 26.5, y: 47 };   // world: the scorer's table, where a sub comes on from
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // A point `d` feet out from the rim, on the line to `from` — where a drive gets to.
 const toward = (from, d) => {
@@ -124,13 +137,15 @@ function tipLayout(offP, defP) {
 // The set, in attacked-end coordinates throughout (y runs on past half court
 // to 94, the far baseline). `start` is where everyone is when the play's time
 // begins and `ball0` where the ball is; `finalAt` and `finishAt` are where
-// the frame has everyone, and the ball, at the moment. Returns each player's
-// route and the ball's, as [{ x, y, t }] (the ball's points also carry h,
-// held and — while held — by).
+// the frame has everyone, and the ball, at the moment; `clock` is how long
+// the possession ran, in game seconds. Returns each player's route and the
+// ball's, as [{ x, y, t }] with t a share of the whole (the ball's points
+// also carry h, held and — while held — by), and how long it all takes in
+// real seconds.
 function actOut(c) {
   const {
     offP, defP, spots, matchups, start, ball0, finalAt, finishAt, finisher, assister,
-    carrier, tip, gap, hash, isShot, blocked,
+    carrier, tip, clock, hash, isShot, blocked,
   } = c;
   const posOf = new Map([...offP, ...defP].map((x) => [x.id, x.pos]));
   const offIds = offP.map((x) => x.id);
@@ -138,114 +153,136 @@ function actOut(c) {
   const pg = offIds.find((id) => posOf.get(id) === 'PG') ?? offIds.find((id) => !big(id)) ?? offIds[0];
   const side = hash & 1 ? 1 : -1;
   const bit = (n) => (hash >>> n) & 1;
-  const actions = gap >= 12.5 ? 2 : gap >= 7 ? 1 : 0;
-  const moment = isShot ? MOMENT.shot : MOMENT.other;
-  const tAdv = actions === 0 ? 0.4 : actions === 1 ? 0.3 : 0.24;
+  const range = Math.hypot(finishAt.x - RIM.x, finishAt.y - RIM.y);
+  const flight = !isShot ? AFTER : blocked ? 0.5 : flightSec(range);
 
   // Everyone around the ball: the offense spaced off whoever has it, the
   // defense on their men (courtPositions.js). `extra` places anyone the
   // play needs somewhere else — a screener.
-  const formation = (ball, by, extra = null) => {
-    const O = { ...offenseFormation(offP, ball, by, clearSpace(spots, offP, ball, by)), ...extra };
-    const onBall = Object.keys(matchups).find((d) => String(matchups[d]) === String(by));
+  const formation = (ball, who, extra = null) => {
+    const O = { ...offenseFormation(offP, ball, who, clearSpace(spots, offP, ball, who)), ...extra };
+    const onBall = Object.keys(matchups).find((d) => String(matchups[d]) === String(who));
     return { ...O, ...defenseFormation(O, matchups, ball, onBall) };
   };
+
+  // The timeline, in real seconds from the start of the play's time: beats
+  // where someone, or everyone, has got somewhere, and the ball with whoever
+  // has it then.
   const beats = [];
   const last = { ...start };
+  const lastT = {};
   let by = null;
-  let at = ball0;
+  let at = { x: ball0.x, y: ball0.y };
+  let T = 0;
   const beat = (t, pos, ball, who) => {
-    beats.push({ t, at: pos, ball, by: who });
-    Object.assign(last, pos);
+    beats.push({ T: t, at: pos, ball, by: who });
+    for (const [id, p] of Object.entries(pos)) { last[id] = p; lastT[id] = t; }
     at = ball;
     by = who;
+    T = t;
   };
-  // He holds it where he stands, then lets it go: a pass leaves late.
-  const hold = (t) => beat(t, { [by]: last[by] ?? at }, last[by] ?? at, by);
+  // The soonest everyone in `pos` can be there, running from where he last
+  // stood — and never before now.
+  const ready = (pos) => Math.max(T, ...Object.entries(pos).map(([id, p]) => (lastT[id] ?? 0) + dist(last[id] ?? p, p) / FPS.run));
+  const here = () => last[by] ?? at;
+  // He has it where he is a while: a look after a catch, a dribble while he
+  // sizes it up. Everyone else keeps on to wherever he's going next.
+  const keep = (sec) => { if (sec > 0.04) beat(T + sec, { [by]: here() }, here(), by); };
+  // A pass: a look, then in the air to `to`, who catches it at `catchAt`
+  // with everyone in `pos` (all ten, unless said) where they've got to.
+  const passTo = (to, catchAt, pos = formation(catchAt, to), look = LOOK) => {
+    keep(look);
+    const from = here();
+    beat(Math.max(T + 0.15 + dist(from, catchAt) / FPS.pass, ready(pos)), pos, catchAt, to);
+  };
+  // He takes it to `to`, everyone moving with him.
+  const carry = (to, fps, extra = null, min = 0.4) => {
+    const pos = formation(to, by, extra);
+    beat(Math.max(T + Math.max(min, dist(at, to) / fps), ready(pos)), pos, to, by);
+  };
 
   // Up the floor: whoever has it pushes it, a big outlets it to the point
-  // guard, and after a score it comes in from under the far basket. On the
-  // opening tip, it's tapped back to the guard.
+  // guard, and after a score it comes in from under the far basket and the
+  // guard walks it up. On the opening tip, it's tapped back to the guard.
+  let pace = FPS.push;
   if (tip) {
     const to = { x: side * 5, y: 51 };
-    beat(0.07, { [pg]: to }, to, pg);
+    beat(Math.max(1.1, ready({ [pg]: to })), { [pg]: to }, to, pg);
+    pace = FPS.walkUp;
   } else if (carrier != null && last[carrier]) {
     by = carrier;
-    at = last[carrier];
+    at = { ...last[carrier] };
     if (big(carrier) && carrier !== pg && at.y > 55) {
       const outlet = { x: side * 17, y: Math.min(80, at.y - 8) };
-      hold(0.04);
-      beat(0.12, { [pg]: outlet }, outlet, pg);
+      passTo(pg, outlet, { [pg]: outlet }, 0.4);
     }
   } else {
     const inb = offIds.find((id) => posOf.get(id) === 'C' && id !== pg)
       ?? offIds.find((id) => big(id) && id !== pg) ?? offIds.find((id) => id !== pg);
     const out = { x: side * 3.5, y: COURT_LEN + 1.2 };
+    beat(Math.max(0.7, ready({ [inb]: out })), { [inb]: out }, out, inb);
     const recv = { x: side * 10, y: 80 };
-    beat(0.06, { [inb]: out }, out, inb);
-    beat(0.14, { [pg]: recv }, recv, pg);
+    passTo(pg, recv, { [pg]: recv }, 0.6);
+    pace = FPS.walkUp;
   }
   // ...and into the set: the guard to the top, a wing who pushed it to his
   // own spot; everyone else to theirs, the defense back on their men.
   const entry = by !== pg && SPOTS[spots[by]] && !big(by) ? { ...SPOTS[spots[by]] } : { ...SPOTS.top };
-  beat(tAdv, formation(entry, by), entry, by);
+  carry(entry, pace, null, 1);
+  const tAdv = T;
 
-  // The actions, by the route the result implies.
+  // The half court, by the route the result implies: the ball to whoever
+  // makes the last play — the passer on an assist, the shooter on his own
+  // shot — then his move (a pick and roll, a drive), then the finish. With
+  // the clock to spare, the ball goes round first: swung the other way and
+  // back, or probed across the top.
   const s = finisher;
   const a = assister != null && assister !== s ? assister : null;
-  const inside = Math.hypot(finishAt.x - RIM.x, finishAt.y - RIM.y) < 10;
+  const inside = range < 10;
   const others = (...ex) => offIds.filter((id) => !ex.includes(id));
   // The roll man who finishes, or any other big to set it.
   const screener = (h) => (isShot && inside && big(s) && s !== h ? s : others(h, s, a).find(big) ?? null);
-  const steps = [];
-  if (a != null) {
-    if (by === a) {
-      if (actions >= 2) steps.push({ k: 'probe' });
-      if (actions >= 1) {
-        const sc = screener(a);
-        steps.push(sc != null && (bit(2) || sc === s) ? { k: 'pnr', sc } : { k: 'drive' });
-      }
-    } else if (actions >= 2) {
-      const x = others(by, a, s)[(hash >>> 3) % 2];
-      if (bit(4) && x != null) steps.push({ k: 'pass', to: x }, { k: 'pass', to: a });
-      else steps.push({ k: 'pass', to: a }, { k: 'drive' });
-    } else {
-      steps.push({ k: 'pass', to: a });
-    }
-  } else if (by === s) {
-    if (actions >= 2) steps.push({ k: 'probe' });
-    if (actions >= 1) {
-      const sc = screener(s);
-      steps.push(sc != null && bit(2) ? { k: 'pnr', sc } : { k: 'drive' });
-    }
-  } else {
-    const post = isShot && inside && big(s);
-    if (actions >= 2 && !post) {
-      const x = others(by, s)[(hash >>> 3) % 3];
-      if (x != null) steps.push({ k: 'pass', to: x });
-    }
-    steps.push({ k: post ? 'post' : 'pass', to: s });
+  const maker = a ?? s;
+  const post = a == null && by !== s && isShot && inside && big(s);
+  const toMaker = by === maker ? [] : [{ k: post ? 'post' : 'pass', to: maker }];
+  const sc = screener(maker);
+  const move = post ? null : sc != null && (bit(2) || (sc === s && a != null)) ? { k: 'pnr', sc } : { k: 'drive' };
+  let room = Math.min(24, Math.max(4, clock)) - tAdv - 1.3 - flight;
+  const steps = [...toMaker];
+  room -= toMaker.reduce((sum, st) => sum + ABOUT[st.k], 0);
+  if (move && room >= ABOUT[move.k] * 0.8) { steps.push(move); room -= ABOUT[move.k]; }
+  const fillers = [];
+  const third = others(by, a, s)[(hash >>> 3) % 2];
+  const kinds = [third != null && bit(4) ? 'reversal' : 'probe', bit(5) ? 'keep' : 'probe', 'keep'];
+  for (const k of kinds) {
+    if (room < ABOUT[k] + 0.5) break;
+    fillers.push({ k, to: third });
+    room -= ABOUT[k];
   }
+  steps.unshift(...fillers);
+  // Whatever time is left is spent looking for it: a beat on the ball before
+  // each thing happens.
+  const wait = room > 0 ? Math.min(1.2, room / (steps.length + 1)) : 0;
 
-  const tFinal = moment - FINAL_T;
-  const dt = steps.length ? Math.max(0, tFinal - tAdv) / steps.length : 0;
-  steps.forEach((st, n) => {
-    const t0 = tAdv + dt * n;
-    const t1 = t0 + dt;
-    if (st.k === 'pass' || st.k === 'post') {
-      // Caught where he stands — or, fed in the post, on the block on the
-      // side he'll finish.
-      const catchAt = st.k === 'post'
-        ? { x: (Math.sign(finishAt.x) || side) * 6.5, y: 7.5 }
-        : formation(at, by)[st.to];
-      hold(t1 - PASS_T);
-      beat(t1, formation(catchAt, st.to), catchAt, st.to);
-    } else if (st.k === 'drive') {
-      const d = toward(at, 9.5 + ((hash >>> 6) % 3));
-      beat(t1, formation(d, by), d, by);
+  const probeTo = () => ({ x: -(Math.sign(at.x) || side) * 12, y: 24 });
+  for (const st of steps) {
+    keep(wait);
+    if (st.k === 'reversal') {
+      const back = by;
+      passTo(st.to, formation(at, by)[st.to]);
+      passTo(back, formation(at, by)[back]);
+    } else if (st.k === 'keep') {
+      keep(ABOUT.keep);
     } else if (st.k === 'probe') {
-      const p = { x: -(Math.sign(at.x) || side) * 12, y: 24 };
-      beat(t1, formation(p, by), p, by);
+      carry(probeTo(), FPS.dribble, null, 0.8);
+    } else if (st.k === 'pass') {
+      passTo(st.to, formation(at, by)[st.to]);
+    } else if (st.k === 'post') {
+      // Fed on the block on the side he'll finish, and backing his man down.
+      passTo(st.to, { x: (Math.sign(finishAt.x) || side) * 6.5, y: 7.5 });
+      keep(0.6);
+    } else if (st.k === 'drive') {
+      carry(toward(at, 9.5 + ((hash >>> 6) % 3)), FPS.drive, null, 0.5);
     } else {
       // Pick and roll: a screen beside the ball, the handler off it toward
       // the middle, the screener down the lane.
@@ -256,16 +293,23 @@ function actOut(c) {
       let py = ux;
       if ((Math.abs(at.x) > 3 ? -Math.sign(at.x) : side) !== Math.sign(px || side)) { px = -px; py = -py; }
       const screenAt = { x: +(at.x + px * 3.2 + ux * 1.8).toFixed(2), y: +(at.y + py * 3.2 + uy * 1.8).toFixed(2) };
-      beat(t0 + dt * 0.45, formation(at, by, { [st.sc]: screenAt }), at, by);
+      const set = formation(at, by, { [st.sc]: screenAt });
+      beat(Math.max(T + 0.5, ready(set)), set, at, by);
+      beat(T + SCREEN_SET, { [by]: here(), [st.sc]: screenAt }, here(), by);
       const off = { x: +(at.x + px * 8 + ux * 4).toFixed(2), y: +(at.y + py * 8 + uy * 4).toFixed(2) };
-      beat(t1, formation(off, by, { [st.sc]: toward(screenAt, 5.5) }), off, by);
+      carry(off, FPS.dribble, { [st.sc]: toward(screenAt, 5.5) }, 0.6);
     }
-  });
+  }
 
   // The moment: the assist to the shooter arriving at his spot, or the man
-  // with it into his own move — and everyone where the frame has them.
-  if (by !== s) hold(moment - PASS_T);
-  beat(moment, { ...finalAt }, finishAt, s);
+  // with it into his own shot — and everyone where the frame has them. Then
+  // the shot's flight, or a beat after a turnover or a whistle.
+  keep(wait);
+  if (by !== s) passTo(s, finishAt, { ...finalAt });
+  else beat(Math.max(T + Math.max(0.5, dist(at, finishAt) / FPS.drive), ready(finalAt)), { ...finalAt }, finishAt, s);
+  if (isShot) beat(T + GATHER, { [s]: finishAt }, finishAt, s);
+  const tMoment = T;
+  const total = tMoment + flight;
 
   const ids = [...offP, ...defP].map((x) => x.id);
   const paths = {};
@@ -273,31 +317,32 @@ function actOut(c) {
     const pts = [{ ...(start[id] ?? finalAt[id]), t: 0 }];
     for (const b of beats) {
       if (!b.at[id]) continue;
-      const pt = { x: b.at[id].x, y: b.at[id].y, t: b.t };
-      if (pts[pts.length - 1].t >= b.t) pts.pop();   // two beats at once: the later one stands
-      pts.push(pt);
+      const t = b.T / total;
+      if (pts[pts.length - 1].t >= t) pts.pop();   // two beats at once: the later one stands
+      pts.push({ x: b.at[id].x, y: b.at[id].y, t });
     }
     pts.push({ ...finalAt[id], t: 1 });
     paths[id] = pts;
   }
   const route = [{ x: ball0.x, y: ball0.y, h: ball0.h ?? 0, held: !!ball0.held, t: 0 }];
+  if (carrier != null && last[carrier] && !tip) route[0].by = carrier;
   for (const b of beats) {
-    if (route[route.length - 1].t >= b.t) route.pop();
-    route.push({ x: b.ball.x, y: b.ball.y, h: 0, held: true, by: b.by, t: b.t });
+    const t = b.T / total;
+    if (route[route.length - 1].t >= t) route.pop();
+    route.push({ x: b.ball.x, y: b.ball.y, h: 0, held: true, by: b.by, t });
   }
   if (isShot && blocked) {
     route.push({ ...fartherOut(finishAt, 3), h: 0.35, held: false, t: 1 });
   } else if (isShot) {
-    const range = Math.hypot(finishAt.x - RIM.x, finishAt.y - RIM.y);
     route.push({
       x: (finishAt.x + RIM.x) / 2, y: (finishAt.y + RIM.y) / 2, h: Math.min(1, 0.35 + range / 32), held: false,
-      t: moment + (1 - moment) * 0.5,
+      t: (tMoment + flight / 2) / total,
     });
     route.push({ ...RIM, h: 0, held: false, t: 1 });
   } else {
     route.push({ ...finishAt, h: 0, held: true, by: s, t: 1 });
   }
-  return { paths, route, panT: tAdv, playT: moment };
+  return { paths, route, panT: tAdv / total, playT: tMoment / total, realSec: total };
 }
 
 export function buildFrames(plays, lineups, home, away) {
@@ -490,6 +535,7 @@ export function buildFrames(plays, lineups, home, away) {
     let route;
     let panT = 1;
     let playT = 1;
+    let realSec = null;
     const finisher = offAtBall ?? holder;
     const acted = setPlay && onOff(finisher);
     if (acted) {
@@ -505,13 +551,16 @@ export function buildFrames(plays, lineups, home, away) {
       const plan = actOut({
         offP, defP, spots, matchups: before, start: startC, ball0, finalAt,
         finishAt: action, finisher, assister: p.k === 'shot' && onOff(p.a) ? p.a : null,
-        carrier, tip, gap, hash, isShot: p.k === 'shot', blocked,
+        // How long the possession ran: since the last play, or since the
+        // period began for its first.
+        carrier, tip, clock: newPeriod ? (per >= 4 ? 300 : 720) - (p.sec ?? 0) : gap, hash, isShot: p.k === 'shot', blocked,
       });
       paths = {};
       for (const [id, pts] of Object.entries(plan.paths)) paths[id] = pts.map((q) => ({ ...W(q), t: q.t }));
       route = plan.route.map((q) => ({ ...q, ...W(q) }));
       panT = plan.panT;
       playT = plan.playT;
+      realSec = plan.realSec;
     } else {
       // Straight from where everyone was to where the play has them.
       paths = {};
@@ -564,12 +613,14 @@ export function buildFrames(plays, lineups, home, away) {
       // How everyone gets to `players`, and the ball to where it ends up:
       // [{ x, y, t }], t the share of the play's time on screen. A set (see
       // actOut) is acted out beat by beat and its moment — the shot going up,
-      // the whistle — comes at `playT`; anything else is a straight move.
-      // Upright, the camera follows the ball up the floor over `panT`.
+      // the whistle — comes at `playT`, and it takes `realSec` real seconds
+      // in all; anything else is a straight move. Upright, the camera
+      // follows the ball up the floor over `panT`.
       paths,
       ballPath: route,
       set: acted,
       playT,
+      realSec,
       panT,
       shot,
       blocked,   // a miss that never reached the rim — no clank to show
