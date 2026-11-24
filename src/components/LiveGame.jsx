@@ -2,8 +2,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { TeamBadge } from './TeamDisplay.jsx';
 import { safeAccent, courtKit } from '../engine/colorUtils.js';
 import {
-  buildFrames, placeHighlights, periodBreaks, liveBox, pregame, teamFoulsByPlay, floorOrder, lineupChange,
+  buildFrames, placeHighlights, periodBreaks, liveBox, pregame, teamFoulsByPlay, floorOrder, lineupChange, ballHolders,
 } from './liveFrames.js';
+import { motionReduced } from './livePrefs.js';
 import ArenaCourt, { KitSwatch, JerseyDot, COURT_SHAPE } from './ArenaCourt.jsx';
 import { TipOffCard, BreakCard, FinalCard, HighlightBanner, SubBanner } from './LiveCards.jsx';
 import { BoxTable } from './BoxScore.jsx';
@@ -395,6 +396,32 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
     subTimer.current = setTimeout(() => setSubs(null), Math.max(1400, SUB_MS / Math.max(1, speedRef.current)));
   }, [stage, frames]);
   useEffect(() => () => clearTimeout(subTimer.current), []);
+
+  // Who has the ball at this moment on the court, for the list beside it to
+  // mark. In a set the ball goes round before the play, and marking the man
+  // it ends with from the start gave away who'd shoot — so the mark moves
+  // with the ball (liveFrames' ballHolders), on the court's clock: the
+  // staged play's time — stopped by a pause, as the court is, unless the
+  // play was staged while paused (a seek, a step), which plays out.
+  const [onBall, setOnBall] = useState(null);
+  useEffect(() => {
+    const f = frames[Math.min(stage.k, frames.length - 1)];
+    if (!f) return undefined;
+    const hs = ballHolders(f.ballPath, f.holderId);
+    const at = (t) => { let id = null; for (const h of hs) if (h.t <= t + 1e-9) id = h.id; return id; };
+    if (motionReduced()) { setOnBall(at(1)); return undefined; }
+    const stagedPaused = speedRef.current === 0;
+    let ran = 0;
+    let timer;
+    const tick = () => {
+      const t = Math.min(1, ran / Math.max(1, stage.ms));
+      setOnBall(at(t));
+      if (t >= 1) return;
+      timer = setTimeout(() => { if (stagedPaused || speedRef.current !== 0) ran += 50; tick(); }, 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [stage, frames]);
 
   useLayoutEffect(() => {
     const el = feedRef.current;
@@ -791,7 +818,7 @@ export default function LiveGame({ game, home, away, onFinish, ctx = null }) {
                           const l = floorBox.get(id);
                           // Just checked in, while the sub banner is up.
                           const justIn = !!(subs && !card && subs[s]?.ins.includes(id));
-                          const cls = [id === court.holderId && 'has-ball', justIn && 'is-in'].filter(Boolean).join(' ');
+                          const cls = [id === onBall && 'has-ball', justIn && 'is-in'].filter(Boolean).join(' ');
                           return (
                             <tr key={id} className={cls || undefined} title={justIn ? 'Just checked in' : undefined}>
                               <td className="live-floor-num"><JerseyDot kit={kitFor(s)} number={p?.jerseyNumber ?? ''} /></td>

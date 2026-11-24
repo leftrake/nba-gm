@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { courtKit } from '../engine/colorUtils.js';
 import { motionReduced } from './livePrefs.js';
+import { ballHolders } from './liveFrames.js';
 
 // The court. Frames arrive in full-court feet (liveFrames.js): x -25..25
 // across, y 0..94 from the bottom baseline, each team attacking one basket.
@@ -315,17 +316,47 @@ function placeTags(tags, players, ballAt, { project, view, up }) {
   return placed;
 }
 
-// A tag runs with its player, along the same route.
-function NameTag({ route, kit, text, w, h, dx, dy, font, ms, hold }) {
+// Shows an element only for `windows` of the play's time ([[from, to]], as
+// shares of it), with the Web Animations API — a name tag, while its man
+// has the ball. Held, or with reduced motion, it's simply as it is at the
+// start or the end.
+function useShownFor(ref, windows, ms, hold) {
+  const msRef = useRef(ms);
+  msRef.current = ms;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el?.animate || hold || motionReduced() || !windows?.length) return undefined;
+    if (windows.length === 1 && windows[0][0] <= 0 && windows[0][1] >= 1) return undefined;   // throughout
+    const kf = [];
+    const add = (opacity, offset) => kf.push({ opacity, offset: Math.min(1, Math.max(kf.length ? kf[kf.length - 1].offset : 0, offset)) });
+    add(windows[0][0] <= 0 ? 1 : 0, 0);
+    for (const [a, b] of windows) {
+      if (a > 0) { add(0, a - 0.012); add(1, a); }
+      if (b < 1) { add(1, b); add(0, b + 0.012); }
+    }
+    add(windows[windows.length - 1][1] >= 1 ? 1 : 0, 1);
+    const show = el.animate(kf, { duration: Math.max(1, msRef.current), fill: 'forwards' });
+    return () => show.cancel();
+  }, [windows, hold]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+const shownAt = (windows, t) => windows.some(([a, b]) => a <= t + 1e-9 && t <= b + 1e-9);
+
+// A tag runs with its player, along the same route, and shows while it's
+// his turn: `windows` of the play's time.
+function NameTag({ route, kit, text, w, h, dx, dy, font, ms, hold, windows }) {
   const ease = 'cubic-bezier(.4,0,.2,1)';
   const ref = useRef(null);
+  const showRef = useRef(null);
   useRoute(ref, route, ms, hold);
+  useShownFor(showRef, windows, ms, hold);
   const rest = routeRest(route, hold);
   return (
     <g ref={ref} style={{ transform: `translate(${rest.X}px, ${rest.Y}px)`, pointerEvents: 'none' }}>
-      <g className="court-tag" style={{ transform: `translate(${dx}px, ${dy}px)`, transition: `transform 180ms ${ease}` }}>
-        <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill={kit.fill} stroke={kit.ring} strokeWidth={Math.max(0.12, kit.ringWidth * 0.7)} />
-        <text y={font * 0.36} textAnchor="middle" fill={kit.text} style={{ fontSize: font, fontWeight: 700 }}>{text}</text>
+      <g ref={showRef} className="court-tag-shown" style={{ opacity: shownAt(windows, hold ? 0 : 1) ? 1 : 0 }}>
+        <g className="court-tag" style={{ transform: `translate(${dx}px, ${dy}px)`, transition: `transform 180ms ${ease}` }}>
+          <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill={kit.fill} stroke={kit.ring} strokeWidth={Math.max(0.12, kit.ringWidth * 0.7)} />
+          <text y={font * 0.36} textAnchor="middle" fill={kit.text} style={{ fontSize: font, fontWeight: 700 }}>{text}</text>
+        </g>
       </g>
     </g>
   );
@@ -376,6 +407,19 @@ export default function ArenaCourt({
     return out;
   }, [paths, players, project]);
   const ballRoute = useMemo(() => (ballPath?.length ? screenBall(ballPath, project) : null), [ballPath, project]);
+  // Who has the ball when (liveFrames' ballHolders): per player, the
+  // stretches of the play's time he has it, and who has it at the end.
+  const holds = useMemo(() => {
+    const hs = ballPath?.length ? ballHolders(ballPath, holderId) : [];
+    const byId = new Map();
+    hs.forEach((h, i) => {
+      if (h.id == null) return;
+      if (!byId.has(h.id)) byId.set(h.id, []);
+      byId.get(h.id).push([h.t, hs[i + 1]?.t ?? 1]);
+    });
+    return { byId, end: hs.length ? hs[hs.length - 1].id : holderId };
+  }, [ballPath, holderId]);
+  const defenderWindow = useMemo(() => [[playT ?? 0, 1]], [playT]);
   // Home in white, away in colour — see courtKit for why colours alone won't do.
   const kits = { home: courtKit(homeTeam.color, true), away: courtKit(awayTeam.color, false) };
   const label = (id) => {
@@ -420,8 +464,10 @@ export default function ArenaCourt({
   // What's on screen, in SVG units: upright, the end the camera is on.
   const camY = full || attackTop ? 0 : HALF;
   const onScreen = { x0: -PAD, x1: shape.w - PAD, y0: camY - PAD, y1: camY + shape.h - PAD };
-  const tags = placeTags(
-    [holderId, actorId]
+  // The play's two tags where they end up: on whoever has the ball at the
+  // end (nobody, for a loose ball) and on the defender in the play...
+  const finalTags = placeTags(
+    [holds.end, actorId]
       .map((id, i) => ({ id, role: i ? 'd' : 'h', pl: players.find((x) => x.id === id) }))
       .filter((t) => t.id != null && t.pl)
       .map((t) => ({ ...t, text: surname(playerById(t.id)?.name), ...tagSize(surname(playerById(t.id)?.name), tagFont) })),
@@ -429,6 +475,20 @@ export default function ArenaCourt({
     // bottom end; on its side, a lone tag goes above its man.
     players, restAt, { project, view: onScreen, up: full || !attackTop },
   );
+  // ...and before that, one on each man while he has it — above him, unless
+  // he's the one it ends with — so a set never names its shooter before the
+  // ball has found him. The defender's waits for the play itself.
+  const tags = [];
+  for (const [id, windows] of holds.byId) {
+    const pl = players.find((x) => x.id === id);
+    if (!pl) continue;
+    const placed = finalTags.find((t) => t.role === 'h' && t.id === id);
+    const text = surname(playerById(id)?.name);
+    const size = tagSize(text, tagFont);
+    tags.push({ id, role: 'h', pl, text, ...size, dx: placed?.dx ?? 0, dy: placed?.dy ?? -(TAG_GAP + size.h / 2), windows });
+  }
+  const dTag = finalTags.find((t) => t.role === 'd');
+  if (dTag) tags.push({ ...dTag, windows: defenderWindow });
   const rim = project(0, moment?.top ? LEN - RIM_Y : RIM_Y);
 
   return (
@@ -464,7 +524,7 @@ export default function ArenaCourt({
         {[...players].sort((a, b) => a.id - b.id).map((pl) => (
           <Player
             key={pl.id} route={routes[pl.id]} kit={kits[pl.side]} dimmed={!pl.off} ms={moveMs} hold={hold}
-            ring={pl.id === holderId} act={pl.id === actorId ? act : null} ringsAt={playT} {...label(pl.id)}
+            ring={pl.id === holds.end} act={pl.id === actorId ? act : null} ringsAt={playT} {...label(pl.id)}
           />
         ))}
 
@@ -473,7 +533,7 @@ export default function ArenaCourt({
         {tags.map((t) => (
           <NameTag
             key={`${t.role}${t.id}`} route={routes[t.id]} kit={kits[t.pl.side]} text={t.text}
-            w={t.w} h={t.h} dx={t.dx} dy={t.dy} font={tagFont} ms={moveMs} hold={hold}
+            w={t.w} h={t.h} dx={t.dx} dy={t.dy} font={tagFont} ms={moveMs} hold={hold} windows={t.windows}
           />
         ))}
 

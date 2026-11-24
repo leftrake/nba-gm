@@ -219,7 +219,10 @@ The hard split is **engine vs. UI**:
     passing and shooting speeds, filling out about as long as the game
     clock says the possession ran), and `LiveGame` plays it back at half
     real time at 1x, so nothing races and nothing hangs. Invented like the
-    positions, fixed per play, never the game rng. `lineupChange` says who
+    positions, fixed per play, never the game rng. `ballHolders` says who
+    has the ball when, so the court's name tags and the list beside it mark
+    it as it goes round — never a set's shooter before it reaches him.
+    `lineupChange` says who
     checked in and out between two frames (the substitution banners), and
     `flowLine` draws the margin through the plays watched so far — on a
     scale from those plays alone, since one sized for a lead still to come

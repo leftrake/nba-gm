@@ -22,7 +22,7 @@
 import { chromium } from 'playwright';
 import { loadState, dismissOverlay, gotoNav } from '../driver.mjs';
 import {
-  periodBreaks, placeHighlights, buildFrames, liveBox, lineupChange, flowLine,
+  periodBreaks, placeHighlights, buildFrames, liveBox, lineupChange, flowLine, ballHolders,
 } from '../../../../src/components/liveFrames.js';
 import { CheckFailure, assert, waitFor, sleep } from './harness.mjs';
 
@@ -601,17 +601,24 @@ export function browserChecks(states, handle) {
             holder: !!x.querySelector('circle[r="1.95"]'),
             act: x.querySelector('circle.court-act')?.getAttribute('class').match(/court-act--(\w+)/)?.[1] ?? null,
           }));
-          const tags = [...svg.querySelectorAll('g.court-tag')].map((x) => ({ text: x.textContent.trim(), at: x.parentElement.style.transform }));
+          // Only the tags showing: a set also has one on each man who had the
+          // ball on the way, hidden once he's passed it on.
+          const tags = [...svg.querySelectorAll('g.court-tag')]
+            .filter((x) => Number(getComputedStyle(x.parentElement).opacity) > 0.5)
+            .map((x) => ({ text: x.textContent.trim(), at: x.parentElement.parentElement.style.transform }));
           const floor = [...document.querySelectorAll('table.live-floor tbody')].map((tb) => [...tb.querySelectorAll('tr:not(.live-floor-team)')].map((tr) => ({
             name: tr.querySelector('.live-floor-name').firstChild.textContent, ball: tr.classList.contains('has-ball'), pts: Number(tr.cells[2].textContent),
           })));
           return { players, tags, floor };
         });
         const where = `${kind} at play ${i} (${plays[i].q} ${plays[i].t} "${plays[i].text}")`;
-        const want = [f.holderId, f.actorId].filter((id) => id != null).map((id) => surname(name.get(id)));
+        // Whoever has the ball at the end — nobody, when it's loose — and the defender in the play.
+        const hs = ballHolders(f.ballPath, f.holderId);
+        const onBall = hs[hs.length - 1]?.id ?? null;
+        const want = [onBall, f.actorId].filter((id) => id != null).map((id) => surname(name.get(id)));
         assert(court.players.length === 10, `${where}: ${court.players.length} players drawn`);
         assert(court.tags.map((t) => t.text).sort().join('|') === [...want].sort().join('|'), `${where}: tags [${court.tags.map((t) => t.text)}], expected [${want}]`);
-        for (const [id, role] of [[f.holderId, 'holder'], [f.actorId, 'defender']]) {
+        for (const [id, role] of [[onBall, 'holder'], [f.actorId, 'defender']]) {
           if (id == null) continue;
           const pl = court.players.find((x) => x.name === name.get(id));
           const tag = court.tags.find((t) => t.text === surname(name.get(id)));
@@ -630,13 +637,54 @@ export function browserChecks(states, handle) {
           for (const r of rows) {
             const id = ids.find((x) => name.get(x) === r.name);
             assert(r.pts === (box.get(id)?.pts ?? 0), `${where}: floor list gives ${r.name} ${r.pts} pts, the live box ${box.get(id)?.pts ?? 0}`);
-            assert(r.ball === (id === f.holderId), `${where}: ${r.name}'s ball marker is ${r.ball}`);
+            assert(r.ball === (id === onBall), `${where}: ${r.name}'s ball marker is ${r.ball}`);
           }
         }
         seen.push(kind);
       }
       return seen.join(', ');
     })),
+
+    check('a set names whoever has the ball as it goes round — never the shooter before it reaches him', { prefs: { speed: 1 } }, async (page) => {
+      await openFromCalendar(page, states.regular.file);
+      const g = await viewerGame(page);
+      const plays = g.game.playByPlay;
+      const frames = buildFrames(plays, g.game.lineups, g.home, g.away);
+      const name = new Map([...g.home.roster, ...g.away.roster].map((p) => [p.id, p.name]));
+      // A set ending in a shot by someone the ball takes a while to reach.
+      const firstHold = (f) => f.ballPath.find((q) => q.held && q.by === f.holderId)?.t ?? 0;
+      const k = frames.findIndex((f, i) => i > 10 && f.set && plays[i].k === 'shot' && firstHold(f) >= 0.45);
+      assert(k > 0, 'no set in the game where the ball takes a while to reach the shooter');
+      const f = frames[k];
+      const shooter = surname(name.get(f.holderId));
+      const read = () => page.evaluate(() => ({
+        tags: [...document.querySelectorAll('.live-court svg g.court-tag')]
+          .filter((x) => Number(getComputedStyle(x.parentElement).opacity) > 0.5).map((x) => x.textContent.trim()),
+        listed: document.querySelector('.live-floor tr.has-ball .live-floor-name')?.firstChild.textContent ?? null,
+        idx: Number(document.querySelector('.live-count').textContent.match(/^(\d+)/)[1]),
+      }));
+      await tipOff(page);
+      await pause(page);
+      await seek(page, k);   // the court on the play before; playing on stages this set
+      await play(page);
+      // Halfway to the shooter's first touch, frozen there.
+      await sleep(f.realSec * 500 * firstHold(f) * 0.5);
+      await pause(page);
+      const early = await read();
+      const where = `play ${k} (${plays[k].q} ${plays[k].t} "${plays[k].text}")`;
+      assert(early.idx === k, `${where}: sampled at play ${early.idx}, not during the set`);
+      assert(!early.tags.includes(shooter), `${where}: ${shooter}'s tag is up before the ball has reached him (tags: ${early.tags})`);
+      assert(early.listed !== name.get(f.holderId), `${where}: the list marks ${early.listed} as having the ball before it has reached him`);
+      assert(early.listed != null, `${where}: the list marks nobody with the ball mid-set`);
+      // Once it lands, the shot is his: tag and mark.
+      await play(page);
+      await waitFor(async () => (await read()).idx >= k + 1, { timeout: 30_000, what: 'the shot to land' });
+      await pause(page);
+      await sleep(300);
+      const after = await read();
+      assert(after.tags.includes(shooter) || after.idx > k + 1, `${where}: after the shot ${shooter} carries no tag (tags: ${after.tags})`);
+      return `${where}: mid-set the tag was on ${early.tags.join(', ') || 'nobody'} and the list on ${early.listed}; ${shooter} named once the ball got to him`;
+    }),
 
     check('court view: the whole floor on its side on a wide window, one end upright on a narrower one, and back', { viewport: { width: 1600, height: 900 } }, async (page) => {
       await openFromCalendar(page, states.regular.file);

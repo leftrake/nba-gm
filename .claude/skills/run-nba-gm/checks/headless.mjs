@@ -15,7 +15,7 @@ import { simAllStarGame } from '../../../../src/engine/allstar.js';
 import { BOX_COLS, decodeBox } from '../../../../src/engine/sim.js';
 import { checkSave } from '../../../../src/engine/save.js';
 import {
-  buildFrames, liveBox, teamFoulsByPlay, placeHighlights, periodBreaks, pregame, lineupChange, flowLine,
+  buildFrames, liveBox, teamFoulsByPlay, placeHighlights, periodBreaks, pregame, lineupChange, flowLine, ballHolders,
 } from '../../../../src/components/liveFrames.js';
 import { canWatch, forViewer, asPlayed, playoffContext, REPLAY } from '../../../../src/components/watchGame.js';
 import { Violations, assert } from './harness.mjs';
@@ -208,6 +208,15 @@ function checkGame(T, label, game, home, away, moved = NOBODY) {
     if (p.k === 'shot' && !f.blocked && !near(f.ballPath[f.ballPath.length - 1], f.attackTop ? { x: 0, y: 94 - 5.25 } : { x: 0, y: 5.25 })) {
       say('the shot never gets to the rim');
     }
+    // Who's marked with the ball (ballHolders: the name tags, the list beside
+    // the court): the man the play is about only from when the ball reaches
+    // him — marking him sooner named the shooter before the shot — and him at
+    // the end.
+    const hs = ballHolders(f.ballPath, f.holderId);
+    const marked = hs.find((h) => h.id === f.holderId)?.t;
+    const has = f.ballPath.find((q) => q.held && q.by === f.holderId)?.t;
+    if (marked !== has) say(`${f.holderId} is marked with the ball from t=${marked?.toFixed(2)}, but only has it from t=${has?.toFixed(2)}`);
+    if (hs[hs.length - 1]?.id !== f.holderId) say(`at the end the ball is marked with ${hs[hs.length - 1]?.id}, not ${f.holderId}`);
   });
 
   // Substitutions. Five a side at every play, and the fives come in the
@@ -631,7 +640,7 @@ export function headlessChecks(states) {
       }),
     },
     {
-      name: 'actOut sets: the ball always with the man holding it, passed between teammates, to the man the play is about',
+      name: 'actOut sets: the ball always with the man holding it, passed between teammates, to the man the play is about — marked only once he has it',
       run: m(({ T }) => {
         T.V.sets.assertNone();
         assert(T.sets > T.games * 150 && T.passes > T.sets, `too few sets to mean anything: ${T.sets} in ${T.games} games, ${T.passes} passes`);

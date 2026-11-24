@@ -571,12 +571,18 @@ export function buildFrames(plays, lineups, home, away) {
       // The ball's route this play, world coords. `h` is height (0 on the
       // floor, 1 at the top of a long arc); `held` means it's in someone's
       // hands.
-      const start = ballEnd ? { x: ballEnd.x, y: ballEnd.y, h: ballEnd.h ?? 0, held: !!ballEnd.held } : at(action, 0, true);
+      // Every point says who has the ball there (`by`), as a set's do: the
+      // court's name tags and the list beside it mark him only once he does.
+      const holderNow = onDef(holder) ? holder : offAtBall;
+      const keeps = ballEnd?.by != null && (onOff(ballEnd.by) || onDef(ballEnd.by));
+      const start = ballEnd
+        ? { x: ballEnd.x, y: ballEnd.y, h: ballEnd.h ?? 0, held: !!ballEnd.held, ...(keeps ? { by: ballEnd.by } : {}) }
+        : { ...at(action, 0, true), by: holderNow };
       let r;
       if (p.k === 'shot' || p.k === 'ft') {
         // The pass that set it up, when the sim credits one: 80% of makes.
-        const pass = p.k === 'shot' && onOff(p.a) && O[p.a] ? [at(O[p.a], 0, true)] : [];
-        const release = at(action, 0, true);
+        const pass = p.k === 'shot' && onOff(p.a) && O[p.a] ? [{ ...at(O[p.a], 0, true), by: p.a }] : [];
+        const release = { ...at(action, 0, true), by: p.p };
         if (blocked) {
           r = [start, ...pass, release, at(fartherOut(action, 3), 0.35)];   // swatted at the release
         } else {
@@ -585,10 +591,10 @@ export function buildFrames(plays, lineups, home, away) {
           r = [start, ...pass, release, apex, at(RIM)];
         }
       } else if (p.k === 'reb') {
-        const land = at(action, 0, true);
+        const land = { ...at(action, 0, true), by: p.p };
         r = [start, { x: (start.x + land.x) / 2, y: (start.y + land.y) / 2, h: 0.3, held: false }, land];
       } else if (p.k === 'tov' || p.k === 'stl' || newPossession || relocated) {
-        r = [start, at(action, 0, true)];
+        r = [start, { ...at(action, 0, true), by: holderNow }];
       } else {
         r = [start, start];
       }
@@ -783,6 +789,26 @@ export function teamFoulsByPlay(plays) {
     if (p.k === 'foul' && (p.side === 'home' || p.side === 'away')) f = { ...f, [p.side]: f[p.side] + 1 };
     out.push({ per, home: f.home, away: f.away, bonusAt: per >= 4 ? 4 : 5 });
   }
+  return out;
+}
+
+// Who has the ball through a play, from its route: [{ t, id }] — from t on,
+// id has it (null for nobody: a loose ball, one through the net). It stays
+// with whoever last had it while it's in the air, and once the man the play
+// is about has had it for the last time — a shot's release — it's his to the
+// end. The court's name tags and the list beside it mark whoever has it, so
+// a set doesn't name its shooter before the ball has found him.
+export function ballHolders(route, finalId) {
+  let last = -1;
+  route.forEach((q, k) => { if (q.held && q.by === finalId) last = k; });
+  const out = [];
+  let id = null;
+  route.forEach((q, k) => {
+    if (last >= 0 && k > last) id = finalId;
+    else if (q.held) id = q.by ?? null;
+    else if (k === 0) id = null;
+    if (!out.length || out[out.length - 1].id !== id) out.push({ t: q.t, id });
+  });
   return out;
 }
 
